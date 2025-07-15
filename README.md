@@ -7,8 +7,8 @@ Follow these steps to get Donwatch up and running on your local machine.
 ## 1. Clone the repository
 
 ```bash
-git clone https://github.com/your‑username/Donwatch.git
-cd Donwatch
+git clone https://github.com/rival420/Donwatcher.git
+cd Donwatcher
 ````
 
 ---
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ## 4. Run the application
 
-By default Donwatch will start on port 8080 and bind to all interfaces:
+By default Donwatcher will start on port 8080 and bind to all interfaces:
 
 ```bash
 uvicorn main:app --reload --port 8080 --host 0.0.0.0
