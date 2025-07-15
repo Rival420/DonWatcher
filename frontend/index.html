@@ -80,8 +80,35 @@
     </div>
   </div>
 </div>
-<!-- Details modal (unchanged) -->
-<div id="modal" class="modal hidden">…</div>
+<!-- Details modal -->
+<div id="modal" class="modal hidden">
+  <div class="modal-content">
+    <span id="modal-close" class="modal-close">&times;</span>
+    <h2>Report Details</h2>
+    <div class="sort-controls">
+      <label for="sort-select">Sort by:</label>
+      <select id="sort-select">
+        <option value="category">Category</option>
+        <option value="name">Name</option>
+        <option value="score_desc">Score (high→low)</option>
+        <option value="score_asc">Score (low→high)</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="findings-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Name</th>
+            <th>Score</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 <!-- Scripts -->
 <script type="module" src="app.js"></script>
 <script type="module" src="analysis.js"></script>
