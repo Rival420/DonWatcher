@@ -73,10 +73,8 @@ function setupGlobalSearch() {
 async function loadReports() {
   const res = await fetch("/reports");
   const reports = await res.json();
-    // Sort by report_date ascending
-  reports.sort((a, b) => 
-    new Date(a.report_date) - new Date(b.report_date)
-  );
+  // Sort by report_date ascending
+  reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
   const tbody = document.querySelector("#reports-table tbody");
   tbody.innerHTML = "";
   reports.forEach(r => {
@@ -98,12 +96,13 @@ async function loadReports() {
     tbody.appendChild(tr);
   });
   tbody.querySelectorAll(".icon-btn[data-id]").forEach(btn => {
-    btn.addEventListener("click", () => showDetails(btn.dataset.id, reports));
+    btn.addEventListener("click", () => showDetails(btn.dataset.id));
   });
 }
 
-function showDetails(id, reports) {
-  const report = reports.find(r => r.id === id);
+async function showDetails(id) {
+  const res = await fetch(`/reports/${id}`);
+  const report = await res.json();
   window.currentReport = report;
   document.getElementById("sort-select").value = 'category';
   renderFindings(report, 'category');
