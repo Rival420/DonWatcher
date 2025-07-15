@@ -73,6 +73,10 @@ function setupGlobalSearch() {
 async function loadReports() {
   const res = await fetch("/reports");
   const reports = await res.json();
+    // Sort by report_date ascending
+  reports.sort((a, b) => 
+    new Date(a.report_date) - new Date(b.report_date)
+  );
   const tbody = document.querySelector("#reports-table tbody");
   tbody.innerHTML = "";
   reports.forEach(r => {
