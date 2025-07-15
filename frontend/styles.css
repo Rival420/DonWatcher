@@ -126,3 +126,24 @@ tbody tr:hover { background: #e3f2fd; }
 .sort-controls select {
   padding: 0.5em; border-radius: 4px; border: 1px solid #ccc;
 }
+
+.analysis-container {
+  max-width: 900px;
+  margin: 2em auto;
+  font-family: 'Roboto', sans-serif;
+}
+.analysis-topbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1em;
+}
+.analysis-topbar .back-btn {
+  text-decoration: none;
+  color: #1976d2;
+  font-size: 0.9em;
+  margin-right: 1em;
+}
+.analysis-topbar h1 {
+  font-weight: 500;
+  font-size: 1.5em;
+}
