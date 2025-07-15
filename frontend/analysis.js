@@ -7,6 +7,13 @@ export async function showAnalysis() {
   renderRecurring(freq);
 }
 
+// Automatically fetch and display charts when the page is loaded
+document.addEventListener("DOMContentLoaded", () => {
+  showAnalysis().catch(() => {
+    console.error("Failed to load analysis data");
+  });
+});
+
 function renderChart(data) {
   const ctx = document.getElementById("scoreChart").getContext("2d");
   new Chart(ctx, {

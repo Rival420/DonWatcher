@@ -68,6 +68,18 @@ def list_reports(storage: ReportStorage = Depends(get_storage)):
     return storage.get_all_reports()
 
 
+@app.get("/analysis/scores")
+def analysis_scores(storage: ReportStorage = Depends(get_storage)):
+    """Return historical score breakdown for charting."""
+    return storage.get_score_history()
+
+
+@app.get("/analysis/frequency")
+def analysis_frequency(storage: ReportStorage = Depends(get_storage)):
+    """Return recurring findings aggregated across reports."""
+    return storage.get_recurring_findings()
+
+
 @app.get("/analyze")
 def analyze_page():
     # Serve the standalone analysis page
