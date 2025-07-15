@@ -1,6 +1,6 @@
 # Donwatcher Installation & Quick Start
 
-Follow these steps to get Donwatch up and running on your local machine.
+Follow these steps to get Donwatcher up and running on your local machine.
 
 ---
 
