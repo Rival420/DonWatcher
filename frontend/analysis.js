@@ -20,13 +20,43 @@ function renderChart(data) {
     type: "line",
     data: {
       labels: data.map(d=> new Date(d.date).toLocaleDateString()),
-      datasets: [{
-        label: "Global Score",
-        data: data.map(d => d.staleObjects + d.privilegedAccounts + d.trusts + d.anomalies),
-        fill: false,
-        borderColor: '#1976d2',
-        borderWidth: 2,
-      }]
+      datasets: [
+        {
+          label: "Global Score",
+          data: data.map(d => d.staleObjects + d.privilegedAccounts + d.trusts + d.anomalies),
+          fill: false,
+          borderColor: '#1976d2',
+          borderWidth: 2,
+        },
+        {
+          label: "StaleObjects",
+          data: data.map(d => d.staleObjects),
+          fill: false,
+          borderColor: '#e53935',
+          borderWidth: 2,
+        },
+        {
+          label: "PrivilegedAccounts",
+          data: data.map(d => d.privilegedAccounts),
+          fill: false,
+          borderColor: '#43a047',
+          borderWidth: 2,
+        },
+        {
+          label: "Trusts",
+          data: data.map(d => d.trusts),
+          fill: false,
+          borderColor: '#fb8c00',
+          borderWidth: 2,
+        },
+        {
+          label: "Anomalies",
+          data: data.map(d => d.anomalies),
+          fill: false,
+          borderColor: '#8e24aa',
+          borderWidth: 2,
+        }
+      ]
     },
     options: {
       scales: {
