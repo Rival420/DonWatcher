@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List
 
-from models import Report
+from models import Report, ReportSummary
 from storage import ReportStorage, get_storage
 from parser import PingCastleParser
 
@@ -63,9 +63,17 @@ async def upload_pingcastle_report(
     return JSONResponse({"status": "success", "report_id": report.id})
 
 
-@app.get("/reports", response_model=List[Report])
+@app.get("/reports", response_model=List[ReportSummary])
 def list_reports(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_all_reports()
+    return storage.get_all_reports_summary()
+
+
+@app.get("/reports/{report_id}", response_model=Report)
+def get_report(report_id: str, storage: ReportStorage = Depends(get_storage)):
+    try:
+        return storage.get_report(report_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Report not found")
 
 
 @app.get("/analysis/scores")

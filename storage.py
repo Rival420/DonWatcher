@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from models import Report, Finding
+from models import Report, Finding, ReportSummary
 from typing import List, Dict
 from fastapi import Depends
 
@@ -118,6 +118,66 @@ class ReportStorage:
             ))
         conn.close()
         return reports
+
+    def get_all_reports_summary(self) -> List[ReportSummary]:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, domain, report_date, upload_date, global_score, high_score, "
+            "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
+            "trusts_score, anomalies_score FROM reports"
+        )
+        rows = c.fetchall()
+        conn.close()
+        return [
+            ReportSummary(
+                id=row[0],
+                domain=row[1],
+                report_date=datetime.fromisoformat(row[2]),
+                upload_date=datetime.fromisoformat(row[3]),
+                global_score=row[4],
+                high_score=row[5],
+                medium_score=row[6],
+                low_score=row[7],
+                stale_objects_score=row[8],
+                privileged_accounts_score=row[9],
+                trusts_score=row[10],
+                anomalies_score=row[11],
+            )
+            for row in rows
+        ]
+
+    def get_report(self, report_id: str) -> Report:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("SELECT * FROM reports WHERE id = ?", (report_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            raise ValueError("Report not found")
+        c.execute("SELECT * FROM findings WHERE report_id = ?", (report_id,))
+        fr = c.fetchall()
+        findings = [
+            Finding(id=f[0], report_id=f[1], category=f[2], name=f[3], score=f[4], description=f[5])
+            for f in fr
+        ]
+        conn.close()
+        return Report(
+            id=row[0],
+            domain=row[1],
+            report_date=datetime.fromisoformat(row[2]),
+            upload_date=datetime.fromisoformat(row[3]),
+            global_score=row[4],
+            high_score=row[5],
+            medium_score=row[6],
+            low_score=row[7],
+            stale_objects_score=row[8],
+            privileged_accounts_score=row[9],
+            trusts_score=row[10],
+            anomalies_score=row[11],
+            original_file=row[12],
+            findings=findings,
+        )
 
     def get_score_history(self) -> List[Dict]:
         conn = sqlite3.connect(self.db_path)
