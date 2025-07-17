@@ -15,8 +15,15 @@ async function loadDomainInfo() {
       document.getElementById('domain-name').textContent = latest.domain;
       document.getElementById('latest-date').textContent = new Date(latest.report_date).toLocaleDateString();
 
-      const detailRes = await fetch(`/api/reports/${latest.id}`);
-      const detail = await detailRes.json();
+      let detail = latest;
+      try {
+        const detailRes = await fetch(`/api/reports/${latest.id}`);
+        if (detailRes.ok) {
+          detail = await detailRes.json();
+        }
+      } catch {
+        // fall back to summary data if detailed fetch fails
+      }
       document.getElementById('domain-sid').textContent = detail.domain_sid;
       document.getElementById('domain-func').textContent = detail.domain_functional_level;
       document.getElementById('forest-func').textContent = detail.forest_functional_level;
