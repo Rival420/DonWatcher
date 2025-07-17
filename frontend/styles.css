@@ -102,6 +102,7 @@ tbody td {
 }
 tbody tr:nth-child(even) { background: var(--gray-lighter); }
 tbody tr:hover { background: #e3f2fd; }
+tbody tr { cursor: pointer; }
 
 /* Details Modal */
 .modal {

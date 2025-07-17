@@ -63,12 +63,12 @@ async def upload_pingcastle_report(
     return JSONResponse({"status": "success", "report_id": report.id})
 
 
-@app.get("/reports", response_model=List[ReportSummary])
+@app.get("/api/reports", response_model=List[ReportSummary])
 def list_reports(storage: ReportStorage = Depends(get_storage)):
     return storage.get_all_reports_summary()
 
 
-@app.get("/reports/{report_id}", response_model=Report)
+@app.get("/api/reports/{report_id}", response_model=Report)
 def get_report(report_id: str, storage: ReportStorage = Depends(get_storage)):
     try:
         return storage.get_report(report_id)
@@ -92,6 +92,12 @@ def analysis_frequency(storage: ReportStorage = Depends(get_storage)):
 def analyze_page():
     # Serve the standalone analysis page
     return FileResponse(BASE_DIR / "frontend" / "analyze.html")
+
+
+@app.get("/reports")
+def reports_page():
+    # Serve the reports page
+    return FileResponse(BASE_DIR / "frontend" / "reports.html")
 
 
 # Mount all other paths to your frontend

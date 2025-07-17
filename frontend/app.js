@@ -71,7 +71,7 @@ function setupGlobalSearch() {
 }
 
 async function loadReports() {
-  const res = await fetch("/reports");
+  const res = await fetch("/api/reports");
   const reports = await res.json();
   // Sort by report_date ascending
   reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
@@ -79,6 +79,7 @@ async function loadReports() {
   tbody.innerHTML = "";
   reports.forEach(r => {
     const tr = document.createElement("tr");
+    tr.dataset.id = r.id;
     tr.innerHTML = `
       <td>${r.domain}</td>
       <td>${new Date(r.report_date).toLocaleDateString()}</td>
@@ -87,21 +88,16 @@ async function loadReports() {
       <td>${r.privileged_accounts_score}</td>
       <td>${r.trusts_score}</td>
       <td>${r.anomalies_score}</td>
-      <td>
-        <button class="icon-btn" data-id="${r.id}" title="Details">
-          <i class="fas fa-search"></i>
-        </button>
-      </td>
     `;
     tbody.appendChild(tr);
   });
-  tbody.querySelectorAll(".icon-btn[data-id]").forEach(btn => {
-    btn.addEventListener("click", () => showDetails(btn.dataset.id));
+  tbody.querySelectorAll("tr[data-id]").forEach(tr => {
+    tr.addEventListener("click", () => showDetails(tr.dataset.id));
   });
 }
 
 async function showDetails(id) {
-  const res = await fetch(`/reports/${id}`);
+  const res = await fetch(`/api/reports/${id}`);
   const report = await res.json();
   window.currentReport = report;
   document.getElementById("sort-select").value = 'category';
@@ -136,7 +132,7 @@ function renderFindings(report, sortKey) {
 }
 
 function exportCSV() {
-  fetch("/reports")
+  fetch("/api/reports")
     .then(r => r.json())
     .then(reports => {
       const headers = ["domain","report_date","global_score","stale_objects_score","privileged_accounts_score","trusts_score","anomalies_score"];
