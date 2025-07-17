@@ -57,9 +57,22 @@ class PingCastleParser:
         medium_score = get_int("./ScoreSystem/MediumScore")
         low_score    = get_int("./ScoreSystem/LowScore")
 
-        dc_count = get_int_any("./DomainControllerCount", "./NumberOfDCs", "./NbDC")
-        user_count = get_int_any("./NumberOfUsers", "./NbUsers")
-        computer_count = get_int_any("./NumberOfComputers", "./NbComputers")
+        dc_count = get_int_any(
+            "./NumberOfDC",
+            "./DomainControllerCount",
+            "./NumberOfDCs",
+            "./NbDC",
+        )
+        user_count = get_int_any(
+            "./UserAccountData/Number",
+            "./NumberOfUsers",
+            "./NbUsers",
+        )
+        computer_count = get_int_any(
+            "./ComputerAccountData/Number",
+            "./NumberOfComputers",
+            "./NbComputers",
+        )
 
         # Build per‑category totals
         categories = {
