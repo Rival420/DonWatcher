@@ -10,7 +10,8 @@ async function loadDomainInfo() {
     const res = await fetch('/api/reports');
     const reports = await res.json();
     if (reports.length) {
-      const latest = reports[reports.length - 1];
+      reports.sort((a, b) => new Date(b.report_date) - new Date(a.report_date));
+      const latest = reports[0];
       document.getElementById('domain-name').textContent = latest.domain;
       document.getElementById('latest-date').textContent = new Date(latest.report_date).toLocaleDateString();
 
@@ -23,6 +24,11 @@ async function loadDomainInfo() {
       document.getElementById('dc-count').textContent = detail.dc_count;
       document.getElementById('user-count').textContent = detail.user_count;
       document.getElementById('computer-count').textContent = detail.computer_count;
+      document.getElementById('risk-global').textContent = detail.global_score;
+      document.getElementById('risk-stale').textContent = detail.stale_objects_score;
+      document.getElementById('risk-priv').textContent = detail.privileged_accounts_score;
+      document.getElementById('risk-trusts').textContent = detail.trusts_score;
+      document.getElementById('risk-anom').textContent = detail.anomalies_score;
     }
   } catch {
     // ignore

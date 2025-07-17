@@ -225,3 +225,17 @@ tbody tr { cursor: pointer; }
 #domain-info .domain-col p {
   margin: 0.25em 0;
 }
+
+/* Risk scores layout */
+#risk-scores .risk-global {
+  margin-bottom: 0.5em;
+  font-weight: 500;
+}
+#risk-scores .risk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+}
+#risk-scores .risk-col p {
+  margin: 0.25em 0;
+}
