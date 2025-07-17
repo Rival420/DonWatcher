@@ -9,27 +9,38 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="analysis-container">
-    <header class="analysis-topbar">
-      <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Back</a>
-      <h1>Donwatch Analysis</h1>
-      <i id="theme-toggle" class="fas fa-moon theme-btn"></i>
-    </header>
-
-    <section class="card analyze-card" id="analyze-section">
-      <div class="card-header"><h2>Score History</h2></div>
-      <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
-
-      <div class="recurring-wrap">
-        <h3>Recurring Findings</h3>
-        <table id="recurring-table">
-          <thead><tr>
-            <th>Category</th><th>Name</th><th>Count</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">Donwatcher</div>
+      <nav>
+        <a href="/" class="nav-item"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+        <a href="/reports" class="nav-item"><i class="fas fa-file-alt"></i><span>Reports</span></a>
+        <a href="/analyze" class="nav-item active"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Analysis</h1>
+        <div class="topbar-actions">
+          <i id="theme-toggle" class="fas fa-moon theme-btn"></i>
+        </div>
+      </header>
+      <div class="content">
+        <section class="card analyze-card" id="analyze-section">
+          <div class="card-header"><h2>Score History</h2></div>
+          <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+          <div class="recurring-wrap">
+            <h3>Recurring Findings</h3>
+            <table id="recurring-table">
+              <thead>
+                <tr><th>Category</th><th>Name</th><th>Count</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 
   <script type="module" src="analysis.js"></script>
