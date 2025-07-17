@@ -12,6 +12,18 @@ class PingCastleParser:
         # Extract domain
         domain = root.findtext("./DomainFQDN") or ""
 
+        def get_text(*paths: str) -> str:
+            for p in paths:
+                val = root.findtext(p)
+                if val:
+                    return val
+            return ""
+
+        domain_sid = get_text("./DomainSID", "./DomainSid")
+        domain_functional = get_text("./DomainFunctionalLevel")
+        forest_functional = get_text("./ForestFunctionalLevel")
+        maturity_level = get_text("./MaturityLevel")
+
         # Parse generation date
         date_str = root.findtext("./GenerationDate") or ""
         try:
@@ -30,10 +42,37 @@ class PingCastleParser:
             except ValueError:
                 raise ValueError(f"Invalid integer '{t}' at '{xpath}'")
 
+        def get_int_any(*xpaths: str) -> int:
+            for xp in xpaths:
+                t = root.findtext(xp)
+                if t:
+                    try:
+                        return int(t)
+                    except ValueError:
+                        raise ValueError(f"Invalid integer '{t}' at '{xp}'")
+            return 0
+
         # Still parse these if you need them
         high_score   = get_int("./ScoreSystem/HighScore")
         medium_score = get_int("./ScoreSystem/MediumScore")
         low_score    = get_int("./ScoreSystem/LowScore")
+
+        dc_count = get_int_any(
+            "./NumberOfDC",
+            "./DomainControllerCount",
+            "./NumberOfDCs",
+            "./NbDC",
+        )
+        user_count = get_int_any(
+            "./UserAccountData/Number",
+            "./NumberOfUsers",
+            "./NbUsers",
+        )
+        computer_count = get_int_any(
+            "./ComputerAccountData/Number",
+            "./NumberOfComputers",
+            "./NbComputers",
+        )
 
         # Build per‑category totals
         categories = {
@@ -78,6 +117,13 @@ class PingCastleParser:
         return Report(
             id=report_id,
             domain=domain,
+            domain_sid=domain_sid,
+            domain_functional_level=domain_functional,
+            forest_functional_level=forest_functional,
+            maturity_level=maturity_level,
+            dc_count=dc_count,
+            user_count=user_count,
+            computer_count=computer_count,
             report_date=report_date,
             upload_date=datetime.utcnow(),
             global_score=global_score,                    # <-- replaced PingCastle global
