@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <title>Donwatcher Dashboard</title>
-  <!-- Chart.js & FontAwesome -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles.css" />
@@ -16,101 +15,25 @@
       <a href="/" class="nav-item active"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
       <a href="/reports" class="nav-item" id="nav-reports"><i class="fas fa-file-alt"></i><span>Reports</span></a>
       <a href="/analyze" class="nav-item"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
-      <a href="#" class="nav-item"><i class="fas fa-cog"></i><span>Settings</span></a>
-      <a href="#" class="nav-item"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a>
     </nav>
   </aside>
   <div class="main">
     <header class="topbar">
-      <div class="topbar-search">
-        <i class="fas fa-search"></i>
-        <input type="text" id="global-search" placeholder="Search…" />
-      </div>
-      <div class="topbar-actions">
-        <i class="far fa-bell"></i>
-        <i class="fas fa-question-circle"></i>
-        <i class="far fa-user-circle avatar"></i>
-      </div>
+      <h1>Dashboard</h1>
     </header>
     <div class="content">
-      <!-- Upload -->
-      <section class="card upload-card" id="upload-section">
-        <h2>Upload a PingCastle Report</h2>
-        <div class="dropzone" id="dropzone">
-          <i class="fas fa-cloud-upload-alt fa-3x"></i>
-          <p>Drag &amp; drop or click to browse</p>
-          <input type="file" id="file-input" accept=".xml,.html" hidden />
-        </div>
-        <div id="upload-status" class="status"></div>
+      <section class="card" id="domain-info">
+        <h2>Domain Information</h2>
+        <p>Domain: <span id="domain-name">-</span></p>
+        <p>Latest Scan: <span id="latest-date">-</span></p>
       </section>
-      <!-- Reports -->
-      <section class="card reports-card hidden" id="reports-section">
-        <div class="card-header">
-          <h2>Existing Reports</h2>
-          <div class="controls">
-            <input type="text" id="table-search" placeholder="Search reports…" />
-            <button id="export-btn"><i class="fas fa-file-export"></i> Export</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="reports-table">
-            <thead>
-              <tr>
-                <th>Domain</th><th>Date</th><th>Global</th>
-                <th>StaleObjects</th><th>PrivilegedAccounts</th>
-                <th>Trusts</th><th>Anomalies</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-      <!-- Analyze -->
-      <section class="card hidden" id="analyze-section">
-        <div class="card-header"><h2>Analysis</h2></div>
+      <section class="card" id="analyze-section">
+        <div class="card-header"><h2>Score History</h2></div>
         <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
-        <div class="recurring-wrap">
-          <h3>Recurring Findings</h3>
-          <table id="recurring-table">
-            <thead><tr><th>Category</th><th>Name</th><th>Count</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
       </section>
     </div>
   </div>
 </div>
-<!-- Details modal -->
-<div id="modal" class="modal hidden">
-  <div class="modal-content">
-    <span id="modal-close" class="modal-close">&times;</span>
-    <h2>Report Details</h2>
-    <div class="sort-controls">
-      <label for="sort-select">Sort by:</label>
-      <select id="sort-select">
-        <option value="category">Category</option>
-        <option value="name">Name</option>
-        <option value="score_desc">Score (high→low)</option>
-        <option value="score_asc">Score (low→high)</option>
-      </select>
-    </div>
-    <div class="table-wrap">
-      <table id="findings-table">
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Name</th>
-            <th>Score</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-<!-- Scripts -->
-<script type="module" src="app.js"></script>
-<script type="module" src="analysis.js"></script>
+<script type="module" src="home.js"></script>
 </body>
 </html>
