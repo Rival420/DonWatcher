@@ -25,6 +25,13 @@ class ReportSummary(BaseModel):
     privileged_accounts_score: int
     trusts_score: int
     anomalies_score: int
+    domain_sid: str
+    domain_functional_level: str
+    forest_functional_level: str
+    maturity_level: str
+    dc_count: int
+    user_count: int
+    computer_count: int
 
 class Report(BaseModel):
     id: str
@@ -40,5 +47,12 @@ class Report(BaseModel):
     privileged_accounts_score: int
     trusts_score: int
     anomalies_score: int
+    domain_sid: str
+    domain_functional_level: str
+    forest_functional_level: str
+    maturity_level: str
+    dc_count: int
+    user_count: int
+    computer_count: int
     original_file: Optional[str] = None
     findings: List[Finding]

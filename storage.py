@@ -19,6 +19,13 @@ class ReportStorage:
                 CREATE TABLE IF NOT EXISTS reports (
                     id TEXT PRIMARY KEY,
                     domain TEXT,
+                    domain_sid TEXT,
+                    domain_functional_level TEXT,
+                    forest_functional_level TEXT,
+                    maturity_level TEXT,
+                    dc_count INTEGER,
+                    user_count INTEGER,
+                    computer_count INTEGER,
                     report_date TEXT,
                     upload_date TEXT,
                     global_score INTEGER,
@@ -32,6 +39,20 @@ class ReportStorage:
                     original_file TEXT
                 )
             """)
+            # Ensure new columns exist if upgrading from an older version
+            for col_def in [
+                ("domain_sid", "TEXT"),
+                ("domain_functional_level", "TEXT"),
+                ("forest_functional_level", "TEXT"),
+                ("maturity_level", "TEXT"),
+                ("dc_count", "INTEGER"),
+                ("user_count", "INTEGER"),
+                ("computer_count", "INTEGER")
+            ]:
+                try:
+                    c.execute(f"ALTER TABLE reports ADD COLUMN {col_def[0]} {col_def[1]}")
+                except sqlite3.OperationalError:
+                    pass
             c.execute("""
                 CREATE TABLE IF NOT EXISTS findings (
                     id TEXT PRIMARY KEY,
@@ -49,15 +70,25 @@ class ReportStorage:
             c = conn.cursor()
             c.execute("""
                 INSERT INTO reports (
-                    id, domain, report_date, upload_date,
+                    id, domain, domain_sid,
+                    domain_functional_level, forest_functional_level,
+                    maturity_level, dc_count, user_count, computer_count,
+                    report_date, upload_date,
                     global_score, high_score, medium_score, low_score,
                     stale_objects_score, privileged_accounts_score,
                     trusts_score, anomalies_score,
                     original_file
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 report.id,
                 report.domain,
+                report.domain_sid,
+                report.domain_functional_level,
+                report.forest_functional_level,
+                report.maturity_level,
+                report.dc_count,
+                report.user_count,
+                report.computer_count,
                 report.report_date.isoformat(),
                 report.upload_date.isoformat(),
                 report.global_score,
@@ -98,17 +129,24 @@ class ReportStorage:
             reports.append(Report(
                 id=row[0],
                 domain=row[1],
-                report_date=datetime.fromisoformat(row[2]),
-                upload_date=datetime.fromisoformat(row[3]),
-                global_score=row[4],
-                high_score=row[5],
-                medium_score=row[6],
-                low_score=row[7],
-                stale_objects_score=row[8],
-                privileged_accounts_score=row[9],
-                trusts_score=row[10],
-                anomalies_score=row[11],
-                original_file=row[12],
+                domain_sid=row[2],
+                domain_functional_level=row[3],
+                forest_functional_level=row[4],
+                maturity_level=row[5],
+                dc_count=row[6],
+                user_count=row[7],
+                computer_count=row[8],
+                report_date=datetime.fromisoformat(row[9]),
+                upload_date=datetime.fromisoformat(row[10]),
+                global_score=row[11],
+                high_score=row[12],
+                medium_score=row[13],
+                low_score=row[14],
+                stale_objects_score=row[15],
+                privileged_accounts_score=row[16],
+                trusts_score=row[17],
+                anomalies_score=row[18],
+                original_file=row[19],
                 findings=findings_by_report.get(row[0], [])
             ))
 
@@ -118,7 +156,9 @@ class ReportStorage:
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, domain, report_date, upload_date, global_score, high_score, "
+                "SELECT id, domain, domain_sid, domain_functional_level, "
+                "forest_functional_level, maturity_level, dc_count, user_count, "
+                "computer_count, report_date, upload_date, global_score, high_score, "
                 "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
                 "trusts_score, anomalies_score FROM reports"
             )
@@ -127,16 +167,23 @@ class ReportStorage:
             ReportSummary(
                 id=row[0],
                 domain=row[1],
-                report_date=datetime.fromisoformat(row[2]),
-                upload_date=datetime.fromisoformat(row[3]),
-                global_score=row[4],
-                high_score=row[5],
-                medium_score=row[6],
-                low_score=row[7],
-                stale_objects_score=row[8],
-                privileged_accounts_score=row[9],
-                trusts_score=row[10],
-                anomalies_score=row[11],
+                domain_sid=row[2],
+                domain_functional_level=row[3],
+                forest_functional_level=row[4],
+                maturity_level=row[5],
+                dc_count=row[6],
+                user_count=row[7],
+                computer_count=row[8],
+                report_date=datetime.fromisoformat(row[9]),
+                upload_date=datetime.fromisoformat(row[10]),
+                global_score=row[11],
+                high_score=row[12],
+                medium_score=row[13],
+                low_score=row[14],
+                stale_objects_score=row[15],
+                privileged_accounts_score=row[16],
+                trusts_score=row[17],
+                anomalies_score=row[18],
             )
             for row in rows
         ]
@@ -157,17 +204,24 @@ class ReportStorage:
         return Report(
             id=row[0],
             domain=row[1],
-            report_date=datetime.fromisoformat(row[2]),
-            upload_date=datetime.fromisoformat(row[3]),
-            global_score=row[4],
-            high_score=row[5],
-            medium_score=row[6],
-            low_score=row[7],
-            stale_objects_score=row[8],
-            privileged_accounts_score=row[9],
-            trusts_score=row[10],
-            anomalies_score=row[11],
-            original_file=row[12],
+            domain_sid=row[2],
+            domain_functional_level=row[3],
+            forest_functional_level=row[4],
+            maturity_level=row[5],
+            dc_count=row[6],
+            user_count=row[7],
+            computer_count=row[8],
+            report_date=datetime.fromisoformat(row[9]),
+            upload_date=datetime.fromisoformat(row[10]),
+            global_score=row[11],
+            high_score=row[12],
+            medium_score=row[13],
+            low_score=row[14],
+            stale_objects_score=row[15],
+            privileged_accounts_score=row[16],
+            trusts_score=row[17],
+            anomalies_score=row[18],
+            original_file=row[19],
             findings=findings,
         )
 
