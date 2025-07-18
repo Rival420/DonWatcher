@@ -60,55 +60,51 @@ function gaugeColor(v){
   return '#b71c1c';                // dark red
 }
 
-/**
- * render a half‑donut gauge into a canvas context
- */
-function makeGauge(ctx, value){
-  return new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      datasets: [{
-        data: [value, 100 - value],
-        backgroundColor: [ gaugeColor(value), '#314056' ],
-        hoverBackgroundColor: [ gaugeColor(value), '#314056' ],
-        borderWidth: 0
-      }]
+function makeGaugeJS(canvasId, value, max) {
+  var opts = {
+    angle: 0,                  // 0: half-circle, 1: full
+    lineWidth: 0.25,           // thickness
+    radiusScale: 1,            // relative to canvas size
+    pointer: {
+      length: 0.6,             // Relative to gauge radius
+      strokeWidth: 3,          // Gauge pointer thickness
+      color: '#e53935'         // Pointer color
     },
-    options: {
-      beginAtZero: true,
-      rotation: Math.PI,           // start at 9 o'clock
-      circumference: Math.PI,      // sweep 180°
-      cutout: '70%',               // thickness
-      plugins: {
-        tooltip: { enabled: false },
-        legend:  { display: false }
-      }
-    }
-  });
+    limitMax: true,     
+    limitMin: true,     
+    colorStart: gaugeColor(value),   // Custom gauge color for the arc
+    colorStop: gaugeColor(value),
+    strokeColor: '#314056',    // background arc color
+    generateGradient: false,
+    highDpiSupport: true,
+    staticLabels: {
+      font: "10px sans-serif",  // font
+      labels: [0, max / 2, max],
+      color: "#fff",
+      fractionDigits: 0
+    },
+    staticZones: [
+      {strokeStyle: "#43a047", min: 0, max: 25},
+      {strokeStyle: "#fb8c00", min: 25, max: 50},
+      {strokeStyle: "#e53935", min: 50, max: 75},
+      {strokeStyle: "#b71c1c", min: 75, max: max}
+    ],
+    // Just half a circle:
+    angle: 0, // The span of the gauge arc (0 = 180 degrees = half a circle)
+  };
+  var target = document.getElementById(canvasId);
+  var gauge = new Gauge(target).setOptions(opts);
+  gauge.maxValue = max;
+  gauge.setMinValue(0);
+  gauge.animationSpeed = 32; 
+  gauge.set(value);
 }
 
-/**
- * render all four gauges
- */
-function renderGauges(scores){
-  // map IDs to score keys
-  const map = {
-    stale: 'gauge-stale',
-    priv:  'gauge-priv',
-    trusts:'gauge-trusts',
-    anom:  'gauge-anom'
-  };
-  Object.entries(map).forEach(([key, canvasId])=>{
-    const rawVal = scores[key] ?? 0;
-    const cappedVal = Math.min(rawVal, 100); // capping max value at 100
-    
-    // update the numeric label based on real value
-    document.getElementById(`risk-${key}-val`).textContent = rawVal;
-    
-    // create chart
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    // destroy old chart if you store references; for brevity this just draws fresh
-    makeGauge(ctx, cappedVal);
-  });
+
+function renderGauges(scores) {
+  makeGaugeJS('gauge-stale', scores.stale, 100);
+  makeGaugeJS('gauge-priv', scores.priv, 100);
+  makeGaugeJS('gauge-trusts', scores.trusts, 100);
+  makeGaugeJS('gauge-anom', scores.anom, 100);
 }
 
