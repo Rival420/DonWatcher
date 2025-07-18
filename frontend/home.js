@@ -98,11 +98,11 @@ function renderGauges(scores){
     anom:  'gauge-anom'
   };
   Object.entries(map).forEach(([key, canvasId])=>{
-    const val = scores[key] ?? 0;
+    const rawVal = scores[key] ?? 0;
     const cappedVal = Math.min(rawVal, 100); // capping max value at 100
     
     // update the numeric label based on real value
-    document.getElementById(`risk-${key}-val`).textContent = val;
+    document.getElementById(`risk-${key}-val`).textContent = rawVal;
     
     // create chart
     const ctx = document.getElementById(canvasId).getContext('2d');
