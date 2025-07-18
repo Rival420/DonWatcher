@@ -33,10 +33,10 @@ async function loadDomainInfo() {
       document.getElementById('user-count').textContent = detail.user_count;
       document.getElementById('computer-count').textContent = detail.computer_count;
       document.getElementById('risk-global').textContent = detail.global_score;
-      document.getElementById('risk-stale').textContent = detail.stale_objects_score;
-      document.getElementById('risk-priv').textContent = detail.privileged_accounts_score;
-      document.getElementById('risk-trusts').textContent = detail.trusts_score;
-      document.getElementById('risk-anom').textContent = detail.anomalies_score;
+      document.getElementById('risk-stale-val').textContent = detail.stale_objects_score;
+      document.getElementById('risk-priv-val').textContent = detail.privileged_accounts_score;
+      document.getElementById('risk-trusts-val').textContent = detail.trusts_score;
+      document.getElementById('risk-anom-val').textContent = detail.anomalies_score;
 
             renderGauges({
         stale: detail.stale_objects_score,
