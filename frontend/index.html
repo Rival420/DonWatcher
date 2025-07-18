@@ -47,7 +47,13 @@
         <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
         <div class="risk-grid">
           <div class="risk-col">
-            <p>Stale Objects: <span id="risk-stale">-</span></p>
+            <div class="risk-gauge">
+              <canvas id="gauge-stale" width="140" height="80"></canvas>
+               <div class="gauge-label">
+                <span>Stale Objects: </span> 
+                <span id="risk-stale">-</span>
+               </div>
+            </div>
             <p>Privileged Accounts: <span id="risk-priv">-</span></p>
           </div>
           <div class="risk-col">
