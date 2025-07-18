@@ -75,7 +75,7 @@ function makeGauge(ctx, value){
       }]
     },
     options: {
-      rotation: Math.PI,           // start at 180°
+      rotation: -Math.PI,          // start at 9‑o'clock
       circumference: Math.PI,      // sweep 180°
       cutout: '70%',               // thickness
       plugins: {
