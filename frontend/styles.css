@@ -241,7 +241,6 @@ tbody tr { cursor: pointer; }
 }
 
 /* gauge container */
-
 .risk-gauge {
   text-align: center;
   width: 140px;
@@ -249,6 +248,12 @@ tbody tr { cursor: pointer; }
   background: transparent;
   margin: 0;
   padding: 0;
+}
+
+.risk-gauge convas {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 1;
 }
 .gauge-label {
   margin-top: 0.5em;
