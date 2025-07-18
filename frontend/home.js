@@ -68,7 +68,7 @@ function makeGauge(ctx, value){
     type: 'doughnut',
     data: {
       datasets: [{
-        data: [100 - value, value],
+        data: [value, 100 - value],
         backgroundColor: [ gaugeColor(value), '#314056' ],
         hoverBackgroundColor: [ gaugeColor(value), '#314056' ],
         borderWidth: 0
