@@ -232,23 +232,23 @@ tbody tr { cursor: pointer; }
   font-weight: 500;
 }
 #risk-scores .risk-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1em;
-}
-#risk-scores .risk-col p {
-  margin: 0.25em 0;
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 650px;
+  margin: 0 auto;
 }
 
 /* gauge container */
-.risk-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
-  justify-content: space-between;
-}
+
 .risk-gauge {
   text-align: center;
+  width: 140px;
+  flex: 0 0 auto;
+  background: transparent;
+  margin: 0;
+  padding: 0;
 }
 .gauge-label {
   margin-top: 0.5em;
