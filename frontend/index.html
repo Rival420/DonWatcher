@@ -3,72 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <title>Donwatcher Dashboard</title>
+  <!-- Chart.js for gauges -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Font Awesome for sidebar icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Your theme styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="logo">Donwatcher</div>
-    <nav>
-      <a href="/" class="nav-item active"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
-      <a href="/reports" class="nav-item" id="nav-reports"><i class="fas fa-file-alt"></i><span>Reports</span></a>
-      <a href="/analyze" class="nav-item"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
-    </nav>
-  </aside>
-  <div class="main">
-    <header class="topbar">
-      <h1>Dashboard</h1>
-    </header>
-    <div class="content">
-      <section class="card" id="domain-info">
-        <h2>Domain Information</h2>
-        <div class="domain-top">
-          <p>Domain: <span id="domain-name">-</span></p>
-          <p>Domain SID: <span id="domain-sid">-</span></p>
-          <p>Latest Scan: <span id="latest-date">-</span></p>
-        </div>
-        <div class="domain-grid">
-          <div class="domain-col">
-            <p>Domain Functional Level: <span id="domain-func">-</span></p>
-            <p>Forest Functional Level: <span id="forest-func">-</span></p>
-            <p>Maturity Level: <span id="maturity-level">-</span></p>
-            <p>Number of DCs: <span id="dc-count">-</span></p>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">Donwatcher</div>
+      <nav>
+        <a href="/" class="nav-item active"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+        <a href="/reports" class="nav-item"><i class="fas fa-file-alt"></i><span>Reports</span></a>
+        <a href="/analyze" class="nav-item"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Dashboard</h1>
+      </header>
+      <div class="content">
+        
+        <!-- Domain Info -->
+        <section class="card" id="domain-info">
+          <h2>Domain Information</h2>
+          <div class="domain-top">
+            <p>Domain: <span id="domain-name">-</span></p>
+            <p>Domain SID: <span id="domain-sid">-</span></p>
+            <p>Latest Scan: <span id="latest-date">-</span></p>
           </div>
-          <div class="domain-col">
-            <p>Number of Users: <span id="user-count">-</span></p>
-            <p>Number of Computers: <span id="computer-count">-</span></p>
+          <div class="domain-grid">
+            <div class="domain-col">
+              <p>Domain Functional Level: <span id="domain-func">-</span></p>
+              <p>Forest Functional Level: <span id="forest-func">-</span></p>
+              <p>Maturity Level: <span id="maturity-level">-</span></p>
+              <p>Number of DCs: <span id="dc-count">-</span></p>
+            </div>
+            <div class="domain-col">
+              <p>Number of Users: <span id="user-count">-</span></p>
+              <p>Number of Computers: <span id="computer-count">-</span></p>
+            </div>
           </div>
-        </div>
-      </section>
-      <section class="card" id="risk-scores">
-        <h2>Risk Scores</h2>
-        <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
-        <div class="risk-grid">
-          <div class="risk-col">
+        </section>
+        
+        <!-- Risk Scores with Gauges -->
+        <section class="card" id="risk-scores">
+          <h2>Risk Scores</h2>
+          <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
+          <div class="risk-grid">
+            
+            <!-- Stale Objects -->
             <div class="risk-gauge">
               <canvas id="gauge-stale" width="140" height="80"></canvas>
-               <div class="gauge-label">
-                <span>Stale Objects: </span> 
-                <span id="risk-stale">-</span>
-               </div>
+              <div class="gauge-label">
+                <span>Stale Objects</span>
+                <span id="risk-stale-val">-</span>
+              </div>
             </div>
-            <p>Privileged Accounts: <span id="risk-priv">-</span></p>
+            
+            <!-- Privileged Accounts -->
+            <div class="risk-gauge">
+              <canvas id="gauge-priv" width="140" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Privileged Accounts</span>
+                <span id="risk-priv-val">-</span>
+              </div>
+            </div>
+            
+            <!-- Trusts -->
+            <div class="risk-gauge">
+              <canvas id="gauge-trusts" width="140" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Trusts</span>
+                <span id="risk-trusts-val">-</span>
+              </div>
+            </div>
+            
+            <!-- Anomalies -->
+            <div class="risk-gauge">
+              <canvas id="gauge-anom" width="140" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Anomalies</span>
+                <span id="risk-anom-val">-</span>
+              </div>
+            </div>
+            
           </div>
-          <div class="risk-col">
-            <p>Trusts: <span id="risk-trusts">-</span></p>
-            <p>Anomalies: <span id="risk-anom">-</span></p>
-          </div>
-        </div>
-      </section>
-      <section class="card" id="analyze-section">
-        <div class="card-header"><h2>Score History</h2></div>
-        <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
-      </section>
+        </section>
+        
+        <!-- Score History Chart -->
+        <section class="card" id="analyze-section">
+          <div class="card-header"><h2>Score History</h2></div>
+          <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+        </section>
+      
+      </div>
     </div>
   </div>
-</div>
-<script type="module" src="home.js"></script>
+
+  <!-- Your JS that fetches data and renders gauges + charts -->
+  <script type="module" src="home.js"></script>
 </body>
 </html>
