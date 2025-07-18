@@ -67,7 +67,7 @@ function makeGaugeJS(canvasId, value, max) {
     radiusScale: 1,            // relative to canvas size
     pointer: {
       length: 0.6,             // Relative to gauge radius
-      strokeWidth: 3,          // Gauge pointer thickness
+      strokeWidth: 0.035,          // Gauge pointer thickness
       color: '#e53935'         // Pointer color
     },
     limitMax: true,     
