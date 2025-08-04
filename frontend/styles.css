@@ -93,6 +93,49 @@ body, input, button, select {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   color: var(--text);
 }
+
+/* Table Controls */
+.table-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1em;
+  gap: 1em;
+  flex-wrap: wrap;
+}
+
+.filter-controls, .sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.filter-controls input,
+.filter-controls select,
+.sort-controls select {
+  padding: 0.5em;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--gray-lighter);
+  color: var(--text);
+  font-size: 0.9em;
+}
+
+.filter-controls input {
+  min-width: 200px;
+}
+
+.filter-controls select,
+.sort-controls select {
+  min-width: 150px;
+}
+
+.filter-controls input:focus,
+.filter-controls select:focus,
+.sort-controls select:focus {
+  outline: none;
+  border-color: var(--blue);
+}
 .upload-card { text-align: center; }
 .upload-card h2 { margin-bottom: 1em; font-weight: 500; }
 .dropzone {
