@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, AlertLog
+from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, AlertLog, Risk
 from typing import List, Dict
 from fastapi import Depends
 
@@ -66,10 +66,20 @@ class ReportStorage:
             """)
 
             c.execute("""
+                CREATE TABLE IF NOT EXISTS risks (
+                    category TEXT,
+                    name TEXT,
+                    description TEXT,
+                    PRIMARY KEY(category, name)
+                )
+            """)
+
+            c.execute("""
                 CREATE TABLE IF NOT EXISTS accepted_risks (
                     category TEXT,
                     name TEXT,
-                    PRIMARY KEY(category, name)
+                    PRIMARY KEY(category, name),
+                    FOREIGN KEY(category, name) REFERENCES risks(category, name)
                 )
             """)
 
@@ -125,11 +135,18 @@ class ReportStorage:
                 report.original_file
             ))
             for f in report.findings:
-                c.execute("""
+                c.execute(
+                    "INSERT OR IGNORE INTO risks (category, name, description) VALUES (?, ?, ?)",
+                    (f.category, f.name, f.description),
+                )
+                c.execute(
+                    """
                     INSERT INTO findings
                     (id, report_id, category, name, score, description)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (f.id, f.report_id, f.category, f.name, f.score, f.description))
+                    """,
+                    (f.id, f.report_id, f.category, f.name, f.score, f.description),
+                )
 
     def get_all_reports(self) -> List[Report]:
         with sqlite3.connect(self.db_path) as conn:
@@ -272,16 +289,24 @@ class ReportStorage:
     def get_recurring_findings(self) -> List[Dict]:
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
-            c.execute("""
-              SELECT category, name, COUNT(*) as count
-              FROM findings
-              GROUP BY category, name
+            c.execute(
+                """
+              SELECT f.category, f.name, r.description, COUNT(*) as count
+              FROM findings f
+              LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
+              GROUP BY f.category, f.name, r.description
               ORDER BY count DESC
-            """)
+                """
+            )
             rows = c.fetchall()
         return [
-          {"category": row[0], "name": row[1], "count": row[2]}
-          for row in rows
+            {
+                "category": row[0],
+                "name": row[1],
+                "description": row[2] or "",
+                "count": row[3],
+            }
+            for row in rows
         ]
 
     def add_accepted_risk(self, category: str, name: str):

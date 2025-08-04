@@ -71,3 +71,9 @@ class Settings(BaseModel):
 class AlertLog(BaseModel):
     timestamp: datetime
     message: str
+
+
+class Risk(BaseModel):
+    category: str
+    name: str
+    description: str

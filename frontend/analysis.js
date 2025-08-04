@@ -72,34 +72,35 @@ function renderRecurring(freq, accepted) {
   const tbody = document.querySelector("#recurring-table tbody");
   const acceptedSet = new Set(accepted.map(r => `${r.category}|${r.name}`));
   tbody.innerHTML = "";
-  freq.forEach(({category,name,count}) => {
+  freq.forEach(({category, name, count, description}) => {
     const tr = document.createElement("tr");
     const key = `${category}|${name}`;
-    const labels = acceptedSet.has(key)
-      ? `<span class="label-chip">Accepted Risk <button class="remove-label" data-cat="${category}" data-name="${name}">&times;</button></span>`
-      : `<button class="add-label" data-cat="${category}" data-name="${name}">+ Accept Risk</button>`;
+    const toggle = `
+      <label class="switch">
+        <input type="checkbox" data-cat="${category}" data-name="${name}" ${acceptedSet.has(key) ? "checked" : ""}>
+        <span class="slider"></span>
+      </label>`;
     tr.innerHTML = `
-      <td>${category}</td><td>${name}</td><td>${count}</td><td>${labels}</td>
+      <td>${category}</td><td title="${description}">${name}</td><td>${count}</td><td>${toggle}</td>
     `;
     tbody.appendChild(tr);
   });
-  tbody.querySelectorAll(".add-label").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      await fetch("/api/accepted_risks", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({category: btn.dataset.cat, name: btn.dataset.name})
-      });
-      showAnalysis();
-    });
-  });
-  tbody.querySelectorAll(".remove-label").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      await fetch("/api/accepted_risks", {
-        method: "DELETE",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({category: btn.dataset.cat, name: btn.dataset.name})
-      });
+  tbody.querySelectorAll(".switch input").forEach(chk => {
+    chk.addEventListener("change", async () => {
+      const payload = JSON.stringify({category: chk.dataset.cat, name: chk.dataset.name});
+      if (chk.checked) {
+        await fetch("/api/accepted_risks", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: payload
+        });
+      } else {
+        await fetch("/api/accepted_risks", {
+          method: "DELETE",
+          headers: {"Content-Type": "application/json"},
+          body: payload
+        });
+      }
       showAnalysis();
     });
   });
