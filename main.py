@@ -4,8 +4,6 @@ from uuid import uuid4
 
 import aiofiles
 import uvicorn
-import json
-from urllib import error as urlerror, request as urlrequest
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,14 +13,11 @@ from models import (
     Report,
     ReportSummary,
     AcceptedRisk,
-    Settings,
-    AlertLog,
 )
 from storage import ReportStorage, get_storage
 from parser import PingCastleParser
-
-# Make sure you have python-multipart installed:
-# pip install python-multipart
+from alerter import Alerter
+from routers import settings as settings_router
 
 app = FastAPI()
 parser = PingCastleParser()
@@ -34,6 +29,10 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Max upload size (bytes)
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MB
+
+# Include routers
+app.include_router(settings_router.router)
+
 
 @app.post("/upload")
 async def upload_pingcastle_report(
@@ -62,57 +61,12 @@ async def upload_pingcastle_report(
         report.original_file = str(saved_path)
         storage.save_report(report)
 
-        # Alert on unaccepted findings
+        # 5) Alert on unaccepted findings
         unaccepted = storage.get_unaccepted_findings(report.findings)
         settings = storage.get_settings()
-        if unaccepted and settings.webhook_url:
-            
-            findings_str = "\n".join(
-                [f"- {f.name} (in {f.category})" for f in unaccepted]
-            )
+        alerter = Alerter(storage)
+        alerter.send_alert(settings, report, unaccepted)
 
-            message = (settings.alert_message or "New unaccepted findings detected!").format(
-                report_id=report.id,
-                findings_count=len(unaccepted),
-                findings=findings_str
-            )
-            
-            if "ntfy" in settings.webhook_url:
-                # ntfy expects plain-text body; optional headers like Title or Tags
-                data = message.encode("utf-8")
-                req = urlrequest.Request(
-                    settings.webhook_url,
-                    data=data,
-                    headers={
-                        "Title": f"DonWatcher – {len(unaccepted)} unaccepted risk(s)",
-                        "Tags": "warning"
-                    },
-                )
-            else:
-                payload = {
-                    "message": message,
-                    "report_id": report.id,
-                    "findings": [
-                        {"category": f.category, "name": f.name, "score": f.score}
-                        for f in unaccepted
-                    ],
-                }
-                data = json.dumps(payload).encode("utf-8")
-                req = urlrequest.Request(
-                    settings.webhook_url,
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                )
-            try:
-                with urlrequest.urlopen(req, timeout=10) as resp:
-                    status = resp.getcode()
-                storage.log_alert(
-                    f"Alert sent ({status}) for report {report.id}"
-                )
-            except urlerror.URLError as e:
-                storage.log_alert(
-                    f"Alert failed for report {report.id}: {e}"
-                )
     except ValueError as ve:
         # Known parsing error (e.g. bad date)
         raise HTTPException(status_code=400, detail=str(ve))
@@ -163,73 +117,6 @@ def add_accepted_risks(risk: AcceptedRisk, storage: ReportStorage = Depends(get_
 def delete_accepted_risk(risk: AcceptedRisk, storage: ReportStorage = Depends(get_storage)):
     storage.remove_accepted_risk(risk.category, risk.name)
     return {"status": "ok"}
-
-
-@app.get("/api/settings", response_model=Settings)
-def get_settings_api(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_settings()
-
-
-@app.post("/api/settings")
-def update_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
-    storage.update_settings(settings.webhook_url, settings.alert_message)
-    return {"status": "ok"}
-
-@app.post("/api/settings/test")
-def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
-    """Send a test webhook to validate settings."""
-    if not settings.webhook_url:
-        raise HTTPException(status_code=400, detail="Webhook URL is not set")
-    
-    # Use the provided message template, or a default one
-    message = settings.alert_message or "This is a test alert from DonWatcher."
-    
-    # Create a test payload
-    message_filled = message.format(
-        report_id="TEST-REPORT-123",
-        findings_count=2,
-        findings="- Finding: TestFinding1 (Category1)\n- Finding: TestFinding2 (Category2)"
-    )
-
-    if "ntfy" in settings.webhook_url:
-        data = message_filled.encode("utf-8")
-        req = urlrequest.Request(
-            settings.webhook_url,
-            data=data,
-            headers={
-                "Title": "DonWatcher – Test Alert",
-                "Tags": "information"
-            },
-        )
-    else:
-        payload = {
-            "message": message_filled,
-            "report_id": "TEST-REPORT-123",
-            "findings": [
-                {"category": "Category1", "name": "TestFinding1", "score": 10},
-                {"category": "Category2", "name": "TestFinding2", "score": 20}
-            ]
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urlrequest.Request(
-            settings.webhook_url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
-    
-    try:
-        with urlrequest.urlopen(req, timeout=10) as resp:
-            status = resp.getcode()
-        storage.log_alert(f"Test alert sent ({status})")
-        return {"status": "success", "detail": f"Webhook returned status {status}"}
-    except urlerror.URLError as e:
-        storage.log_alert(f"Test alert failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send test webhook: {e}")
-
-
-@app.get("/api/alerts/log", response_model=List[AlertLog])
-def get_alert_log(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_alert_log()
 
 
 @app.get("/analyze")
