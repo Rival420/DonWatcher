@@ -92,7 +92,13 @@ function renderRecurring(freq, accepted) {
       </td>
     `;
 
-    tr.addEventListener("click", () => showRiskModal(finding, isAccepted));
+    tr.addEventListener("click", (event) => {
+      // If the click originated from inside the toggle switch, do nothing
+      if (event.target.closest('.switch')) {
+        return;
+      }
+      showRiskModal(finding, isAccepted);
+    });
     tbody.appendChild(tr);
 
     const toggle = tr.querySelector(".switch input");
