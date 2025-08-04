@@ -13,6 +13,11 @@ document.addEventListener("DOMContentLoaded", () => {
   showAnalysis().catch(() => {
     console.error("Failed to load analysis data");
   });
+  
+  // Add event listeners for filtering and sorting
+  document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
+  document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
+  document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
 });
 
 function renderChart(data) {
@@ -68,12 +73,67 @@ function renderChart(data) {
   });
 }
 
+let allFindings = [];
+let acceptedRisks = [];
+
 function renderRecurring(freq, accepted) {
+  allFindings = freq;
+  acceptedRisks = accepted;
+  
+  // Populate category filter
+  const categoryFilter = document.getElementById("category-filter");
+  const categories = [...new Set(freq.map(f => f.category))].sort();
+  categoryFilter.innerHTML = '<option value="">All Categories</option>';
+  categories.forEach(cat => {
+    const option = document.createElement("option");
+    option.value = cat;
+    option.textContent = cat;
+    categoryFilter.appendChild(option);
+  });
+  
+  renderFilteredFindings();
+}
+
+function renderFilteredFindings() {
   const tbody = document.querySelector("#recurring-table tbody");
-  const acceptedSet = new Set(accepted.map(r => `${r.category}|${r.name}`));
+  const filterText = document.getElementById("findings-filter").value.toLowerCase();
+  const categoryFilter = document.getElementById("category-filter").value;
+  const sortBy = document.getElementById("sort-findings").value;
+  
+  // Filter findings
+  let filteredFindings = allFindings.filter(finding => {
+    const matchesText = finding.name.toLowerCase().includes(filterText) || 
+                       finding.description.toLowerCase().includes(filterText) ||
+                       finding.category.toLowerCase().includes(filterText);
+    const matchesCategory = !categoryFilter || finding.category === categoryFilter;
+    return matchesText && matchesCategory;
+  });
+  
+  // Sort findings
+  filteredFindings.sort((a, b) => {
+    switch (sortBy) {
+      case "count-desc":
+        return b.count - a.count;
+      case "count-asc":
+        return a.count - b.count;
+      case "score-desc":
+        return b.avg_score - a.avg_score;
+      case "score-asc":
+        return a.avg_score - b.avg_score;
+      case "name":
+        return a.name.localeCompare(b.name);
+      case "category":
+        return a.category.localeCompare(b.category);
+      default:
+        return b.count - a.count;
+    }
+  });
+  
+  const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
   tbody.innerHTML = "";
-  freq.forEach((finding) => {
-    const { category, name, count, description } = finding;
+  
+  filteredFindings.forEach((finding) => {
+    const { category, name, count, description, avg_score } = finding;
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
 
@@ -84,6 +144,7 @@ function renderRecurring(freq, accepted) {
       <td>${category}</td>
       <td>${name}</td>
       <td>${count}</td>
+      <td>${avg_score}</td>
       <td>
         <label class="switch">
           <input type="checkbox" data-cat="${category}" data-name="${name}" ${isAccepted ? "checked" : ""}>

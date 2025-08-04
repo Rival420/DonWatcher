@@ -295,7 +295,7 @@ class ReportStorage:
             c = conn.cursor()
             c.execute(
                 """
-              SELECT f.category, f.name, r.description, COUNT(*) as count
+              SELECT f.category, f.name, r.description, COUNT(*) as count, AVG(f.score) as avg_score
               FROM findings f
               LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
               GROUP BY f.category, f.name, r.description
@@ -309,6 +309,7 @@ class ReportStorage:
                 "name": row[1],
                 "description": row[2] or "",
                 "count": row[3],
+                "avg_score": round(row[4], 1) if row[4] else 0,
             }
             for row in rows
         ]
