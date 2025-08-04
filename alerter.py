@@ -1,5 +1,5 @@
 import json
-from urllib import request as urlrequest, error as urlerror
+import requests
 from models import Report, Settings, Finding
 from storage import ReportStorage
 from typing import List
@@ -23,16 +23,19 @@ class Alerter:
         )
 
         if "ntfy" in settings.webhook_url:
-            data = message.encode("utf-8")
-            req = urlrequest.Request(
+            # ntfy expects simple POST with data and optional headers
+            response = requests.post(
                 settings.webhook_url,
-                data=data,
+                data=message.encode(encoding='utf-8'),
                 headers={
                     "Title": f"DonWatcher - {len(unaccepted)} unaccepted risk(s)",
                     "Tags": "warning"
                 },
+                timeout=10
             )
+            status = response.status_code
         else:
+            # For other webhooks, use JSON payload
             payload = {
                 "message": message,
                 "report_id": report.id,
@@ -41,22 +44,21 @@ class Alerter:
                     for f in unaccepted
                 ],
             }
-            data = json.dumps(payload).encode("utf-8")
-            req = urlrequest.Request(
+            response = requests.post(
                 settings.webhook_url,
-                data=data,
+                json=payload,
                 headers={"Content-Type": "application/json"},
+                timeout=10
             )
+            status = response.status_code
         
-        try:
-            with urlrequest.urlopen(req, timeout=10) as resp:
-                status = resp.getcode()
+        if response.status_code == 200:
             self.storage.log_alert(
                 f"Alert sent ({status}) for report {report.id}"
             )
-        except urlerror.URLError as e:
+        else:
             self.storage.log_alert(
-                f"Alert failed for report {report.id}: {e}"
+                f"Alert failed for report {report.id}: HTTP {status}"
             )
 
     def send_test_alert(self, settings: Settings):
@@ -72,16 +74,18 @@ class Alerter:
         )
 
         if "ntfy" in settings.webhook_url:
-            data = message_filled.encode("utf-8")
-            req = urlrequest.Request(
+            # ntfy expects simple POST with data and optional headers
+            response = requests.post(
                 settings.webhook_url,
-                data=data,
+                data=message_filled.encode(encoding='utf-8'),
                 headers={
                     "Title": "DonWatcher - Test Alert",
                     "Tags": "information"
                 },
+                timeout=10
             )
         else:
+            # For other webhooks, use JSON payload
             payload = {
                 "message": message_filled,
                 "report_id": "TEST-REPORT-123",
@@ -90,18 +94,16 @@ class Alerter:
                     {"category": "Category2", "name": "TestFinding2", "score": 20}
                 ]
             }
-            data = json.dumps(payload).encode("utf-8")
-            req = urlrequest.Request(
+            response = requests.post(
                 settings.webhook_url,
-                data=data,
+                json=payload,
                 headers={"Content-Type": "application/json"},
+                timeout=10
             )
 
-        try:
-            with urlrequest.urlopen(req, timeout=10) as resp:
-                status = resp.getcode()
-            self.storage.log_alert(f"Test alert sent ({status})")
-            return {"status": "success", "detail": f"Webhook returned status {status}"}
-        except urlerror.URLError as e:
-            self.storage.log_alert(f"Test alert failed: {e}")
-            raise ConnectionError(f"Failed to send test webhook: {e}") from e
+        if response.status_code == 200:
+            self.storage.log_alert(f"Test alert sent ({response.status_code})")
+            return {"status": "success", "detail": f"Webhook returned status {response.status_code}"}
+        else:
+            self.storage.log_alert(f"Test alert failed: HTTP {response.status_code}")
+            raise ConnectionError(f"Failed to send test webhook: HTTP {response.status_code}")
