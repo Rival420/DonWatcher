@@ -7,34 +7,38 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="analysis-container">
-    <header class="analysis-topbar">
-      <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Back</a>
-      <h1>Settings</h1>
-    </header>
+  <div class="app">
+    <div id="sidebar"></div>
+    <div class="main">
+      <header class="topbar">
+        <h1>Settings</h1>
+      </header>
+      <div class="content">
+        <section class="card" id="settings-section">
+          <div class="card-header"><h2>Alert Settings</h2></div>
+          <form id="settings-form" class="settings-form">
+            <label>Webhook URL
+              <input type="text" id="webhook" />
+            </label>
+            <label>Message
+              <input type="text" id="message" />
+            </label>
+            <button type="submit">Save</button>
+          </form>
+        </section>
 
-    <section class="card analyze-card" id="settings-section">
-      <div class="card-header"><h2>Alert Settings</h2></div>
-      <form id="settings-form" class="settings-form">
-        <label>Webhook URL
-          <input type="text" id="webhook" />
-        </label>
-        <label>Message
-          <input type="text" id="message" />
-        </label>
-        <button type="submit">Save</button>
-      </form>
-    </section>
-
-    <section class="card analyze-card" id="log-section">
-      <div class="card-header"><h2>Alert Log</h2></div>
-      <table id="log-table">
-        <thead><tr><th>Time</th><th>Message</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+        <section class="card" id="log-section">
+          <div class="card-header"><h2>Alert Log</h2></div>
+          <table id="log-table">
+            <thead><tr><th>Time</th><th>Message</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+      </div>
+    </div>
   </div>
 
+  <script src="nav.js"></script>
   <script type="module" src="settings.js"></script>
 </body>
 </html>

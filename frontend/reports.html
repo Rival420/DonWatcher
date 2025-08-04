@@ -9,14 +9,7 @@
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar">
-    <div class="logo">Donwatcher</div>
-    <nav>
-      <a href="/" class="nav-item"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
-      <a href="/reports" class="nav-item active" id="nav-reports"><i class="fas fa-file-alt"></i><span>Reports</span></a>
-      <a href="/analyze" class="nav-item"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
-    </nav>
-  </aside>
+  <div id="sidebar"></div>
   <div class="main">
     <header class="topbar">
       <div class="topbar-search">
@@ -86,6 +79,7 @@
     </div>
   </div>
 </div>
+<script src="nav.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
