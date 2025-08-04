@@ -4,7 +4,8 @@ from uuid import uuid4
 
 import aiofiles
 import uvicorn
-import requests
+import json
+from urllib import error as urlerror, request as urlrequest
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,12 +74,19 @@ async def upload_pingcastle_report(
                     for f in unaccepted
                 ],
             }
+            data = json.dumps(payload).encode("utf-8")
+            req = urlrequest.Request(
+                settings.webhook_url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+            )
             try:
-                resp = requests.post(settings.webhook_url, json=payload, timeout=10)
+                with urlrequest.urlopen(req, timeout=10) as resp:
+                    status = resp.getcode()
                 storage.log_alert(
-                    f"Alert sent ({resp.status_code}) for report {report.id}"
+                    f"Alert sent ({status}) for report {report.id}"
                 )
-            except Exception as e:
+            except urlerror.URLError as e:
                 storage.log_alert(
                     f"Alert failed for report {report.id}: {e}"
                 )

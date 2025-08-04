@@ -4,4 +4,3 @@ uvicorn
 aiofiles
 defusedxml
 pydantic
-requests
