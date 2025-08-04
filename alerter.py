@@ -28,7 +28,7 @@ class Alerter:
                 settings.webhook_url,
                 data=data,
                 headers={
-                    "Title": f"DonWatcher – {len(unaccepted)} unaccepted risk(s)",
+                    "Title": f"DonWatcher - {len(unaccepted)} unaccepted risk(s)",
                     "Tags": "warning"
                 },
             )
@@ -77,7 +77,7 @@ class Alerter:
                 settings.webhook_url,
                 data=data,
                 headers={
-                    "Title": "DonWatcher – Test Alert",
+                    "Title": "DonWatcher - Test Alert",
                     "Tags": "information"
                 },
             )
