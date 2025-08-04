@@ -22,24 +22,29 @@
 
           <div class="recurring-wrap">
             <h3>Recurring Findings</h3>
-            <div class="table-controls">
-              <div class="filter-controls">
-                <input type="text" id="findings-filter" placeholder="Filter findings..." />
-                <select id="category-filter">
-                  <option value="">All Categories</option>
-                </select>
-              </div>
-              <div class="sort-controls">
-                <select id="sort-findings">
-                  <option value="count-desc">Count (High to Low)</option>
-                  <option value="count-asc">Count (Low to High)</option>
-                  <option value="score-desc">Risk Score (High to Low)</option>
-                  <option value="score-asc">Risk Score (Low to High)</option>
-                  <option value="name">Name (A-Z)</option>
-                  <option value="category">Category (A-Z)</option>
-                </select>
-              </div>
-            </div>
+                         <div class="table-controls">
+               <div class="filter-controls">
+                 <input type="text" id="findings-filter" placeholder="Filter findings..." />
+                 <select id="category-filter">
+                   <option value="">All Categories</option>
+                 </select>
+                 <select id="acceptance-filter">
+                   <option value="">All Risks</option>
+                   <option value="accepted">Accepted Only</option>
+                   <option value="unaccepted">Unaccepted Only</option>
+                 </select>
+               </div>
+               <div class="sort-controls">
+                 <select id="sort-findings">
+                   <option value="count-desc">Count (High to Low)</option>
+                   <option value="count-asc">Count (Low to High)</option>
+                   <option value="score-desc">Risk Score (High to Low)</option>
+                   <option value="score-asc">Risk Score (Low to High)</option>
+                   <option value="name">Name (A-Z)</option>
+                   <option value="category">Category (A-Z)</option>
+                 </select>
+               </div>
+             </div>
             <table id="recurring-table">
               <thead><tr>
                 <th>Category</th><th>Name</th><th>Count</th><th>Risk Score</th><th>Accepted?</th>

@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Add event listeners for filtering and sorting
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
+  document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
 });
 
@@ -98,7 +99,10 @@ function renderFilteredFindings() {
   const tbody = document.querySelector("#recurring-table tbody");
   const filterText = document.getElementById("findings-filter").value.toLowerCase();
   const categoryFilter = document.getElementById("category-filter").value;
+  const acceptanceFilter = document.getElementById("acceptance-filter").value;
   const sortBy = document.getElementById("sort-findings").value;
+  
+  const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
   
   // Filter findings
   let filteredFindings = allFindings.filter(finding => {
@@ -106,7 +110,19 @@ function renderFilteredFindings() {
                        finding.description.toLowerCase().includes(filterText) ||
                        finding.category.toLowerCase().includes(filterText);
     const matchesCategory = !categoryFilter || finding.category === categoryFilter;
-    return matchesText && matchesCategory;
+    
+    // Filter by acceptance status
+    const key = `${finding.category}|${finding.name}`;
+    const isAccepted = acceptedSet.has(key);
+    let matchesAcceptance = true;
+    
+    if (acceptanceFilter === "accepted") {
+      matchesAcceptance = isAccepted;
+    } else if (acceptanceFilter === "unaccepted") {
+      matchesAcceptance = !isAccepted;
+    }
+    
+    return matchesText && matchesCategory && matchesAcceptance;
   });
   
   // Sort findings
@@ -129,7 +145,6 @@ function renderFilteredFindings() {
     }
   });
   
-  const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
   tbody.innerHTML = "";
   
   filteredFindings.forEach((finding) => {
