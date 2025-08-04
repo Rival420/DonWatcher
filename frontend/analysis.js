@@ -72,36 +72,88 @@ function renderRecurring(freq, accepted) {
   const tbody = document.querySelector("#recurring-table tbody");
   const acceptedSet = new Set(accepted.map(r => `${r.category}|${r.name}`));
   tbody.innerHTML = "";
-  freq.forEach(({category, name, count, description}) => {
+  freq.forEach((finding) => {
+    const { category, name, count, description } = finding;
     const tr = document.createElement("tr");
+    tr.style.cursor = "pointer";
+
     const key = `${category}|${name}`;
-    const toggle = `
-      <label class="switch">
-        <input type="checkbox" data-cat="${category}" data-name="${name}" ${acceptedSet.has(key) ? "checked" : ""}>
-        <span class="slider"></span>
-      </label>`;
+    const isAccepted = acceptedSet.has(key);
+
     tr.innerHTML = `
-      <td>${category}</td><td title="${description}">${name}</td><td>${count}</td><td>${toggle}</td>
+      <td>${category}</td>
+      <td>${name}</td>
+      <td>${count}</td>
+      <td>
+        <label class="switch">
+          <input type="checkbox" data-cat="${category}" data-name="${name}" ${isAccepted ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </td>
     `;
+
+    tr.addEventListener("click", () => showRiskModal(finding, isAccepted));
     tbody.appendChild(tr);
-  });
-  tbody.querySelectorAll(".switch input").forEach(chk => {
-    chk.addEventListener("change", async () => {
-      const payload = JSON.stringify({category: chk.dataset.cat, name: chk.dataset.name});
-      if (chk.checked) {
-        await fetch("/api/accepted_risks", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: payload
-        });
+
+    const toggle = tr.querySelector(".switch input");
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation(); // Prevent modal from opening
+    });
+    toggle.addEventListener("change", async (e) => {
+      const isChecked = e.target.checked;
+      await updateAcceptedRisk(category, name, isChecked);
+      if(isChecked) {
+        acceptedSet.add(key);
       } else {
-        await fetch("/api/accepted_risks", {
-          method: "DELETE",
-          headers: {"Content-Type": "application/json"},
-          body: payload
-        });
+        acceptedSet.delete(key);
       }
-      showAnalysis();
+      // We can update the modal if it's open for this risk
+      const modalToggle = document.getElementById("risk-modal-accept-toggle");
+      if (modalToggle.dataset.cat === category && modalToggle.dataset.name === name) {
+        modalToggle.checked = isChecked;
+      }
     });
   });
+}
+
+function showRiskModal(finding, isAccepted) {
+  const { category, name, description } = finding;
+  const modal = document.getElementById("risk-modal");
+  document.getElementById("risk-modal-title").textContent = name;
+  document.getElementById("risk-modal-category").textContent = category;
+  document.getElementById("risk-modal-description").textContent = description;
+
+  const toggle = document.getElementById("risk-modal-accept-toggle");
+  toggle.checked = isAccepted;
+  toggle.dataset.cat = category;
+  toggle.dataset.name = name;
+
+  modal.classList.remove("hidden");
+
+  const closeBtn = modal.querySelector(".modal-close");
+  closeBtn.onclick = () => modal.classList.add("hidden");
+  window.onclick = (event) => {
+    if (event.target == modal) {
+      modal.classList.add("hidden");
+    }
+  };
+
+  const modalToggle = document.getElementById("risk-modal-accept-toggle");
+  modalToggle.onchange = async () => {
+      await updateAcceptedRisk(category, name, modalToggle.checked);
+      const mainToggle = document.querySelector(`#recurring-table input[data-cat="${category}"][data-name="${name}"]`);
+      if(mainToggle){
+        mainToggle.checked = modalToggle.checked;
+      }
+  };
+}
+
+async function updateAcceptedRisk(category, name, isAccepted) {
+    const payload = JSON.stringify({ category, name });
+    const method = isAccepted ? "POST" : "DELETE";
+    await fetch("/api/accepted_risks", {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: payload
+    });
 }

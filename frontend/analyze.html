@@ -34,6 +34,23 @@
     </div>
   </div>
 
+  <div id="risk-modal" class="modal hidden">
+    <div class="modal-content">
+      <span class="modal-close">&times;</span>
+      <h2 id="risk-modal-title"></h2>
+      <p><strong>Category:</strong> <span id="risk-modal-category"></span></p>
+      <p><strong>Description:</strong></p>
+      <p id="risk-modal-description"></p>
+      <div class="modal-actions">
+        <label class="switch">
+          <input type="checkbox" id="risk-modal-accept-toggle">
+          <span class="slider"></span>
+        </label>
+        <span>Accept Risk</span>
+      </div>
+    </div>
+  </div>
+
   <script src="nav.js"></script>
   <script type="module" src="analysis.js"></script>
 </body>
