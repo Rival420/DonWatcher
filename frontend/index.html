@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<head>
   <meta charset="UTF-8" />
   <title>Donwatcher Dashboard</title>
   <!-- gauge.js for dashboard gauges -->
@@ -14,14 +13,7 @@
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
-      <div class="logo">Donwatcher</div>
-      <nav>
-        <a href="/" class="nav-item active"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
-        <a href="/reports" class="nav-item"><i class="fas fa-file-alt"></i><span>Reports</span></a>
-        <a href="/analyze" class="nav-item"><i class="fas fa-chart-line"></i><span>Analyze</span></a>
-      </nav>
-    </aside>
+    <div id="sidebar"></div>
     <div class="main">
       <header class="topbar">
         <h1>Dashboard</h1>
@@ -99,6 +91,7 @@
     </div>
   </div>
 
+  <script src="nav.js"></script>
   <!-- Your JS that fetches data and renders gauges + charts -->
   <script type="module" src="home.js"></script>
 </body>

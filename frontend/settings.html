@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Settings</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <div id="sidebar"></div>
+    <div class="main">
+      <header class="topbar">
+        <h1>Settings</h1>
+      </header>
+      <div class="content">
+        <section class="card" id="settings-section">
+          <div class="card-header"><h2>Alert Settings</h2></div>
+          <form id="settings-form" class="settings-form">
+            <label>Webhook URL
+              <input type="text" id="webhook" />
+            </label>
+            <label>Message
+              <input type="text" id="message" />
+            </label>
+            <button type="submit">Save</button>
+          </form>
+        </section>
+
+        <section class="card" id="log-section">
+          <div class="card-header"><h2>Alert Log</h2></div>
+          <table id="log-table">
+            <thead><tr><th>Time</th><th>Message</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="nav.js"></script>
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from models import Report, Finding, ReportSummary
+from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, AlertLog, Risk
 from typing import List, Dict
 from fastapi import Depends
 
@@ -65,6 +65,39 @@ class ReportStorage:
                 )
             """)
 
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS risks (
+                    category TEXT,
+                    name TEXT,
+                    description TEXT,
+                    PRIMARY KEY(category, name)
+                )
+            """)
+
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS accepted_risks (
+                    category TEXT,
+                    name TEXT,
+                    PRIMARY KEY(category, name),
+                    FOREIGN KEY(category, name) REFERENCES risks(category, name)
+                )
+            """)
+
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS alert_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT,
+                    message TEXT
+                )
+            """)
+
     def save_report(self, report: Report):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
@@ -102,11 +135,18 @@ class ReportStorage:
                 report.original_file
             ))
             for f in report.findings:
-                c.execute("""
+                c.execute(
+                    "INSERT OR IGNORE INTO risks (category, name, description) VALUES (?, ?, ?)",
+                    (f.category, f.name, f.description),
+                )
+                c.execute(
+                    """
                     INSERT INTO findings
                     (id, report_id, category, name, score, description)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (f.id, f.report_id, f.category, f.name, f.score, f.description))
+                    """,
+                    (f.id, f.report_id, f.category, f.name, f.score, f.description),
+                )
 
     def get_all_reports(self) -> List[Report]:
         with sqlite3.connect(self.db_path) as conn:
@@ -249,14 +289,89 @@ class ReportStorage:
     def get_recurring_findings(self) -> List[Dict]:
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
-            c.execute("""
-              SELECT category, name, COUNT(*) as count
-              FROM findings
-              GROUP BY category, name
+            c.execute(
+                """
+              SELECT f.category, f.name, r.description, COUNT(*) as count
+              FROM findings f
+              LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
+              GROUP BY f.category, f.name, r.description
               ORDER BY count DESC
-            """)
+                """
+            )
             rows = c.fetchall()
         return [
-          {"category": row[0], "name": row[1], "count": row[2]}
-          for row in rows
+            {
+                "category": row[0],
+                "name": row[1],
+                "description": row[2] or "",
+                "count": row[3],
+            }
+            for row in rows
         ]
+
+    def add_accepted_risk(self, category: str, name: str):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT OR IGNORE INTO accepted_risks (category, name) VALUES (?, ?)",
+                (category, name),
+            )
+
+    def remove_accepted_risk(self, category: str, name: str):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM accepted_risks WHERE category = ? AND name = ?",
+                (category, name),
+            )
+
+    def get_accepted_risks(self) -> List[AcceptedRisk]:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT category, name FROM accepted_risks")
+            rows = c.fetchall()
+        return [AcceptedRisk(category=r[0], name=r[1]) for r in rows]
+
+    def get_unaccepted_findings(self, findings: List[Finding]) -> List[Finding]:
+        accepted = {(r.category, r.name) for r in self.get_accepted_risks()}
+        return [f for f in findings if (f.category, f.name) not in accepted]
+
+    def get_settings(self) -> Settings:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT key, value FROM settings")
+            rows = c.fetchall()
+        data = {k: v for k, v in rows}
+        return Settings(
+            webhook_url=data.get("webhook_url", ""),
+            alert_message=data.get("alert_message", ""),
+        )
+
+    def update_settings(self, webhook_url: str, alert_message: str):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "REPLACE INTO settings (key, value) VALUES ('webhook_url', ?)",
+                (webhook_url,),
+            )
+            c.execute(
+                "REPLACE INTO settings (key, value) VALUES ('alert_message', ?)",
+                (alert_message,),
+            )
+
+    def log_alert(self, message: str):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO alert_log (timestamp, message) VALUES (?, ?)",
+                (datetime.utcnow().isoformat(), message),
+            )
+
+    def get_alert_log(self) -> List[AlertLog]:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT timestamp, message FROM alert_log ORDER BY timestamp DESC"
+            )
+            rows = c.fetchall()
+        return [AlertLog(timestamp=datetime.fromisoformat(r[0]), message=r[1]) for r in rows]
