@@ -56,3 +56,18 @@ class Report(BaseModel):
     computer_count: int
     original_file: Optional[str] = None
     findings: List[Finding]
+
+
+class AcceptedRisk(BaseModel):
+    category: str
+    name: str
+
+
+class Settings(BaseModel):
+    webhook_url: str = ""
+    alert_message: str = ""
+
+
+class AlertLog(BaseModel):
+    timestamp: datetime
+    message: str

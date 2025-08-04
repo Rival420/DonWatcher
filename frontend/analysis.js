@@ -1,10 +1,11 @@
 export async function showAnalysis() {
-  const [scores, freq] = await Promise.all([
+  const [scores, freq, accepted] = await Promise.all([
     fetch("/analysis/scores").then(r => r.json()),
-    fetch("/analysis/frequency").then(r => r.json())
+    fetch("/analysis/frequency").then(r => r.json()),
+    fetch("/api/accepted_risks").then(r => r.json()),
   ]);
   renderChart(scores);
-  renderRecurring(freq);
+  renderRecurring(freq, accepted);
 }
 
 // Automatically fetch and display charts when the page is loaded
@@ -67,14 +68,29 @@ function renderChart(data) {
   });
 }
 
-function renderRecurring(freq) {
+function renderRecurring(freq, accepted) {
   const tbody = document.querySelector("#recurring-table tbody");
+  const acceptedSet = new Set(accepted.map(r => `${r.category}|${r.name}`));
   tbody.innerHTML = "";
   freq.forEach(({category,name,count}) => {
     const tr = document.createElement("tr");
+    const key = `${category}|${name}`;
+    const action = acceptedSet.has(key)
+      ? "Accepted"
+      : `<button class="accept-btn" data-cat="${category}" data-name="${name}">Accept Risk</button>`;
     tr.innerHTML = `
-      <td>${category}</td><td>${name}</td><td>${count}</td>
+      <td>${category}</td><td>${name}</td><td>${count}</td><td>${action}</td>
     `;
     tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll(".accept-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      await fetch("/api/accepted_risks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({category: btn.dataset.cat, name: btn.dataset.name})
+      });
+      showAnalysis();
+    });
   });
 }
