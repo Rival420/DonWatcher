@@ -292,6 +292,14 @@ class ReportStorage:
                 (category, name),
             )
 
+    def remove_accepted_risk(self, category: str, name: str):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM accepted_risks WHERE category = ? AND name = ?",
+                (category, name),
+            )
+
     def get_accepted_risks(self) -> List[AcceptedRisk]:
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()

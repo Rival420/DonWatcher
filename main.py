@@ -136,6 +136,12 @@ def add_accepted_risks(risk: AcceptedRisk, storage: ReportStorage = Depends(get_
     return {"status": "ok"}
 
 
+@app.delete("/api/accepted_risks")
+def delete_accepted_risk(risk: AcceptedRisk, storage: ReportStorage = Depends(get_storage)):
+    storage.remove_accepted_risk(risk.category, risk.name)
+    return {"status": "ok"}
+
+
 @app.get("/api/settings", response_model=Settings)
 def get_settings_api(storage: ReportStorage = Depends(get_storage)):
     return storage.get_settings()

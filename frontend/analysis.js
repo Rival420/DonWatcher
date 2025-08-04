@@ -75,18 +75,28 @@ function renderRecurring(freq, accepted) {
   freq.forEach(({category,name,count}) => {
     const tr = document.createElement("tr");
     const key = `${category}|${name}`;
-    const action = acceptedSet.has(key)
-      ? "Accepted"
-      : `<button class="accept-btn" data-cat="${category}" data-name="${name}">Accept Risk</button>`;
+    const labels = acceptedSet.has(key)
+      ? `<span class="label-chip">Accepted Risk <button class="remove-label" data-cat="${category}" data-name="${name}">&times;</button></span>`
+      : `<button class="add-label" data-cat="${category}" data-name="${name}">+ Accept Risk</button>`;
     tr.innerHTML = `
-      <td>${category}</td><td>${name}</td><td>${count}</td><td>${action}</td>
+      <td>${category}</td><td>${name}</td><td>${count}</td><td>${labels}</td>
     `;
     tbody.appendChild(tr);
   });
-  tbody.querySelectorAll(".accept-btn").forEach(btn => {
+  tbody.querySelectorAll(".add-label").forEach(btn => {
     btn.addEventListener("click", async () => {
       await fetch("/api/accepted_risks", {
         method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({category: btn.dataset.cat, name: btn.dataset.name})
+      });
+      showAnalysis();
+    });
+  });
+  tbody.querySelectorAll(".remove-label").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      await fetch("/api/accepted_risks", {
+        method: "DELETE",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({category: btn.dataset.cat, name: btn.dataset.name})
       });

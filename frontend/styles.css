@@ -207,6 +207,33 @@ tbody tr { cursor: pointer; }
   color: var(--text);
 }
 
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--gray-lighter);
+  border-radius: 12px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+}
+
+.label-chip button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.add-label {
+  background: var(--gray-lighter);
+  border: 1px dashed var(--border-color);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
 /* Domain info layout */
 #domain-info .domain-top {
   display: flex;
