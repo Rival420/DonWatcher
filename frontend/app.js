@@ -73,22 +73,24 @@ function setupGlobalSearch() {
 async function loadReports() {
   const res = await fetch("/api/reports");
   const reports = await res.json();
-  // Sort by report_date ascending
-  reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
   const tbody = document.querySelector("#reports-table tbody");
   tbody.innerHTML = "";
   reports.forEach(r => {
     const tr = document.createElement("tr");
     tr.dataset.id = r.id;
-    tr.innerHTML = `
-      <td>${r.domain}</td>
-      <td>${new Date(r.report_date).toLocaleDateString()}</td>
-      <td>${r.global_score}</td>
-      <td>${r.stale_objects_score}</td>
-      <td>${r.privileged_accounts_score}</td>
-      <td>${r.trusts_score}</td>
-      <td>${r.anomalies_score}</td>
-    `;
+    [
+      r.domain,
+      new Date(r.report_date).toLocaleDateString(),
+      r.global_score,
+      r.stale_objects_score,
+      r.privileged_accounts_score,
+      r.trusts_score,
+      r.anomalies_score,
+    ].forEach(text => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    });
     tbody.appendChild(tr);
   });
   tbody.querySelectorAll("tr[data-id]").forEach(tr => {
@@ -136,10 +138,19 @@ function exportCSV() {
     .then(r => r.json())
     .then(reports => {
       const headers = ["domain","report_date","global_score","stale_objects_score","privileged_accounts_score","trusts_score","anomalies_score"];
+      
+      const escapeCsv = (val) => {
+        if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+          return `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+      };
+
       const lines = [headers.join(",")];
       reports.forEach(r => {
-        lines.push(headers.map(h => `"${r[h]}"`).join(","));
+        lines.push(headers.map(h => escapeCsv(r[h])).join(","));
       });
+
       const blob = new Blob([lines.join("\n")], {type:"text/csv"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

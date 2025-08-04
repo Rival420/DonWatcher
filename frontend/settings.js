@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const webhook = document.getElementById("webhook");
   const message = document.getElementById("message");
   const logBody = document.querySelector("#log-table tbody");
+  const testBtn = document.getElementById("test-btn");
 
   async function load() {
     const [settings, log] = await Promise.all([
@@ -26,6 +27,26 @@ document.addEventListener("DOMContentLoaded", () => {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({webhook_url: webhook.value, alert_message: message.value})
     });
+    alert("Settings saved!");
+  });
+
+  testBtn.addEventListener("click", async () => {
+    try {
+      const res = await fetch("/api/settings/test", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({webhook_url: webhook.value, alert_message: message.value})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Test webhook sent successfully!");
+      } else {
+        alert(`Error: ${data.detail}`);
+      }
+    } catch (err) {
+      alert(`Network error: ${err}`);
+    }
+    load(); // Refresh log
   });
 
   load();
