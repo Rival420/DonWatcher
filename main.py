@@ -66,8 +66,19 @@ async def upload_pingcastle_report(
         unaccepted = storage.get_unaccepted_findings(report.findings)
         settings = storage.get_settings()
         if unaccepted and settings.webhook_url:
+            
+            findings_str = "\n".join(
+                [f"- {f.name} (in {f.category})" for f in unaccepted]
+            )
+
+            message = (settings.alert_message or "New unaccepted findings detected!").format(
+                report_id=report.id,
+                findings_count=len(unaccepted),
+                findings=findings_str
+            )
+            
             payload = {
-                "message": settings.alert_message,
+                "message": message,
                 "report_id": report.id,
                 "findings": [
                     {"category": f.category, "name": f.name, "score": f.score}
@@ -151,6 +162,45 @@ def get_settings_api(storage: ReportStorage = Depends(get_storage)):
 def update_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
     storage.update_settings(settings.webhook_url, settings.alert_message)
     return {"status": "ok"}
+
+@app.post("/api/settings/test")
+def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
+    """Send a test webhook to validate settings."""
+    if not settings.webhook_url:
+        raise HTTPException(status_code=400, detail="Webhook URL is not set")
+    
+    # Use the provided message template, or a default one
+    message = settings.alert_message or "This is a test alert from DonWatcher."
+    
+    # Create a test payload
+    payload = {
+        "message": message.format(
+            report_id="TEST-REPORT-123",
+            findings_count=2,
+            findings="- Finding: TestFinding1 (Category1)\n- Finding: TestFinding2 (Category2)"
+        ),
+        "report_id": "TEST-REPORT-123",
+        "findings": [
+            {"category": "Category1", "name": "TestFinding1", "score": 10},
+            {"category": "Category2", "name": "TestFinding2", "score": 20}
+        ]
+    }
+    
+    data = json.dumps(payload).encode("utf-8")
+    req = urlrequest.Request(
+        settings.webhook_url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
+    
+    try:
+        with urlrequest.urlopen(req, timeout=10) as resp:
+            status = resp.getcode()
+        storage.log_alert(f"Test alert sent ({status})")
+        return {"status": "success", "detail": f"Webhook returned status {status}"}
+    except urlerror.URLError as e:
+        storage.log_alert(f"Test alert failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send test webhook: {e}")
 
 
 @app.get("/api/alerts/log", response_model=List[AlertLog])

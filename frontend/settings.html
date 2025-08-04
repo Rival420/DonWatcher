@@ -18,12 +18,18 @@
           <div class="card-header"><h2>Alert Settings</h2></div>
           <form id="settings-form" class="settings-form">
             <label>Webhook URL
-              <input type="text" id="webhook" />
+              <input type="url" id="webhook" placeholder="https://your-webhook-url.com" />
             </label>
-            <label>Message
-              <input type="text" id="message" />
+            <label>Alert Message Template
+              <textarea id="message" rows="5"></textarea>
+              <small>
+                Use placeholders: <code>{report_id}</code>, <code>{findings_count}</code>, and <code>{findings}</code> (a list of unaccepted findings).
+              </small>
             </label>
-            <button type="submit">Save</button>
+            <div class="form-actions">
+              <button type="submit">Save</button>
+              <button type="button" id="test-btn">Test</button>
+            </div>
           </form>
         </section>
 
