@@ -92,7 +92,10 @@ class PingCastleParser:
             rid = rule.findtext("RiskId") or rule.findtext("Id") or ""
             title = rule.findtext("Rationale") or rule.findtext("Title") or ""
 
-            score = int(pts) if pts.isdigit() else 0
+            try:
+                score = int(pts)
+            except ValueError:
+                score = 0
             # accumulate if it matches one of our target columns
             if cat in categories:
                 categories[cat] += score

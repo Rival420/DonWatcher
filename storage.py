@@ -39,6 +39,11 @@ class ReportStorage:
                     original_file TEXT
                 )
             """)
+            
+            # Get existing columns
+            c.execute("PRAGMA table_info(reports)")
+            existing_columns = {row[1] for row in c.fetchall()}
+
             # Ensure new columns exist if upgrading from an older version
             for col_def in [
                 ("domain_sid", "TEXT"),
@@ -49,10 +54,9 @@ class ReportStorage:
                 ("user_count", "INTEGER"),
                 ("computer_count", "INTEGER")
             ]:
-                try:
+                if col_def[0] not in existing_columns:
                     c.execute(f"ALTER TABLE reports ADD COLUMN {col_def[0]} {col_def[1]}")
-                except sqlite3.OperationalError:
-                    pass
+
             c.execute("""
                 CREATE TABLE IF NOT EXISTS findings (
                     id TEXT PRIMARY KEY,
@@ -136,7 +140,7 @@ class ReportStorage:
             ))
             for f in report.findings:
                 c.execute(
-                    "INSERT OR IGNORE INTO risks (category, name, description) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO risks (category, name, description) VALUES (?, ?, ?)",
                     (f.category, f.name, f.description),
                 )
                 c.execute(
@@ -200,7 +204,7 @@ class ReportStorage:
                 "forest_functional_level, maturity_level, dc_count, user_count, "
                 "computer_count, report_date, upload_date, global_score, high_score, "
                 "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
-                "trusts_score, anomalies_score FROM reports"
+                "trusts_score, anomalies_score FROM reports ORDER BY report_date"
             )
             rows = c.fetchall()
         return [
