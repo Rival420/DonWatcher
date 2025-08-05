@@ -10,6 +10,7 @@ async function loadDomainInfo() {
     const res = await fetch('/api/reports');
     const reports = await res.json();
     if (reports.length) {
+      // Sort reports from oldest to newest
       reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
       
       const latest = reports[reports.length - 1];
@@ -103,11 +104,6 @@ function renderGlobalGauge(value) {
 function renderHistoricalChart(canvasId, label, labels, data) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   
-  const gradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-  const lastScore = data[data.length - 1] || 0;
-  gradient.addColorStop(0, gaugeColor(lastScore));
-  gradient.addColorStop(1, '#314056');
-
   new Chart(ctx, {
     type: 'line',
     data: {
@@ -115,11 +111,20 @@ function renderHistoricalChart(canvasId, label, labels, data) {
       datasets: [{
         label: label,
         data: data,
-        borderColor: gradient,
         backgroundColor: 'transparent',
-        borderWidth: 2,
+        borderWidth: 3,
         tension: 0.4,
         fill: false,
+        segment: {
+          borderColor: (ctx) => {
+            const y1 = ctx.p0.parsed.y;
+            const y2 = ctx.p1.parsed.y;
+            const gradient = ctx.chart.ctx.createLinearGradient(ctx.p0.x, 0, ctx.p1.x, 0);
+            gradient.addColorStop(0, gaugeColor(y1));
+            gradient.addColorStop(1, gaugeColor(y2));
+            return gradient;
+          },
+        },
       }]
     },
     options: {
