@@ -528,11 +528,12 @@ tbody tr { cursor: pointer; }
 }
 
 /* Risk scores layout */
-#risk-scores .global-risk-container {
+.global-risk-container {
   position: relative;
   width: 100%;
   max-width: 250px;
   margin: 0 auto 2em;
+  aspect-ratio: 1 / 1; /* Ensure it's a circle */
 }
 
 #risk-scores .historical-charts {
