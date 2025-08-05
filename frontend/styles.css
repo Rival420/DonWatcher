@@ -48,7 +48,13 @@ body, input, button, select {
 .sidebar .nav-item.active { background: var(--gray-lighter); color: var(--blue); }
 
 /* Main & topbar */
-.main { flex: 1; display: flex; flex-direction: column; background: var(--gray-light);}
+.main { 
+  flex: 1; 
+  display: flex; 
+  flex-direction: column; 
+  background: var(--gray-light);
+  overflow-y: auto; /* Scrollbar on the main content area */
+}
 .topbar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 0.75em 1em;
@@ -84,7 +90,6 @@ body, input, button, select {
 /* Content */
 .content { 
   padding: 2em; 
-  overflow-y: auto; 
   max-width: 800px;
   margin: 0 auto;
 }
@@ -541,7 +546,7 @@ tbody tr { cursor: pointer; }
 
 #risk-scores .historical-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5em;
 }
 
