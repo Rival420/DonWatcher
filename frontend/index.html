@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Donwatcher Dashboard</title>
-  <!-- gauge.js for dashboard gauges -->
-  <script src="https://cdn.jsdelivr.net/npm/gaugeJS/dist/gauge.min.js"></script>
-  <!-- Chart.js for history chart only -->
+  <!-- Chart.js for all charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Font Awesome and your styles -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -20,79 +18,86 @@
       </header>
       <div class="content">
         
-        <!-- Domain Info -->
-        <section class="card" id="domain-info">
-          <h2>Domain Information</h2>
-          <div class="domain-top">
-            <p>Domain: <span id="domain-name">-</span></p>
-            <p>Domain SID: <span id="domain-sid">-</span></p>
-            <p>Latest Scan: <span id="latest-date">-</span></p>
+        <!-- Domain Overview -->
+        <section class="card" id="domain-overview">
+          <h2 class="card-title">Domain Overview</h2>
+        
+          <div class="domain-header">
+            <i class="fas fa-sitemap"></i>
+            <span id="domain-name">-</span>
           </div>
-          <div class="domain-grid">
-            <div class="domain-col">
-              <p>Domain Functional Level: <span id="domain-func">-</span></p>
-              <p>Forest Functional Level: <span id="forest-func">-</span></p>
-              <p>Maturity Level: <span id="maturity-level">-</span></p>
-              <p>Number of DCs: <span id="dc-count">-</span></p>
+        
+          <div class="info-grid">
+            <div class="info-item">
+              <span>Domain SID</span>
+              <span id="domain-sid" class="info-value">-</span>
             </div>
-            <div class="domain-col">
-              <p>Number of Users: <span id="user-count">-</span></p>
-              <p>Number of Computers: <span id="computer-count">-</span></p>
+            <div class="info-item" style="text-align: right;">
+              <span id="latest-date" class="info-value">-</span>
+            </div>
+            <div class="info-item">
+              <span>Domain Functional Level</span>
+              <span id="domain-func" class="info-value">-</span>
+            </div>
+            <div class="info-item">
+              <span>Forest Functional Level</span>
+              <span id="forest-func" class="info-value">-</span>
+            </div>
+            <div class="info-item">
+              <span>Maturity Level</span>
+              <span id="maturity-level" class="info-value">-</span>
+            </div>
+          </div>
+        
+          <div class="stats-container">
+            <div class="stat tooltip">
+              <i class="fas fa-users" style="color: #4CAF50;"></i>
+              <span class="tooltiptext">Users</span>
+              <span id="user-count">-</span>
+            </div>
+            <div class="stat tooltip">
+              <i class="fas fa-server" style="color: #2196F3;"></i>
+              <span class="tooltiptext">Computers</span>
+              <span id="computer-count">-</span>
+            </div>
+            <div class="stat tooltip">
+                <i class="fas fa-bolt" style="color: #FFC107;"></i>
+                <span class="tooltiptext">Domain Controllers</span>
+                <span id="dc-count">-</span>
             </div>
           </div>
         </section>
-        
-        <!-- Risk Scores with Gauges -->
+
+        <!-- Risk Scores -->
         <section class="card" id="risk-scores">
           <h2>Risk Scores</h2>
-          <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
-          <div class="risk-grid">
-            
-            <!-- Stale Objects -->
-            <div class="risk-gauge">
-              <canvas id="gauge-stale" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Stale Objects</span>
-                <span id="risk-stale-val">-</span>
-              </div>
+          <div class="global-risk-container">
+            <canvas id="global-risk-chart"></canvas>
+          </div>
+          <div class="historical-charts">
+            <div class="chart-container">
+              <canvas id="stale-objects-chart"></canvas>
+              <div class="chart-label">Stale Objects</div>
             </div>
-            
-            <!-- Privileged Accounts -->
-            <div class="risk-gauge">
-              <canvas id="gauge-priv" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Privileged Accounts</span>
-                <span id="risk-priv-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="privileged-accounts-chart"></canvas>
+              <div class="chart-label">Privileged Accounts</div>
             </div>
-            
-            <!-- Trusts -->
-            <div class="risk-gauge">
-              <canvas id="gauge-trusts" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Trusts</span>
-                <span id="risk-trusts-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="trusts-chart"></canvas>
+              <div class="chart-label">Trusts</div>
             </div>
-            
-            <!-- Anomalies -->
-            <div class="risk-gauge">
-              <canvas id="gauge-anom" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Anomalies</span>
-                <span id="risk-anom-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="anomalies-chart"></canvas>
+              <div class="chart-label">Anomalies</div>
             </div>
-            
           </div>
         </section>
-      
       </div>
     </div>
   </div>
 
   <script src="nav.js"></script>
-  <!-- Your JS that fetches data and renders gauges + charts -->
   <script type="module" src="home.js"></script>
 </body>
 </html>

@@ -48,7 +48,13 @@ body, input, button, select {
 .sidebar .nav-item.active { background: var(--gray-lighter); color: var(--blue); }
 
 /* Main & topbar */
-.main { flex: 1; display: flex; flex-direction: column; background: var(--gray-light);}
+.main { 
+  flex: 1; 
+  display: flex; 
+  flex-direction: column; 
+  background: var(--gray-light);
+  overflow-y: auto; /* Scrollbar on the main content area */
+}
 .topbar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 0.75em 1em;
@@ -84,7 +90,6 @@ body, input, button, select {
 /* Content */
 .content { 
   padding: 2em; 
-  overflow-y: auto; 
   max-width: 800px;
   margin: 0 auto;
 }
@@ -438,62 +443,134 @@ tbody tr { cursor: pointer; }
   transform: translateX(20px);
 }
 
-/* Domain info layout */
-#domain-info .domain-top {
+/* Domain Overview card */
+#domain-overview {
+  padding: 1.5em;
+}
+
+#domain-overview .card-title {
+  font-size: 1.5em;
+  font-weight: 500;
+  margin-bottom: 1.5em;
+}
+
+#domain-overview .domain-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1em;
-  margin-bottom: 0.5em;
+  align-items: center;
+  background-color: var(--gray-lighter);
+  padding: 0.75em 1em;
+  border-radius: 8px;
+  margin-bottom: 1.5em;
 }
-#domain-info .domain-top p {
-  margin: 0;
+
+#domain-overview .domain-header i {
+  font-size: 1.2em;
+  color: var(--blue);
+  margin-right: 0.75em;
 }
-#domain-info .domain-grid {
+
+#domain-overview .domain-header span {
+  font-size: 1.1em;
+  font-weight: 500;
+}
+
+#domain-overview .info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1em;
+  gap: 1.25em;
+  margin-bottom: 1.5em;
+  align-items: center;
 }
-#domain-info .domain-col p {
-  margin: 0.25em 0;
+
+#domain-overview .info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5em 0;
+  border-bottom: 1px solid var(--border-color);
+}
+#domain-overview .info-item:last-child {
+  border-bottom: none;
+}
+
+
+#domain-overview .info-item span {
+  font-size: 0.95em;
+}
+
+#domain-overview .info-value {
+  font-weight: 500;
+  color: var(--blue);
+}
+
+#domain-overview .stats-container {
+  display: flex;
+  justify-content: space-around;
+  background-color: var(--gray-lighter);
+  padding: 1em;
+  border-radius: 8px;
+}
+
+#domain-overview .stat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+}
+
+#domain-overview .stat i {
+  font-size: 1.4em;
+}
+
+#domain-overview .stat span {
+  font-size: 1.1em;
+  font-weight: 500;
 }
 
 /* Risk scores layout */
-#risk-scores .risk-global {
-  margin-bottom: 1em;
-  font-weight: 500;
-  text-align: center;
-  font-size: 1.4em;
-}
-#risk-scores .risk-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  justify-items: center;
-  gap: 2rem;
-  max-width: 650px;
-  margin: 0 auto;
-}
-
-/* gauge container */
-.risk-gauge {
-  text-align: center;
-  width: 140px;
-  flex: 0 0 auto;
-  background: transparent;
-  margin: 0;
-  padding: 0;
-}
-
-.risk-gauge canvas {
+.global-risk-container {
+  position: relative;
   width: 100%;
-  height: auto;
-  aspect-ratio: 2 / 1;
+  max-width: 250px;
+  margin: 0 auto 2em;
+  aspect-ratio: 1 / 0.5; /* Make it half height for semicircle */
+  max-height: 125px; /* Half of the previous max-height */
 }
-.gauge-label {
+
+.global-risk-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2.5em;
+  font-weight: bold;
+  color: var(--text);
+  z-index: 10;
+  text-align: center;
+  line-height: 1;
+}
+
+#risk-scores .historical-charts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5em;
+}
+
+.chart-container {
+  text-align: center;
+  min-height: 100px; /* Set a minimum height */
+  aspect-ratio: 2 / 1; /* Maintain a 2:1 aspect ratio */
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--gray-lighter);
+}
+
+.chart-label {
   margin-top: 0.5em;
-  display: flex;
-  justify-content: space-between;
   font-size: 0.9em;
 }
+
 
 /* Tabs for settings page */
 .tabs {
@@ -525,4 +602,42 @@ tbody tr { cursor: pointer; }
 
 .tab-content.active {
   display: block;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  width: 120px;
+  background-color: #555;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 0;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -60px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.tooltip .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #555 transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
 }

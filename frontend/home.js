@@ -10,11 +10,11 @@ async function loadDomainInfo() {
     const res = await fetch('/api/reports');
     const reports = await res.json();
     if (reports.length) {
-      reports.sort((a, b) => new Date(b.report_date) - new Date(a.report_date));
-      const latest = reports[0];
+      reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
+      
+      const latest = reports[reports.length - 1];
       document.getElementById('domain-name').textContent = latest.domain;
       document.getElementById('latest-date').textContent = new Date(latest.report_date).toLocaleDateString();
-
 
       let detail = latest;
       try {
@@ -23,8 +23,9 @@ async function loadDomainInfo() {
           detail = await detailRes.json();
         }
       } catch {
-        // fall back to summary data if detailed fetch fails
+        // Fallback to summary data
       }
+      
       document.getElementById('domain-sid').textContent = detail.domain_sid;
       document.getElementById('domain-func').textContent = detail.domain_functional_level;
       document.getElementById('forest-func').textContent = detail.forest_functional_level;
@@ -32,79 +33,118 @@ async function loadDomainInfo() {
       document.getElementById('dc-count').textContent = detail.dc_count;
       document.getElementById('user-count').textContent = detail.user_count;
       document.getElementById('computer-count').textContent = detail.computer_count;
-      document.getElementById('risk-global').textContent = detail.global_score;
-      document.getElementById('risk-stale-val').textContent = detail.stale_objects_score;
-      document.getElementById('risk-priv-val').textContent = detail.privileged_accounts_score;
-      document.getElementById('risk-trusts-val').textContent = detail.trusts_score;
-      document.getElementById('risk-anom-val').textContent = detail.anomalies_score;
+      
+      renderGlobalGauge(detail.global_score);
 
-            renderGauges({
-        stale: detail.stale_objects_score,
-        priv:  detail.privileged_accounts_score,
-        trusts: detail.trusts_score,
-        anom:  detail.anomalies_score
-      });
+      const historicalData = reports.slice(-12);
+      
+      const labels = historicalData.map(r => new Date(r.report_date).toLocaleDateString());
+      const staleScores = historicalData.map(r => r.stale_objects_score);
+      const privScores = historicalData.map(r => r.privileged_accounts_score);
+      const trustScores = historicalData.map(r => r.trusts_score);
+      const anomScores = historicalData.map(r => r.anomalies_score);
+
+      renderHistoricalChart('stale-objects-chart', 'Stale Objects', labels, staleScores);
+      renderHistoricalChart('privileged-accounts-chart', 'Privileged Accounts', labels, privScores);
+      renderHistoricalChart('trusts-chart', 'Trusts', labels, trustScores);
+      renderHistoricalChart('anomalies-chart', 'Anomalies', labels, anomScores);
     }
-  } catch {
-    // ignore
+  } catch (error) {
+    console.error('Failed to load domain info:', error);
   }
 }
 
-/**
- * choose a gauge color based on a 0–100 value
- */
-function gaugeColor(v){
-  if(v < 25 ) return '#43a047';    // green
-  if(v < 50 ) return '#fb8c00';    // orange
-  if(v < 75 ) return '#e53935';    // red
-  return '#b71c1c';                // dark red
+function gaugeColor(v) {
+  if (v < 25) return '#43a047';
+  if (v < 50) return '#fb8c00';
+  if (v < 75) return '#e53935';
+  return '#b71c1c';
 }
 
-function makeGaugeJS(canvasId, value, max) {
-  var opts = {
-    angle: 0,                  // 0: half-circle, 1: full
-    lineWidth: 0.25,           // thickness
-    radiusScale: 1,            // relative to canvas size
-    pointer: {
-      length: 0.6,             // Relative to gauge radius
-      strokeWidth: 0.035,          // Gauge pointer thickness
-      color: '#e53935'         // Pointer color
+function renderGlobalGauge(value) {
+  const ctx = document.getElementById('global-risk-chart').getContext('2d');
+  
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [value, 100 - value],
+        backgroundColor: [gaugeColor(value), '#314056'],
+        borderWidth: 0,
+      }]
     },
-    limitMax: true,     
-    limitMin: true,     
-    colorStart: gaugeColor(value),   // Custom gauge color for the arc
-    colorStop: gaugeColor(value),
-    strokeColor: '#314056',    // background arc color
-    generateGradient: false,
-    highDpiSupport: true,
-    staticLabels: {
-      font: "10px sans-serif",  // font
-      labels: [0, max / 2, max],
-      color: "#fff",
-      fractionDigits: 0
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '70%',
+      circumference: 180, // Make it a semicircle (180 degrees)
+      rotation: -90, // Rotate to start from top
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          enabled: false
+        }
+      },
+      animation: {
+        animateRotate: true,
+        animateScale: true
+      }
+    }
+  });
+
+  // Add the text in the middle of the semicircle
+  const textContainer = document.createElement('div');
+  textContainer.className = 'global-risk-label';
+  textContainer.textContent = value;
+  document.querySelector('.global-risk-container').appendChild(textContainer);
+}
+
+function renderHistoricalChart(canvasId, label, labels, data) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: label,
+        data: data,
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        tension: 0.4,
+        fill: false,
+        segment: {
+          borderColor: (ctx) => {
+            const y1 = ctx.p0.parsed.y;
+            const y2 = ctx.p1.parsed.y;
+            const gradient = ctx.chart.ctx.createLinearGradient(ctx.p0.x, 0, ctx.p1.x, 0);
+            gradient.addColorStop(0, gaugeColor(y1));
+            gradient.addColorStop(1, gaugeColor(y2));
+            return gradient;
+          },
+        },
+      }]
     },
-    staticZones: [
-      {strokeStyle: "#43a047", min: 0, max: 25},
-      {strokeStyle: "#fb8c00", min: 25, max: 50},
-      {strokeStyle: "#e53935", min: 50, max: 75},
-      {strokeStyle: "#b71c1c", min: 75, max: max}
-    ],
-    // Just half a circle:
-    angle: 0, // The span of the gauge arc (0 = 180 degrees = half a circle)
-  };
-  var target = document.getElementById(canvasId);
-  var gauge = new Gauge(target).setOptions(opts);
-  gauge.maxValue = max;
-  gauge.setMinValue(0);
-  gauge.animationSpeed = 32; 
-  gauge.set(value);
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        x: {
+          display: false
+        },
+        y: {
+          display: false,
+          beginAtZero: true,
+          max: 100
+        }
+      }
+    }
+  });
 }
-
-
-function renderGauges(scores) {
-  makeGaugeJS('gauge-stale', scores.stale, 100);
-  makeGaugeJS('gauge-priv', scores.priv, 100);
-  makeGaugeJS('gauge-trusts', scores.trusts, 100);
-  makeGaugeJS('gauge-anom', scores.anom, 100);
-}
-
