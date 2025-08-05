@@ -547,7 +547,8 @@ tbody tr { cursor: pointer; }
 
 .chart-container {
   text-align: center;
-  height: 80px; /* Constrain chart height */
+  min-height: 100px; /* Set a minimum height */
+  aspect-ratio: 2 / 1; /* Maintain a 2:1 aspect ratio */
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
