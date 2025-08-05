@@ -65,7 +65,52 @@
                 <span id="dc-count">-</span>
             </div>
           </div>
-        </section>      
+        </section>
+
+        <!-- Risk Scores with Gauges -->
+        <section class="card" id="risk-scores">
+          <h2>Risk Scores</h2>
+          <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
+          <div class="risk-grid">
+            
+            <!-- Stale Objects -->
+            <div class="risk-gauge">
+              <canvas id="gauge-stale" width="160" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Stale Objects</span>
+                <span id="risk-stale-val">-</span>
+              </div>
+            </div>
+            
+            <!-- Privileged Accounts -->
+            <div class="risk-gauge">
+              <canvas id="gauge-priv" width="160" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Privileged Accounts</span>
+                <span id="risk-priv-val">-</span>
+              </div>
+            </div>
+            
+            <!-- Trusts -->
+            <div class="risk-gauge">
+              <canvas id="gauge-trusts" width="160" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Trusts</span>
+                <span id="risk-trusts-val">-</span>
+              </div>
+            </div>
+            
+            <!-- Anomalies -->
+            <div class="risk-gauge">
+              <canvas id="gauge-anom" width="160" height="80"></canvas>
+              <div class="gauge-label">
+                <span>Anomalies</span>
+                <span id="risk-anom-val">-</span>
+              </div>
+            </div>
+            
+          </div>
+        </section>
       </div>
     </div>
   </div>
