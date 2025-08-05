@@ -77,6 +77,8 @@ function renderGlobalGauge(value) {
       responsive: true,
       maintainAspectRatio: false,
       cutout: '70%',
+      circumference: 180, // Make it a semicircle (180 degrees)
+      rotation: -90, // Rotate to start from top
       plugins: {
         legend: {
           display: false
@@ -92,7 +94,7 @@ function renderGlobalGauge(value) {
     }
   });
 
-  // Add the text in the middle of the doughnut
+  // Add the text in the middle of the semicircle
   const textContainer = document.createElement('div');
   textContainer.className = 'global-risk-label';
   textContainer.textContent = value;
