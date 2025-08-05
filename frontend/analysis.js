@@ -1,3 +1,5 @@
+import { createChart } from './chartManager.js';
+
 export async function showAnalysis() {
   const [scores, freq, accepted] = await Promise.all([
     fetch("/analysis/scores").then(r => r.json()),
@@ -8,13 +10,11 @@ export async function showAnalysis() {
   renderRecurring(freq, accepted);
 }
 
-// Automatically fetch and display charts when the page is loaded
 document.addEventListener("DOMContentLoaded", () => {
   showAnalysis().catch(() => {
     console.error("Failed to load analysis data");
   });
-  
-  // Add event listeners for filtering and sorting
+
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
@@ -22,11 +22,11 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function renderChart(data) {
-  const ctx = document.getElementById("scoreChart").getContext("2d");
-  new Chart(ctx, {
+  const canvasId = "scoreChart";
+  createChart(canvasId, {
     type: "line",
     data: {
-      labels: data.map(d=> new Date(d.date).toLocaleDateString()),
+      labels: data.map(d => new Date(d.date).toLocaleDateString()),
       datasets: [
         {
           label: "Global Score",
@@ -81,7 +81,6 @@ function renderRecurring(freq, accepted) {
   allFindings = freq;
   acceptedRisks = accepted;
   
-  // Populate category filter
   const categoryFilter = document.getElementById("category-filter");
   const categories = [...new Set(freq.map(f => f.category))].sort();
   categoryFilter.innerHTML = '<option value="">All Categories</option>';
@@ -104,14 +103,12 @@ function renderFilteredFindings() {
   
   const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
   
-  // Filter findings
   let filteredFindings = allFindings.filter(finding => {
     const matchesText = finding.name.toLowerCase().includes(filterText) || 
                        finding.description.toLowerCase().includes(filterText) ||
                        finding.category.toLowerCase().includes(filterText);
     const matchesCategory = !categoryFilter || finding.category === categoryFilter;
     
-    // Filter by acceptance status
     const key = `${finding.category}|${finding.name}`;
     const isAccepted = acceptedSet.has(key);
     let matchesAcceptance = true;
@@ -125,7 +122,6 @@ function renderFilteredFindings() {
     return matchesText && matchesCategory && matchesAcceptance;
   });
   
-  // Sort findings
   filteredFindings.sort((a, b) => {
     switch (sortBy) {
       case "count-desc":
@@ -169,7 +165,6 @@ function renderFilteredFindings() {
     `;
 
     tr.addEventListener("click", (event) => {
-      // If the click originated from inside the toggle switch, do nothing
       if (event.target.closest('.switch')) {
         return;
       }
@@ -179,7 +174,7 @@ function renderFilteredFindings() {
 
     const toggle = tr.querySelector(".switch input");
     toggle.addEventListener("click", (e) => {
-      e.stopPropagation(); // Prevent modal from opening
+      e.stopPropagation();
     });
     toggle.addEventListener("change", async (e) => {
       const isChecked = e.target.checked;
@@ -189,7 +184,6 @@ function renderFilteredFindings() {
       } else {
         acceptedSet.delete(key);
       }
-      // We can update the modal if it's open for this risk
       const modalToggle = document.getElementById("risk-modal-accept-toggle");
       if (modalToggle.dataset.cat === category && modalToggle.dataset.name === name) {
         modalToggle.checked = isChecked;
