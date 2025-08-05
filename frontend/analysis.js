@@ -10,7 +10,16 @@ export async function showAnalysis() {
   renderRecurring(freq, accepted);
 }
 
+document.addEventListener("DOMContentLoaded", () => {
+  showAnalysis().catch(() => {
+    console.error("Failed to load analysis data");
+  });
 
+  document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
+  document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
+  document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
+  document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
+});
 
 function renderChart(data) {
   const canvasId = "scoreChart";
