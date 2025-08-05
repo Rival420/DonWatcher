@@ -3,9 +3,21 @@ from typing import List
 from alerter import Alerter
 from models import Settings, AlertLog
 from storage import ReportStorage, get_storage
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
+import os
 
 router = APIRouter()
+LOG_DIR = "./logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Create dummy log files for demonstration
+with open(f"{LOG_DIR}/backend.log", "w") as f:
+    f.write("Backend log entry 1\n")
+with open(f"{LOG_DIR}/webserver.log", "w") as f:
+    f.write("Webserver log entry 1\n")
+with open(f"{LOG_DIR}/webhook.log", "w") as f:
+    f.write("Webhook log entry 1\n")
+
 
 @router.get("/api/settings", response_model=Settings)
 def get_settings_api(storage: ReportStorage = Depends(get_storage)):
@@ -33,20 +45,20 @@ def get_alert_log(storage: ReportStorage = Depends(get_storage)):
 
 @router.post("/api/database/clear")
 def clear_database_api(storage: ReportStorage = Depends(get_storage)):
-    # storage.clear_all_data() 
-    return PlainTextResponse("Database cleared (not really, this is a placeholder)!")
+    storage.clear_all_data()
+    return PlainTextResponse("Database cleared successfully!")
 
 @router.get("/api/logs/webserver")
 def download_webserver_logs_api():
-    # Logic to get webserver logs
-    return PlainTextResponse("Webserver logs would be here.")
+    log_path = f"{LOG_DIR}/webserver.log"
+    return FileResponse(log_path, media_type='text/plain', filename='webserver.log')
 
 @router.get("/api/logs/backend")
 def download_backend_logs_api():
-    # Logic to get backend logs
-    return PlainTextResponse("Backend logs would be here.")
+    log_path = f"{LOG_DIR}/backend.log"
+    return FileResponse(log_path, media_type='text/plain', filename='backend.log')
 
 @router.get("/api/logs/webhook")
 def download_webhook_logs_api():
-    # Logic to get webhook logs
-    return PlainTextResponse("Webhook logs would be here.")
+    log_path = f"{LOG_DIR}/webhook.log"
+    return FileResponse(log_path, media_type='text/plain', filename='webhook.log')

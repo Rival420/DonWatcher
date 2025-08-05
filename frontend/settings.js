@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const message = document.getElementById("message");
     const logBody = document.querySelector("#log-table tbody");
     const copyBtn = document.getElementById("copy-webhook");
+    const testAlertBtn = document.getElementById("test-alert-btn");
     const clearDatabaseBtn = document.getElementById("clear-database-btn");
     const downloadWebserverLogsBtn = document.getElementById("download-webserver-logs");
     const downloadBackendLogsBtn = document.getElementById("download-backend-logs");
@@ -72,24 +73,49 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         alert("Settings saved!");
     });
+    
+    testAlertBtn.addEventListener("click", async () => {
+        const response = await fetch("/api/settings/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+        });
+        const result = await response.json();
+        if(response.ok) {
+            alert("Test alert sent successfully!");
+        } else {
+            alert(`Error: ${result.detail}`);
+        }
+    });
 
-    clearDatabaseBtn.addEventListener('click', () => {
+    clearDatabaseBtn.addEventListener('click', async () => {
         if (confirm("Are you sure you want to permanently clear the entire database? This action cannot be undone.")) {
-            // Placeholder for backend call
-            alert("Database cleared (not really, this is a placeholder)!");
+            const response = await fetch("/api/database/clear", { method: "POST" });
+            const result = await response.text();
+            alert(result);
+            location.reload();
         }
     });
     
+    function triggerLogDownload(url, filename) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+    
     downloadWebserverLogsBtn.addEventListener('click', () => {
-        alert("Downloading webserver logs (not really, this is a placeholder)!");
+        triggerLogDownload('/api/logs/webserver', 'webserver.log');
     });
     
     downloadBackendLogsBtn.addEventListener('click', () => {
-        alert("Downloading backend logs (not really, this is a placeholder)!");
+        triggerLogDownload('/api/logs/backend', 'backend.log');
     });
     
     downloadWebhookLogsBtn.addEventListener('click', () => {
-        alert("Downloading webhook logs (not really, this is a placeholder)!");
+        triggerLogDownload('/api/logs/webhook', 'webhook.log');
     });
 
     load();

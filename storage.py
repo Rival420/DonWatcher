@@ -102,6 +102,17 @@ class ReportStorage:
                 )
             """)
 
+    def clear_all_data(self):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("DROP TABLE IF EXISTS reports")
+            c.execute("DROP TABLE IF EXISTS findings")
+            c.execute("DROP TABLE IF EXISTS risks")
+            c.execute("DROP TABLE IF EXISTS accepted_risks")
+            c.execute("DROP TABLE IF EXISTS settings")
+            c.execute("DROP TABLE IF EXISTS alert_log")
+        self._create_tables()
+
     def save_report(self, report: Report):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
