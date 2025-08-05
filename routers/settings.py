@@ -10,14 +10,6 @@ router = APIRouter()
 LOG_DIR = "./logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# Create dummy log files for demonstration
-with open(f"{LOG_DIR}/backend.log", "w") as f:
-    f.write("Backend log entry 1\n")
-with open(f"{LOG_DIR}/webserver.log", "w") as f:
-    f.write("Webserver log entry 1\n")
-with open(f"{LOG_DIR}/webhook.log", "w") as f:
-    f.write("Webhook log entry 1\n")
-
 
 @router.get("/api/settings", response_model=Settings)
 def get_settings_api(storage: ReportStorage = Depends(get_storage)):
@@ -51,14 +43,20 @@ def clear_database_api(storage: ReportStorage = Depends(get_storage)):
 @router.get("/api/logs/webserver")
 def download_webserver_logs_api():
     log_path = f"{LOG_DIR}/webserver.log"
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Webserver log file not found")
     return FileResponse(log_path, media_type='text/plain', filename='webserver.log')
 
 @router.get("/api/logs/backend")
 def download_backend_logs_api():
     log_path = f"{LOG_DIR}/backend.log"
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Backend log file not found")
     return FileResponse(log_path, media_type='text/plain', filename='backend.log')
 
 @router.get("/api/logs/webhook")
 def download_webhook_logs_api():
     log_path = f"{LOG_DIR}/webhook.log"
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Webhook log file not found")
     return FileResponse(log_path, media_type='text/plain', filename='webhook.log')
