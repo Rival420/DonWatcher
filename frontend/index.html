@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Donwatcher Dashboard</title>
-  <!-- gauge.js for dashboard gauges -->
-  <script src="https://cdn.jsdelivr.net/npm/gaugeJS/dist/gauge.min.js"></script>
-  <!-- Chart.js for history chart only -->
+  <!-- Chart.js for all charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Font Awesome and your styles -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -70,12 +68,11 @@
           </div>
         </section>
 
-        <!-- Risk Scores with Gauges -->
+        <!-- Risk Scores -->
         <section class="card" id="risk-scores">
           <h2>Risk Scores</h2>
           <div class="global-risk-container">
-            <canvas id="global-risk-gauge" width="300" height="150"></canvas>
-            <div id="global-risk-value" class="global-risk-label">-</div>
+            <canvas id="global-risk-chart"></canvas>
           </div>
           <div class="historical-charts">
             <div class="chart-container">
@@ -101,7 +98,6 @@
   </div>
 
   <script src="nav.js"></script>
-  <!-- Your JS that fetches data and renders gauges + charts -->
   <script type="module" src="home.js"></script>
 </body>
 </html>

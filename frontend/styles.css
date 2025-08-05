@@ -530,18 +530,9 @@ tbody tr { cursor: pointer; }
 /* Risk scores layout */
 #risk-scores .global-risk-container {
   position: relative;
-  width: 250px;
-  height: 125px;
+  width: 100%;
+  max-width: 250px;
   margin: 0 auto 2em;
-}
-
-#risk-scores .global-risk-label {
-  position: absolute;
-  top: 60%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 2em;
-  font-weight: 500;
 }
 
 #risk-scores .historical-charts {
