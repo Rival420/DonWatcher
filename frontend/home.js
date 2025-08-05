@@ -1,7 +1,6 @@
-import { showAnalysis } from './analysis.js';
+import { createChart, destroyChart } from './chartManager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await showAnalysis().catch(() => console.error('Failed to load analysis data'));
   loadDomainInfo();
 });
 
@@ -62,9 +61,9 @@ function gaugeColor(v) {
 }
 
 function renderGlobalGauge(value) {
-  const ctx = document.getElementById('global-risk-chart').getContext('2d');
+  const canvasId = 'global-risk-chart';
   
-  new Chart(ctx, {
+  createChart(canvasId, {
     type: 'doughnut',
     data: {
       datasets: [{
@@ -77,8 +76,8 @@ function renderGlobalGauge(value) {
       responsive: true,
       maintainAspectRatio: false,
       cutout: '70%',
-      circumference: 180, // Make it a semicircle (180 degrees)
-      rotation: -90, // Rotate to start from top
+      circumference: 180,
+      rotation: -90,
       plugins: {
         legend: {
           display: false
@@ -94,17 +93,20 @@ function renderGlobalGauge(value) {
     }
   });
 
-  // Add the text in the middle of the semicircle
   const textContainer = document.createElement('div');
   textContainer.className = 'global-risk-label';
   textContainer.textContent = value;
-  document.querySelector('.global-risk-container').appendChild(textContainer);
+  
+  const container = document.querySelector('.global-risk-container');
+  const existingLabel = container.querySelector('.global-risk-label');
+  if (existingLabel) {
+    container.removeChild(existingLabel);
+  }
+  container.appendChild(textContainer);
 }
 
 function renderHistoricalChart(canvasId, label, labels, data) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
-  
-  new Chart(ctx, {
+  createChart(canvasId, {
     type: 'line',
     data: {
       labels: labels,
