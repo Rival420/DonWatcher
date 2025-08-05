@@ -73,45 +73,27 @@
         <!-- Risk Scores with Gauges -->
         <section class="card" id="risk-scores">
           <h2>Risk Scores</h2>
-          <p class="risk-global">Global Risk: <span id="risk-global">-</span></p>
-          <div class="risk-grid">
-            
-            <!-- Stale Objects -->
-            <div class="risk-gauge">
-              <canvas id="gauge-stale" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Stale Objects</span>
-                <span id="risk-stale-val">-</span>
-              </div>
+          <div class="global-risk-container">
+            <canvas id="global-risk-gauge" width="300" height="150"></canvas>
+            <div id="global-risk-value" class="global-risk-label">-</div>
+          </div>
+          <div class="historical-charts">
+            <div class="chart-container">
+              <canvas id="stale-objects-chart"></canvas>
+              <div class="chart-label">Stale Objects</div>
             </div>
-            
-            <!-- Privileged Accounts -->
-            <div class="risk-gauge">
-              <canvas id="gauge-priv" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Privileged Accounts</span>
-                <span id="risk-priv-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="privileged-accounts-chart"></canvas>
+              <div class="chart-label">Privileged Accounts</div>
             </div>
-            
-            <!-- Trusts -->
-            <div class="risk-gauge">
-              <canvas id="gauge-trusts" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Trusts</span>
-                <span id="risk-trusts-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="trusts-chart"></canvas>
+              <div class="chart-label">Trusts</div>
             </div>
-            
-            <!-- Anomalies -->
-            <div class="risk-gauge">
-              <canvas id="gauge-anom" width="160" height="80"></canvas>
-              <div class="gauge-label">
-                <span>Anomalies</span>
-                <span id="risk-anom-val">-</span>
-              </div>
+            <div class="chart-container">
+              <canvas id="anomalies-chart"></canvas>
+              <div class="chart-label">Anomalies</div>
             </div>
-            
           </div>
         </section>
       </div>
