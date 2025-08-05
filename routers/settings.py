@@ -3,6 +3,7 @@ from typing import List
 from alerter import Alerter
 from models import Settings, AlertLog
 from storage import ReportStorage, get_storage
+from fastapi.responses import PlainTextResponse
 
 router = APIRouter()
 
@@ -29,3 +30,23 @@ def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_s
 @router.get("/api/alerts/log", response_model=List[AlertLog])
 def get_alert_log(storage: ReportStorage = Depends(get_storage)):
     return storage.get_alert_log()
+
+@router.post("/api/database/clear")
+def clear_database_api(storage: ReportStorage = Depends(get_storage)):
+    # storage.clear_all_data() 
+    return PlainTextResponse("Database cleared (not really, this is a placeholder)!")
+
+@router.get("/api/logs/webserver")
+def download_webserver_logs_api():
+    # Logic to get webserver logs
+    return PlainTextResponse("Webserver logs would be here.")
+
+@router.get("/api/logs/backend")
+def download_backend_logs_api():
+    # Logic to get backend logs
+    return PlainTextResponse("Backend logs would be here.")
+
+@router.get("/api/logs/webhook")
+def download_webhook_logs_api():
+    # Logic to get webhook logs
+    return PlainTextResponse("Webhook logs would be here.")

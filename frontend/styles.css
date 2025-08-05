@@ -494,3 +494,35 @@ tbody tr { cursor: pointer; }
   justify-content: space-between;
   font-size: 0.9em;
 }
+
+/* Tabs for settings page */
+.tabs {
+  display: flex;
+  margin-bottom: 2em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-link {
+  padding: 1em 1.5em;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1em;
+  position: relative;
+  top: 1px;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-link.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
