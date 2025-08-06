@@ -1,10 +1,12 @@
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 from uuid import uuid4
 
 import aiofiles
 import uvicorn
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List
@@ -13,12 +15,30 @@ from models import (
     Report,
     ReportSummary,
     AcceptedRisk,
-    AlertLog,
 )
 from storage import ReportStorage, get_storage
 from parser import PingCastleParser
 from alerter import Alerter
 from routers import settings as settings_router
+
+# --------------------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------------------
+LOG_DIR = Path("./logs")
+LOG_DIR.mkdir(exist_ok=True)
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+# Use a rotating file handler
+log_handler = RotatingFileHandler(
+    LOG_DIR / "backend.log", maxBytes=10 * 1024 * 1024, backupCount=5  # 10 MB
+)
+log_handler.setFormatter(log_formatter)
+# Get the root logger
+root_logger = logging.getLogger()
+root_logger.addHandler(log_handler)
+root_logger.setLevel(logging.INFO)
+# --------------------------------------------------------------------------------------
 
 app = FastAPI()
 parser = PingCastleParser()
@@ -33,6 +53,21 @@ MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MB
 
 # Include routers
 app.include_router(settings_router.router)
+
+
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    """Log all incoming requests to the backend log."""
+    logging.info(f"Request: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        return response
+    except HTTPException as e:
+        logging.error(f"HTTP Exception: {e.status_code} {e.detail}")
+        raise
+    except Exception:
+        logging.exception("An unhandled exception occurred")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.post("/upload")
@@ -135,75 +170,7 @@ def reports_page():
 @app.get("/settings")
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
-
-
-@app.get("/api/logs/webserver")
-def download_webserver_logs():
-    """Download webserver logs (currently returns empty file as no webserver logs are generated)"""
-    from io import StringIO
-    import datetime
     
-    # Create a placeholder log file since no actual webserver logs are generated
-    log_content = StringIO()
-    log_content.write(f"# DonWatcher Webserver Logs\n")
-    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
-    log_content.write(f"# Note: This application doesn't generate webserver logs\n")
-    log_content.write(f"# All logging is done through the database\n\n")
-    
-    from fastapi.responses import Response
-    return Response(
-        content=log_content.getvalue(),
-        media_type="text/plain",
-        headers={"Content-Disposition": "attachment; filename=webserver.log"}
-    )
-
-
-@app.get("/api/logs/backend")
-def download_backend_logs():
-    """Download backend logs (currently returns empty file as no backend logs are generated)"""
-    from io import StringIO
-    import datetime
-    
-    # Create a placeholder log file since no actual backend logs are generated
-    log_content = StringIO()
-    log_content.write(f"# DonWatcher Backend Logs\n")
-    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
-    log_content.write(f"# Note: This application doesn't generate backend logs\n")
-    log_content.write(f"# All logging is done through the database\n\n")
-    
-    from fastapi.responses import Response
-    return Response(
-        content=log_content.getvalue(),
-        media_type="text/plain",
-        headers={"Content-Disposition": "attachment; filename=backend.log"}
-    )
-
-
-@app.get("/api/logs/webhook")
-def download_webhook_logs(storage: ReportStorage = Depends(get_storage)):
-    """Download webhook alert logs from the database"""
-    from io import StringIO
-    import datetime
-    
-    # Get alert logs from database
-    alert_logs = storage.get_alert_log()
-    
-    log_content = StringIO()
-    log_content.write(f"# DonWatcher Webhook Alert Logs\n")
-    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
-    log_content.write(f"# Total entries: {len(alert_logs)}\n\n")
-    
-    for log_entry in alert_logs:
-        log_content.write(f"[{log_entry.timestamp}] {log_entry.message}\n")
-    
-    from fastapi.responses import Response
-    return Response(
-        content=log_content.getvalue(),
-        media_type="text/plain",
-        headers={"Content-Disposition": "attachment; filename=webhook.log"}
-    )
-
-
 # Mount all other paths to your frontend
 app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
 

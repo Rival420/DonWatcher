@@ -2,13 +2,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("settings-form");
     const webhook = document.getElementById("webhook");
     const message = document.getElementById("message");
-    const logBody = document.querySelector("#log-table tbody");
     const copyBtn = document.getElementById("copy-webhook");
     const testAlertBtn = document.getElementById("test-alert-btn");
     const clearDatabaseBtn = document.getElementById("clear-database-btn");
-    const downloadWebserverLogsBtn = document.getElementById("download-webserver-logs");
     const downloadBackendLogsBtn = document.getElementById("download-backend-logs");
-    const downloadWebhookLogsBtn = document.getElementById("download-webhook-logs");
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(tab => {
@@ -29,18 +26,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     async function load() {
-        const [settings, log] = await Promise.all([
-            fetch("/api/settings").then(r => r.json()),
-            fetch("/api/alerts/log").then(r => r.json()),
-        ]);
+        const settings = await fetch("/api/settings").then(r => r.json());
         webhook.value = settings.webhook_url || "";
         message.value = settings.alert_message || "";
-        logBody.innerHTML = "";
-        log.forEach(entry => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${new Date(entry.timestamp).toLocaleString()}</td><td>${entry.message}</td>`;
-            logBody.appendChild(tr);
-        });
     }
 
     copyBtn.addEventListener("click", async () => {
@@ -145,16 +133,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
     
-    downloadWebserverLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webserver', 'webserver.log', downloadWebserverLogsBtn);
-    });
-    
     downloadBackendLogsBtn.addEventListener('click', () => {
         triggerLogDownload('/api/logs/backend', 'backend.log', downloadBackendLogsBtn);
-    });
-    
-    downloadWebhookLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webhook', 'webhook.log', downloadWebhookLogsBtn);
     });
 
     load();
