@@ -97,25 +97,64 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
     
-    function triggerLogDownload(url, filename) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    async function triggerLogDownload(url, filename, buttonElement) {
+        try {
+            // Show loading state
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            buttonElement.disabled = true;
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Clean up the URL object
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            // Show success state
+            buttonElement.innerHTML = '<i class="fas fa-check"></i> Downloaded!';
+            buttonElement.style.background = 'var(--green)';
+            buttonElement.style.color = '#fff';
+            
+            setTimeout(() => {
+                buttonElement.innerHTML = originalText;
+                buttonElement.style.background = '';
+                buttonElement.style.color = '';
+                buttonElement.disabled = false;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert(`Failed to download ${filename}: ${error.message}`);
+            
+            // Reset button state
+            buttonElement.innerHTML = originalText;
+            buttonElement.disabled = false;
+        }
     }
     
     downloadWebserverLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webserver', 'webserver.log');
+        triggerLogDownload('/api/logs/webserver', 'webserver.log', downloadWebserverLogsBtn);
     });
     
     downloadBackendLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/backend', 'backend.log');
+        triggerLogDownload('/api/logs/backend', 'backend.log', downloadBackendLogsBtn);
     });
     
     downloadWebhookLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webhook', 'webhook.log');
+        triggerLogDownload('/api/logs/webhook', 'webhook.log', downloadWebhookLogsBtn);
     });
 
     load();

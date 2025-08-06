@@ -13,6 +13,7 @@ from models import (
     Report,
     ReportSummary,
     AcceptedRisk,
+    AlertLog,
 )
 from storage import ReportStorage, get_storage
 from parser import PingCastleParser
@@ -134,6 +135,73 @@ def reports_page():
 @app.get("/settings")
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
+
+
+@app.get("/api/logs/webserver")
+def download_webserver_logs():
+    """Download webserver logs (currently returns empty file as no webserver logs are generated)"""
+    from io import StringIO
+    import datetime
+    
+    # Create a placeholder log file since no actual webserver logs are generated
+    log_content = StringIO()
+    log_content.write(f"# DonWatcher Webserver Logs\n")
+    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
+    log_content.write(f"# Note: This application doesn't generate webserver logs\n")
+    log_content.write(f"# All logging is done through the database\n\n")
+    
+    from fastapi.responses import Response
+    return Response(
+        content=log_content.getvalue(),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=webserver.log"}
+    )
+
+
+@app.get("/api/logs/backend")
+def download_backend_logs():
+    """Download backend logs (currently returns empty file as no backend logs are generated)"""
+    from io import StringIO
+    import datetime
+    
+    # Create a placeholder log file since no actual backend logs are generated
+    log_content = StringIO()
+    log_content.write(f"# DonWatcher Backend Logs\n")
+    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
+    log_content.write(f"# Note: This application doesn't generate backend logs\n")
+    log_content.write(f"# All logging is done through the database\n\n")
+    
+    from fastapi.responses import Response
+    return Response(
+        content=log_content.getvalue(),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=backend.log"}
+    )
+
+
+@app.get("/api/logs/webhook")
+def download_webhook_logs(storage: ReportStorage = Depends(get_storage)):
+    """Download webhook alert logs from the database"""
+    from io import StringIO
+    import datetime
+    
+    # Get alert logs from database
+    alert_logs = storage.get_alert_log()
+    
+    log_content = StringIO()
+    log_content.write(f"# DonWatcher Webhook Alert Logs\n")
+    log_content.write(f"# Generated: {datetime.datetime.now().isoformat()}\n")
+    log_content.write(f"# Total entries: {len(alert_logs)}\n\n")
+    
+    for log_entry in alert_logs:
+        log_content.write(f"[{log_entry.timestamp}] {log_entry.message}\n")
+    
+    from fastapi.responses import Response
+    return Response(
+        content=log_content.getvalue(),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=webhook.log"}
+    )
 
 
 # Mount all other paths to your frontend
