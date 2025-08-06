@@ -52,28 +52,64 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    async function handleButtonFeedback(button, action) {
+        const originalText = button.innerHTML;
+        const loadingText = button.dataset.loadingText || 'Loading...';
+        const successText = button.dataset.successText || 'Done!';
+
+        try {
+            button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingText}`;
+            button.disabled = true;
+
+            const result = await action();
+
+            button.innerHTML = `<i class="fas fa-check"></i> ${successText}`;
+            button.style.background = 'var(--green)';
+            button.style.color = '#fff';
+
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.background = '';
+                button.style.color = '';
+                button.disabled = false;
+            }, 2000);
+
+            return result;
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    }
+
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
-        await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+        const saveBtn = form.querySelector('button[type="submit"]');
+        await handleButtonFeedback(saveBtn, async () => {
+            const response = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+            });
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.detail || 'Failed to save settings');
+            }
         });
-        alert("Settings saved!");
     });
     
     testAlertBtn.addEventListener("click", async () => {
-        const response = await fetch("/api/settings/test", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+        await handleButtonFeedback(testAlertBtn, async () => {
+            const response = await fetch("/api/settings/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'Failed to send test alert');
+            }
         });
-        const result = await response.json();
-        if(response.ok) {
-            alert("Test alert sent successfully!");
-        } else {
-            alert(`Error: ${result.detail}`);
-        }
     });
 
     clearDatabaseBtn.addEventListener('click', async () => {
@@ -86,16 +122,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     
     async function triggerLogDownload(url, filename, buttonElement) {
+        const originalText = buttonElement.innerHTML;
         try {
-            // Show loading state
-            const originalText = buttonElement.innerHTML;
             buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
             buttonElement.disabled = true;
             
             const response = await fetch(url);
             
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                throw new Error(errorData.detail);
             }
             
             const blob = await response.blob();
@@ -108,10 +144,8 @@ document.addEventListener("DOMContentLoaded", () => {
             a.click();
             document.body.removeChild(a);
             
-            // Clean up the URL object
             window.URL.revokeObjectURL(downloadUrl);
             
-            // Show success state
             buttonElement.innerHTML = '<i class="fas fa-check"></i> Downloaded!';
             buttonElement.style.background = 'var(--green)';
             buttonElement.style.color = '#fff';
@@ -127,7 +161,6 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error('Download failed:', error);
             alert(`Failed to download ${filename}: ${error.message}`);
             
-            // Reset button state
             buttonElement.innerHTML = originalText;
             buttonElement.disabled = false;
         }
