@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
             button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingText}`;
             button.disabled = true;
 
-            const result = await action();
+            await action();
 
             button.innerHTML = `<i class="fas fa-check"></i> ${successText}`;
             button.style.background = 'var(--green)';
@@ -74,11 +74,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 button.disabled = false;
             }, 2000);
 
-            return result;
         } catch (error) {
-            alert(`Error: ${error.message}`);
+            console.error(`Action failed:`, error);
+            
             button.innerHTML = originalText;
+            button.style.background = 'var(--red)';
+            button.style.color = '#fff';
             button.disabled = false;
+
+            setTimeout(() => {
+                button.style.background = '';
+                button.style.color = '';
+            }, 2000);
         }
     }
 
@@ -105,8 +112,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
             });
-            const result = await response.json();
             if (!response.ok) {
+                const result = await response.json();
                 throw new Error(result.detail || 'Failed to send test alert');
             }
         });
