@@ -68,11 +68,6 @@ class Settings(BaseModel):
     alert_message: str = ""
 
 
-class AlertLog(BaseModel):
-    timestamp: datetime
-    message: str
-
-
 class Risk(BaseModel):
     category: str
     name: str

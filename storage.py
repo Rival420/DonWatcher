@@ -1,11 +1,13 @@
+import logging
 import sqlite3
 from datetime import datetime
-from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, AlertLog, Risk
+from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, Risk
 from typing import List, Dict
-from fastapi import Depends
+
 
 def get_storage():
     return ReportStorage(db_path="./reports.db")
+
 
 class ReportStorage:
     def __init__(self, db_path: str):
@@ -94,14 +96,6 @@ class ReportStorage:
                 )
             """)
 
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS alert_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT,
-                    message TEXT
-                )
-            """)
-
     def clear_all_data(self):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
@@ -110,7 +104,6 @@ class ReportStorage:
             c.execute("DROP TABLE IF EXISTS risks")
             c.execute("DROP TABLE IF EXISTS accepted_risks")
             c.execute("DROP TABLE IF EXISTS settings")
-            c.execute("DROP TABLE IF EXISTS alert_log")
         self._create_tables()
 
     def save_report(self, report: Report):
@@ -376,18 +369,4 @@ class ReportStorage:
             )
 
     def log_alert(self, message: str):
-        with sqlite3.connect(self.db_path) as conn:
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO alert_log (timestamp, message) VALUES (?, ?)",
-                (datetime.utcnow().isoformat(), message),
-            )
-
-    def get_alert_log(self) -> List[AlertLog]:
-        with sqlite3.connect(self.db_path) as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT timestamp, message FROM alert_log ORDER BY timestamp DESC"
-            )
-            rows = c.fetchall()
-        return [AlertLog(timestamp=datetime.fromisoformat(r[0]), message=r[1]) for r in rows]
+        logging.info(message)

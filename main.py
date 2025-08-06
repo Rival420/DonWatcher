@@ -1,10 +1,12 @@
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 from uuid import uuid4
 
 import aiofiles
 import uvicorn
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List
@@ -19,6 +21,25 @@ from parser import PingCastleParser
 from alerter import Alerter
 from routers import settings as settings_router
 
+# --------------------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------------------
+LOG_DIR = Path("./logs")
+LOG_DIR.mkdir(exist_ok=True)
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+# Use a rotating file handler
+log_handler = RotatingFileHandler(
+    LOG_DIR / "backend.log", maxBytes=10 * 1024 * 1024, backupCount=5  # 10 MB
+)
+log_handler.setFormatter(log_formatter)
+# Get the root logger
+root_logger = logging.getLogger()
+root_logger.addHandler(log_handler)
+root_logger.setLevel(logging.INFO)
+# --------------------------------------------------------------------------------------
+
 app = FastAPI()
 parser = PingCastleParser()
 
@@ -32,6 +53,21 @@ MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MB
 
 # Include routers
 app.include_router(settings_router.router)
+
+
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    """Log all incoming requests to the backend log."""
+    logging.info(f"Request: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        return response
+    except HTTPException as e:
+        logging.error(f"HTTP Exception: {e.status_code} {e.detail}")
+        raise
+    except Exception:
+        logging.exception("An unhandled exception occurred")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.post("/upload")
@@ -134,8 +170,7 @@ def reports_page():
 @app.get("/settings")
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
-
-
+    
 # Mount all other paths to your frontend
 app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
 

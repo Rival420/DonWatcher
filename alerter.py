@@ -1,4 +1,5 @@
 import json
+import logging
 import requests
 from models import Report, Settings, Finding
 from storage import ReportStorage
@@ -53,11 +54,11 @@ class Alerter:
             status = response.status_code
         
         if response.status_code == 200:
-            self.storage.log_alert(
+            logging.info(
                 f"Alert sent ({status}) for report {report.id}"
             )
         else:
-            self.storage.log_alert(
+            logging.warning(
                 f"Alert failed for report {report.id}: HTTP {status}"
             )
 
@@ -102,8 +103,8 @@ class Alerter:
             )
 
         if response.status_code == 200:
-            self.storage.log_alert(f"Test alert sent ({response.status_code})")
+            logging.info(f"Test alert sent ({response.status_code})")
             return {"status": "success", "detail": f"Webhook returned status {response.status_code}"}
         else:
-            self.storage.log_alert(f"Test alert failed: HTTP {response.status_code}")
+            logging.warning(f"Test alert failed: HTTP {response.status_code}")
             raise ConnectionError(f"Failed to send test webhook: HTTP {response.status_code}")

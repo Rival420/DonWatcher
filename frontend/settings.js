@@ -2,13 +2,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("settings-form");
     const webhook = document.getElementById("webhook");
     const message = document.getElementById("message");
-    const logBody = document.querySelector("#log-table tbody");
     const copyBtn = document.getElementById("copy-webhook");
     const testAlertBtn = document.getElementById("test-alert-btn");
     const clearDatabaseBtn = document.getElementById("clear-database-btn");
-    const downloadWebserverLogsBtn = document.getElementById("download-webserver-logs");
     const downloadBackendLogsBtn = document.getElementById("download-backend-logs");
-    const downloadWebhookLogsBtn = document.getElementById("download-webhook-logs");
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(tab => {
@@ -29,18 +26,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     async function load() {
-        const [settings, log] = await Promise.all([
-            fetch("/api/settings").then(r => r.json()),
-            fetch("/api/alerts/log").then(r => r.json()),
-        ]);
+        const settings = await fetch("/api/settings").then(r => r.json());
         webhook.value = settings.webhook_url || "";
         message.value = settings.alert_message || "";
-        logBody.innerHTML = "";
-        log.forEach(entry => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${new Date(entry.timestamp).toLocaleString()}</td><td>${entry.message}</td>`;
-            logBody.appendChild(tr);
-        });
     }
 
     copyBtn.addEventListener("click", async () => {
@@ -64,28 +52,71 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    async function handleButtonFeedback(button, action) {
+        const originalText = button.innerHTML;
+        const loadingText = button.dataset.loadingText || 'Loading...';
+        const successText = button.dataset.successText || 'Done!';
+
+        try {
+            button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingText}`;
+            button.disabled = true;
+
+            await action();
+
+            button.innerHTML = `<i class="fas fa-check"></i> ${successText}`;
+            button.style.background = 'var(--green)';
+            button.style.color = '#fff';
+
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.background = '';
+                button.style.color = '';
+                button.disabled = false;
+            }, 2000);
+
+        } catch (error) {
+            console.error(`Action failed:`, error);
+            
+            button.innerHTML = originalText;
+            button.style.background = 'var(--red)';
+            button.style.color = '#fff';
+            button.disabled = false;
+
+            setTimeout(() => {
+                button.style.background = '';
+                button.style.color = '';
+            }, 2000);
+        }
+    }
+
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
-        await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+        const saveBtn = form.querySelector('button[type="submit"]');
+        await handleButtonFeedback(saveBtn, async () => {
+            const response = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+            });
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.detail || 'Failed to save settings');
+            }
         });
-        alert("Settings saved!");
     });
     
     testAlertBtn.addEventListener("click", async () => {
-        const response = await fetch("/api/settings/test", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+        await handleButtonFeedback(testAlertBtn, async () => {
+            const response = await fetch("/api/settings/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ webhook_url: webhook.value, alert_message: message.value })
+            });
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.detail || 'Failed to send test alert');
+            }
         });
-        const result = await response.json();
-        if(response.ok) {
-            alert("Test alert sent successfully!");
-        } else {
-            alert(`Error: ${result.detail}`);
-        }
     });
 
     clearDatabaseBtn.addEventListener('click', async () => {
@@ -97,25 +128,53 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
     
-    function triggerLogDownload(url, filename) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    async function triggerLogDownload(url, filename, buttonElement) {
+        const originalText = buttonElement.innerHTML;
+        try {
+            buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            buttonElement.disabled = true;
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                throw new Error(errorData.detail);
+            }
+            
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            buttonElement.innerHTML = '<i class="fas fa-check"></i> Downloaded!';
+            buttonElement.style.background = 'var(--green)';
+            buttonElement.style.color = '#fff';
+            
+            setTimeout(() => {
+                buttonElement.innerHTML = originalText;
+                buttonElement.style.background = '';
+                buttonElement.style.color = '';
+                buttonElement.disabled = false;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert(`Failed to download ${filename}: ${error.message}`);
+            
+            buttonElement.innerHTML = originalText;
+            buttonElement.disabled = false;
+        }
     }
     
-    downloadWebserverLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webserver', 'webserver.log');
-    });
-    
     downloadBackendLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/backend', 'backend.log');
-    });
-    
-    downloadWebhookLogsBtn.addEventListener('click', () => {
-        triggerLogDownload('/api/logs/webhook', 'webhook.log');
+        triggerLogDownload('/api/logs/backend', 'backend.log', downloadBackendLogsBtn);
     });
 
     load();

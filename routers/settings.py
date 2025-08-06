@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List
 from alerter import Alerter
-from models import Settings, AlertLog
+from models import Settings
 from storage import ReportStorage, get_storage
 from fastapi.responses import PlainTextResponse, FileResponse
 import os
@@ -31,10 +30,6 @@ def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_s
     except ConnectionError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/api/alerts/log", response_model=List[AlertLog])
-def get_alert_log(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_alert_log()
-
 @router.post("/api/database/clear")
 def clear_database_api(storage: ReportStorage = Depends(get_storage)):
     storage.clear_all_data()
@@ -53,10 +48,3 @@ def download_backend_logs_api():
     if not os.path.exists(log_path):
         raise HTTPException(status_code=404, detail="Backend log file not found")
     return FileResponse(log_path, media_type='text/plain', filename='backend.log')
-
-@router.get("/api/logs/webhook")
-def download_webhook_logs_api():
-    log_path = f"{LOG_DIR}/webhook.log"
-    if not os.path.exists(log_path):
-        raise HTTPException(status_code=404, detail="Webhook log file not found")
-    return FileResponse(log_path, media_type='text/plain', filename='webhook.log')
