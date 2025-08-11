@@ -157,12 +157,20 @@ class ReportStorage:
                 )
                 c.execute(
                     """
-                    INSERT INTO findings
+                    INSERT OR REPLACE INTO findings
                     (id, report_id, category, name, score, description)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (f.id, f.report_id, f.category, f.name, f.score, f.description),
                 )
+
+    def update_report_html(self, report_id: str, html_file: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE reports SET html_file = ? WHERE id = ?",
+                (html_file, report_id),
+            )
 
     def get_all_reports(self) -> List[Report]:
         with sqlite3.connect(self.db_path) as conn:
