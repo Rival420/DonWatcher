@@ -561,18 +561,31 @@ tbody tr { cursor: pointer; }
 
 #risk-scores .historical-charts {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5em;
 }
 
 .chart-container {
   text-align: center;
-  min-height: 100px; /* Set a minimum height */
-  aspect-ratio: 2 / 1; /* Maintain a 2:1 aspect ratio */
+  height: clamp(180px, 22vh, 320px);
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background-color: var(--gray-lighter);
+}
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Analysis page chart should grow/shrink responsively */
+.chart-wrap {
+  width: 100%;
+  height: clamp(300px, 45vh, 600px);
+}
+.chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .chart-label {

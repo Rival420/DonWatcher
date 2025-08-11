@@ -68,6 +68,8 @@ function renderChart(data) {
       ]
     },
     options: {
+      responsive: true,
+      maintainAspectRatio: false,
       scales: {
         x: { title: { display: true, text: "Date" } },
         y: { title: { display: true, text: "Score" } }
