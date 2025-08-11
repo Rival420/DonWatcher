@@ -55,6 +55,7 @@ class Report(BaseModel):
     user_count: int
     computer_count: int
     original_file: Optional[str] = None
+    html_file: Optional[str] = None
     findings: List[Finding]
 
 

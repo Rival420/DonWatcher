@@ -107,8 +107,8 @@ async function showDetails(id) {
   renderFindings(report, 'category');
   const openBtn = document.getElementById('open-report-btn');
   if (openBtn) {
-    if (report.original_file && report.original_file.toLowerCase().endsWith('.html')) {
-      const fileName = report.original_file.split(/[/\\\\]/).pop();
+    if (report.html_file) {
+      const fileName = report.html_file.split(/[/\\\\]/).pop();
       const url = `/uploads/${fileName}`;
       openBtn.onclick = () => window.open(url, '_blank');
       openBtn.disabled = false;

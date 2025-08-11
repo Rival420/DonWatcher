@@ -98,41 +98,29 @@ async def upload_pingcastle_report(
         if ext == '.xml':
             report: Report = parser.parse_report(saved_path)
             report.original_file = str(saved_path)
+            storage.save_report(report)
+
+            # 5) Alert on unaccepted findings
+            unaccepted = storage.get_unaccepted_findings(report.findings)
+            settings = storage.get_settings()
+            alerter = Alerter(storage)
+            alerter.send_alert(settings, report, unaccepted)
         elif ext in ('.html', '.htm'):
-            # Minimal record for HTML uploads so it appears in listings and can be opened
-            now = datetime.utcnow()
-            report = Report(
-                id=str(uuid4()),
-                domain=Path(filename).stem,
-                report_date=now,
-                upload_date=now,
-                global_score=0,
-                high_score=0,
-                medium_score=0,
-                low_score=0,
-                stale_objects_score=0,
-                privileged_accounts_score=0,
-                trusts_score=0,
-                anomalies_score=0,
-                domain_sid="",
-                domain_functional_level="",
-                forest_functional_level="",
-                maturity_level="",
-                dc_count=0,
-                user_count=0,
-                computer_count=0,
-                original_file=str(saved_path),
-                findings=[],
-            )
+            # Attempt to match HTML to an existing XML report by base filename (ignoring our uuid prefix)
+            base_stem = Path(filename).stem  # original filename without extension
+            matched = None
+            for r in storage.get_all_reports():
+                of = Path(r.original_file or '')
+                if of.suffix.lower() == '.xml' and of.name.endswith(f"_{base_stem}.xml"):
+                    matched = r
+                    break
+            if matched:
+                matched.html_file = str(saved_path)
+                storage.save_report(matched)
+            else:
+                logging.info(f"No XML match found for uploaded HTML '{filename}'. Saved as orphaned file only on disk.")
         else:
             raise HTTPException(status_code=400, detail="Unsupported file extension")
-        storage.save_report(report)
-
-        # 5) Alert on unaccepted findings
-        unaccepted = storage.get_unaccepted_findings(report.findings)
-        settings = storage.get_settings()
-        alerter = Alerter(storage)
-        alerter.send_alert(settings, report, unaccepted)
 
     except ValueError as ve:
         # Known parsing error (e.g. bad date)

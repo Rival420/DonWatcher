@@ -59,7 +59,8 @@ class ReportStorage:
                 ("privileged_accounts_score", "INTEGER"),
                 ("trusts_score", "INTEGER"),
                 ("anomalies_score", "INTEGER"),
-                ("original_file", "TEXT")
+                ("original_file", "TEXT"),
+                ("html_file", "TEXT")
             ]:
                 if col_def[0] not in existing_columns:
                     c.execute(f"ALTER TABLE reports ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -123,8 +124,8 @@ class ReportStorage:
                     global_score, high_score, medium_score, low_score,
                     stale_objects_score, privileged_accounts_score,
                     trusts_score, anomalies_score,
-                    original_file
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    original_file, html_file
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 report.id,
                 report.domain,
@@ -145,7 +146,8 @@ class ReportStorage:
                 report.privileged_accounts_score,
                 report.trusts_score,
                 report.anomalies_score,
-                report.original_file
+                report.original_file,
+                getattr(report, 'html_file', None)
             ))
             for f in report.findings:
                 c.execute(
@@ -200,6 +202,7 @@ class ReportStorage:
                 trusts_score=row[17],
                 anomalies_score=row[18],
                 original_file=row[19],
+                html_file=row[20] if len(row) > 20 else None,
                 findings=findings_by_report.get(row[0], [])
             ))
 
@@ -213,7 +216,7 @@ class ReportStorage:
                 "forest_functional_level, maturity_level, dc_count, user_count, "
                 "computer_count, report_date, upload_date, global_score, high_score, "
                 "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
-                "trusts_score, anomalies_score FROM reports ORDER BY report_date"
+                "trusts_score, anomalies_score, html_file FROM reports ORDER BY report_date"
             )
             rows = c.fetchall()
         return [
@@ -275,6 +278,7 @@ class ReportStorage:
             trusts_score=row[17],
             anomalies_score=row[18],
             original_file=row[19],
+            html_file=row[20] if len(row) > 20 else None,
             findings=findings,
         )
 
