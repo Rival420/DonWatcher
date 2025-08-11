@@ -54,7 +54,12 @@ class ReportStorage:
                 ("maturity_level", "TEXT"),
                 ("dc_count", "INTEGER"),
                 ("user_count", "INTEGER"),
-                ("computer_count", "INTEGER")
+                ("computer_count", "INTEGER"),
+                ("stale_objects_score", "INTEGER"),
+                ("privileged_accounts_score", "INTEGER"),
+                ("trusts_score", "INTEGER"),
+                ("anomalies_score", "INTEGER"),
+                ("original_file", "TEXT")
             ]:
                 if col_def[0] not in existing_columns:
                     c.execute(f"ALTER TABLE reports ADD COLUMN {col_def[0]} {col_def[1]}")
