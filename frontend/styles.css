@@ -355,7 +355,10 @@ table {
 }
 thead th {
   background: var(--blue); color: #fff; padding: 0.75em; text-align: left;
+  user-select: none;
+  cursor: grab;
 }
+thead th:active { cursor: grabbing; }
 tbody td {
   padding: 0.75em;
   border-bottom: 1px solid var(--border-color);

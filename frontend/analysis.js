@@ -8,6 +8,7 @@ export async function showAnalysis() {
   ]);
   renderChart(scores);
   renderRecurring(freq, accepted);
+  enableColumnDragAndDrop('#recurring-table');
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -18,10 +19,52 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
-  const latestEl = document.getElementById("latest-filter");
-  if (latestEl) latestEl.addEventListener("change", renderFilteredFindings);
+  const latestToggle = document.getElementById("latest-only-toggle");
+  if (latestToggle) latestToggle.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
 });
+
+function enableColumnDragAndDrop(tableSelector) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+
+  const headerCells = Array.from(table.querySelectorAll('thead th'));
+  headerCells.forEach((th, index) => {
+    th.draggable = true;
+    th.dataset.colIndex = index;
+
+    th.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', index.toString());
+    });
+
+    th.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const toIndex = index;
+      if (fromIndex === toIndex) return;
+      moveTableColumn(table, fromIndex, toIndex);
+    });
+  });
+}
+
+function moveTableColumn(table, fromIndex, toIndex) {
+  const rows = table.querySelectorAll('tr');
+  rows.forEach((row) => {
+    const cells = row.children;
+    if (fromIndex >= cells.length || toIndex >= cells.length) return;
+    const fromCell = cells[fromIndex];
+    const toCell = cells[toIndex];
+    if (fromIndex < toIndex) {
+      toCell.after(fromCell);
+    } else {
+      toCell.before(fromCell);
+    }
+  });
+}
 
 function renderChart(data) {
   const canvasId = "scoreChart";
@@ -103,7 +146,7 @@ function renderFilteredFindings() {
   const filterText = document.getElementById("findings-filter").value.toLowerCase();
   const categoryFilter = document.getElementById("category-filter").value;
   const acceptanceFilter = document.getElementById("acceptance-filter").value;
-  const latestFilter = (document.getElementById("latest-filter") || { value: "" }).value;
+  const latestOnly = !!(document.getElementById("latest-only-toggle") || { checked: false }).checked;
   const sortBy = document.getElementById("sort-findings").value;
   
   const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
@@ -125,10 +168,8 @@ function renderFilteredFindings() {
     }
     
     let matchesLatest = true;
-    if (latestFilter === "latest") {
+    if (latestOnly) {
       matchesLatest = !!finding.inLatest;
-    } else if (latestFilter === "not-latest") {
-      matchesLatest = !finding.inLatest;
     }
     return matchesText && matchesCategory && matchesAcceptance && matchesLatest;
   });

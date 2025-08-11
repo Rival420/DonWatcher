@@ -33,11 +33,11 @@
                    <option value="accepted">Accepted Only</option>
                    <option value="unaccepted">Unaccepted Only</option>
                  </select>
-                 <select id="latest-filter">
-                   <option value="">Any Occurrence</option>
-                   <option value="latest">In Latest Only</option>
-                   <option value="not-latest">Not In Latest</option>
-                 </select>
+                 <label class="switch" title="Show only findings present in the latest report">
+                   <input type="checkbox" id="latest-only-toggle">
+                   <span class="slider"></span>
+                 </label>
+                 <span>In latest only</span>
                </div>
                <div class="sort-controls">
                  <select id="sort-findings">

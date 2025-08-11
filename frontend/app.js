@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadReports();
   setupUpload();
   setupGlobalSearch();
+  enableColumnDragAndDrop('#reports-table');
 
   document.getElementById("modal-close").addEventListener("click", () => {
     document.getElementById("modal").classList.add("hidden");
@@ -160,4 +161,47 @@ function exportCSV() {
       a.click();
       document.body.removeChild(a);
     });
+}
+
+// Column drag-and-drop (Reports table)
+function enableColumnDragAndDrop(tableSelector) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+
+  const headerCells = Array.from(table.querySelectorAll('thead th'));
+  headerCells.forEach((th, index) => {
+    th.draggable = true;
+    th.dataset.colIndex = index;
+
+    th.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', index.toString());
+    });
+
+    th.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const toIndex = index;
+      if (fromIndex === toIndex) return;
+      moveTableColumn(table, fromIndex, toIndex);
+    });
+  });
+}
+
+function moveTableColumn(table, fromIndex, toIndex) {
+  const rows = table.querySelectorAll('tr');
+  rows.forEach((row) => {
+    const cells = row.children;
+    if (fromIndex >= cells.length || toIndex >= cells.length) return;
+    const fromCell = cells[fromIndex];
+    const toCell = cells[toIndex];
+    if (fromIndex < toIndex) {
+      toCell.after(fromCell);
+    } else {
+      toCell.before(fromCell);
+    }
+  });
 }
