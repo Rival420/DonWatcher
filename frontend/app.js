@@ -105,6 +105,17 @@ async function showDetails(id) {
   window.currentReport = report;
   document.getElementById("sort-select").value = 'category';
   renderFindings(report, 'category');
+  const openBtn = document.getElementById('open-report-btn');
+  if (openBtn) {
+    if (report.original_file && report.original_file.endsWith('.html')) {
+      const url = `/uploads/${report.original_file.split('/').pop()}`;
+      openBtn.onclick = () => window.open(url, '_blank');
+      openBtn.disabled = false;
+    } else {
+      openBtn.onclick = null;
+      openBtn.disabled = true;
+    }
+  }
   document.getElementById("modal").classList.remove("hidden");
 }
 

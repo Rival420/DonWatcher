@@ -2,6 +2,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+from datetime import datetime
 from uuid import uuid4
 
 import aiofiles
@@ -93,8 +94,35 @@ async def upload_pingcastle_report(
 
     # 4) Parse and store
     try:
-        report: Report = parser.parse_report(saved_path)
-        report.original_file = str(saved_path)
+        if filename.lower().endswith('.xml'):
+            report: Report = parser.parse_report(saved_path)
+            report.original_file = str(saved_path)
+        else:
+            # Minimal record for HTML uploads so it appears in listings and can be opened
+            now = datetime.utcnow()
+            report = Report(
+                id=str(uuid4()),
+                domain=Path(filename).stem,
+                report_date=now,
+                upload_date=now,
+                global_score=0,
+                high_score=0,
+                medium_score=0,
+                low_score=0,
+                stale_objects_score=0,
+                privileged_accounts_score=0,
+                trusts_score=0,
+                anomalies_score=0,
+                domain_sid="",
+                domain_functional_level="",
+                forest_functional_level="",
+                maturity_level="",
+                dc_count=0,
+                user_count=0,
+                computer_count=0,
+                original_file=str(saved_path),
+                findings=[],
+            )
         storage.save_report(report)
 
         # 5) Alert on unaccepted findings
@@ -171,6 +199,9 @@ def reports_page():
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
     
+# Serve uploaded reports (e.g., PingCastle HTML) at /uploads
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # Mount all other paths to your frontend
 app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
 
