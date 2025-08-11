@@ -95,6 +95,7 @@ async def upload_pingcastle_report(
     # 4) Parse and store
     try:
         ext = saved_path.suffix.lower()
+        response_payload = {"status": "success"}
         if ext == '.xml':
             report: Report = parser.parse_report(saved_path)
             report.original_file = str(saved_path)
@@ -105,6 +106,7 @@ async def upload_pingcastle_report(
             settings = storage.get_settings()
             alerter = Alerter(storage)
             alerter.send_alert(settings, report, unaccepted)
+            response_payload["report_id"] = report.id
         elif ext in ('.html', '.htm'):
             # Attempt to match HTML to an existing XML report by base filename (ignoring our uuid prefix)
             base_stem = Path(filename).stem  # original filename without extension
@@ -115,8 +117,8 @@ async def upload_pingcastle_report(
                     matched = r
                     break
             if matched:
-                matched.html_file = str(saved_path)
-                storage.save_report(matched)
+                storage.update_report_html(matched.id, str(saved_path))
+                response_payload["attachedTo"] = matched.id
             else:
                 logging.info(f"No XML match found for uploaded HTML '{filename}'. Saved as orphaned file only on disk.")
         else:
@@ -130,7 +132,7 @@ async def upload_pingcastle_report(
         logging.exception("Failed to process uploaded report")
         raise HTTPException(status_code=500, detail=f"Failed to process report: {e}")
 
-    return JSONResponse({"status": "success", "report_id": report.id})
+    return JSONResponse(response_payload)
 
 
 @app.get("/api/reports", response_model=List[ReportSummary])
