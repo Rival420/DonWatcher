@@ -47,7 +47,8 @@ function setupUpload() {
       const res = await fetch("/upload", { method: "POST", body: form });
       const data = await res.json();
       if (res.ok) {
-        statusDiv.textContent = "✓ Uploaded: " + data.report_id;
+        const displayId = data.report_id || data.attachedTo || '';
+        statusDiv.textContent = "✓ Uploaded" + (displayId ? (": " + displayId) : "");
         statusDiv.style.color = "green";
         loadReports();
       } else {
