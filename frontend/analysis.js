@@ -18,6 +18,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
+  const latestEl = document.getElementById("latest-filter");
+  if (latestEl) latestEl.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
 });
 
@@ -99,6 +101,7 @@ function renderFilteredFindings() {
   const filterText = document.getElementById("findings-filter").value.toLowerCase();
   const categoryFilter = document.getElementById("category-filter").value;
   const acceptanceFilter = document.getElementById("acceptance-filter").value;
+  const latestFilter = (document.getElementById("latest-filter") || { value: "" }).value;
   const sortBy = document.getElementById("sort-findings").value;
   
   const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
@@ -119,7 +122,13 @@ function renderFilteredFindings() {
       matchesAcceptance = !isAccepted;
     }
     
-    return matchesText && matchesCategory && matchesAcceptance;
+    let matchesLatest = true;
+    if (latestFilter === "latest") {
+      matchesLatest = !!finding.inLatest;
+    } else if (latestFilter === "not-latest") {
+      matchesLatest = !finding.inLatest;
+    }
+    return matchesText && matchesCategory && matchesAcceptance && matchesLatest;
   });
   
   filteredFindings.sort((a, b) => {
@@ -144,7 +153,7 @@ function renderFilteredFindings() {
   tbody.innerHTML = "";
   
   filteredFindings.forEach((finding) => {
-    const { category, name, count, description, avg_score } = finding;
+    const { category, name, count, description, avg_score, inLatest } = finding;
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
 
@@ -156,6 +165,7 @@ function renderFilteredFindings() {
       <td>${name}</td>
       <td>${count}</td>
       <td>${avg_score}</td>
+      <td>${inLatest ? "Yes" : "No"}</td>
       <td>
         <label class="switch">
           <input type="checkbox" data-cat="${category}" data-name="${name}" ${isAccepted ? "checked" : ""}>

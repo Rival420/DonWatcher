@@ -299,11 +299,25 @@ class ReportStorage:
             c = conn.cursor()
             c.execute(
                 """
-              SELECT f.category, f.name, r.description, COUNT(*) as count, AVG(f.score) as avg_score
-              FROM findings f
-              LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
-              GROUP BY f.category, f.name, r.description
-              ORDER BY count DESC
+                WITH latest AS (
+                    SELECT id FROM reports ORDER BY report_date DESC LIMIT 1
+                )
+                SELECT 
+                    f.category, 
+                    f.name, 
+                    r.description, 
+                    COUNT(*) AS count, 
+                    AVG(f.score) AS avg_score,
+                    CASE WHEN EXISTS (
+                        SELECT 1 
+                        FROM findings lf 
+                        JOIN latest ON lf.report_id = latest.id
+                        WHERE lf.category = f.category AND lf.name = f.name
+                    ) THEN 1 ELSE 0 END AS in_latest
+                FROM findings f
+                LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
+                GROUP BY f.category, f.name, r.description
+                ORDER BY count DESC
                 """
             )
             rows = c.fetchall()
@@ -314,6 +328,7 @@ class ReportStorage:
                 "description": row[2] or "",
                 "count": row[3],
                 "avg_score": round(row[4], 1) if row[4] else 0,
+                "inLatest": bool(row[5])
             }
             for row in rows
         ]

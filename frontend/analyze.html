@@ -33,6 +33,11 @@
                    <option value="accepted">Accepted Only</option>
                    <option value="unaccepted">Unaccepted Only</option>
                  </select>
+                 <select id="latest-filter">
+                   <option value="">Any Occurrence</option>
+                   <option value="latest">In Latest Only</option>
+                   <option value="not-latest">Not In Latest</option>
+                 </select>
                </div>
                <div class="sort-controls">
                  <select id="sort-findings">
@@ -47,7 +52,7 @@
              </div>
             <table id="recurring-table">
               <thead><tr>
-                <th>Category</th><th>Name</th><th>Count</th><th>Risk Score</th><th>Accepted?</th>
+                <th>Category</th><th>Name</th><th>Count</th><th>Risk Score</th><th>In Latest?</th><th>Accepted?</th>
               </tr></thead>
               <tbody></tbody>
             </table>
