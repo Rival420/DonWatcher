@@ -115,8 +115,9 @@ class ReportStorage:
     def save_report(self, report: Report):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
+            # Upsert report (insert or replace)
             c.execute("""
-                INSERT INTO reports (
+                INSERT OR REPLACE INTO reports (
                     id, domain, domain_sid,
                     domain_functional_level, forest_functional_level,
                     maturity_level, dc_count, user_count, computer_count,
