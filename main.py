@@ -78,7 +78,7 @@ async def upload_pingcastle_report(
 ):
     # 1) Validate filename
     filename = Path(file.filename or "").name
-    if not filename.lower().endswith((".xml", ".html")):
+    if not filename.lower().endswith((".xml", ".html", ".htm")):
         raise HTTPException(status_code=400, detail="Invalid file type")
 
     # 2) Read and enforce size
@@ -94,10 +94,11 @@ async def upload_pingcastle_report(
 
     # 4) Parse and store
     try:
-        if filename.lower().endswith('.xml'):
+        ext = saved_path.suffix.lower()
+        if ext == '.xml':
             report: Report = parser.parse_report(saved_path)
             report.original_file = str(saved_path)
-        else:
+        elif ext in ('.html', '.htm'):
             # Minimal record for HTML uploads so it appears in listings and can be opened
             now = datetime.utcnow()
             report = Report(
@@ -123,6 +124,8 @@ async def upload_pingcastle_report(
                 original_file=str(saved_path),
                 findings=[],
             )
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file extension")
         storage.save_report(report)
 
         # 5) Alert on unaccepted findings
@@ -134,9 +137,10 @@ async def upload_pingcastle_report(
     except ValueError as ve:
         # Known parsing error (e.g. bad date)
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception:
+    except Exception as e:
         # Unexpected error
-        raise HTTPException(status_code=500, detail="Failed to process report")
+        logging.exception("Failed to process uploaded report")
+        raise HTTPException(status_code=500, detail=f"Failed to process report: {e}")
 
     return JSONResponse({"status": "success", "report_id": report.id})
 
