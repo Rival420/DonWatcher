@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadReports();
   setupUpload();
   setupGlobalSearch();
+  enableColumnDragAndDrop('#reports-table');
 
   document.getElementById("modal-close").addEventListener("click", () => {
     document.getElementById("modal").classList.add("hidden");
@@ -46,7 +47,8 @@ function setupUpload() {
       const res = await fetch("/upload", { method: "POST", body: form });
       const data = await res.json();
       if (res.ok) {
-        statusDiv.textContent = "✓ Uploaded: " + data.report_id;
+        const displayId = data.report_id || data.attachedTo || '';
+        statusDiv.textContent = "✓ Uploaded" + (displayId ? (": " + displayId) : "");
         statusDiv.style.color = "green";
         loadReports();
       } else {
@@ -104,6 +106,18 @@ async function showDetails(id) {
   window.currentReport = report;
   document.getElementById("sort-select").value = 'category';
   renderFindings(report, 'category');
+  const openBtn = document.getElementById('open-report-btn');
+  if (openBtn) {
+    if (report.html_file) {
+      const fileName = report.html_file.split(/[/\\\\]/).pop();
+      const url = `/uploads/${fileName}`;
+      openBtn.onclick = () => window.open(url, '_blank');
+      openBtn.disabled = false;
+    } else {
+      openBtn.onclick = null;
+      openBtn.disabled = true;
+    }
+  }
   document.getElementById("modal").classList.remove("hidden");
 }
 
@@ -160,4 +174,47 @@ function exportCSV() {
       a.click();
       document.body.removeChild(a);
     });
+}
+
+// Column drag-and-drop (Reports table)
+function enableColumnDragAndDrop(tableSelector) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+
+  const headerCells = Array.from(table.querySelectorAll('thead th'));
+  headerCells.forEach((th, index) => {
+    th.draggable = true;
+    th.dataset.colIndex = index;
+
+    th.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', index.toString());
+    });
+
+    th.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const toIndex = index;
+      if (fromIndex === toIndex) return;
+      moveTableColumn(table, fromIndex, toIndex);
+    });
+  });
+}
+
+function moveTableColumn(table, fromIndex, toIndex) {
+  const rows = table.querySelectorAll('tr');
+  rows.forEach((row) => {
+    const cells = row.children;
+    if (fromIndex >= cells.length || toIndex >= cells.length) return;
+    const fromCell = cells[fromIndex];
+    const toCell = cells[toIndex];
+    if (fromIndex < toIndex) {
+      toCell.after(fromCell);
+    } else {
+      toCell.before(fromCell);
+    }
+  });
 }

@@ -54,7 +54,13 @@ class ReportStorage:
                 ("maturity_level", "TEXT"),
                 ("dc_count", "INTEGER"),
                 ("user_count", "INTEGER"),
-                ("computer_count", "INTEGER")
+                ("computer_count", "INTEGER"),
+                ("stale_objects_score", "INTEGER"),
+                ("privileged_accounts_score", "INTEGER"),
+                ("trusts_score", "INTEGER"),
+                ("anomalies_score", "INTEGER"),
+                ("original_file", "TEXT"),
+                ("html_file", "TEXT")
             ]:
                 if col_def[0] not in existing_columns:
                     c.execute(f"ALTER TABLE reports ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -109,8 +115,9 @@ class ReportStorage:
     def save_report(self, report: Report):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
+            # Upsert report (insert or replace)
             c.execute("""
-                INSERT INTO reports (
+                INSERT OR REPLACE INTO reports (
                     id, domain, domain_sid,
                     domain_functional_level, forest_functional_level,
                     maturity_level, dc_count, user_count, computer_count,
@@ -118,8 +125,8 @@ class ReportStorage:
                     global_score, high_score, medium_score, low_score,
                     stale_objects_score, privileged_accounts_score,
                     trusts_score, anomalies_score,
-                    original_file
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    original_file, html_file
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 report.id,
                 report.domain,
@@ -140,7 +147,8 @@ class ReportStorage:
                 report.privileged_accounts_score,
                 report.trusts_score,
                 report.anomalies_score,
-                report.original_file
+                report.original_file,
+                getattr(report, 'html_file', None)
             ))
             for f in report.findings:
                 c.execute(
@@ -149,12 +157,20 @@ class ReportStorage:
                 )
                 c.execute(
                     """
-                    INSERT INTO findings
+                    INSERT OR REPLACE INTO findings
                     (id, report_id, category, name, score, description)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (f.id, f.report_id, f.category, f.name, f.score, f.description),
                 )
+
+    def update_report_html(self, report_id: str, html_file: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE reports SET html_file = ? WHERE id = ?",
+                (html_file, report_id),
+            )
 
     def get_all_reports(self) -> List[Report]:
         with sqlite3.connect(self.db_path) as conn:
@@ -195,6 +211,7 @@ class ReportStorage:
                 trusts_score=row[17],
                 anomalies_score=row[18],
                 original_file=row[19],
+                html_file=row[20] if len(row) > 20 else None,
                 findings=findings_by_report.get(row[0], [])
             ))
 
@@ -208,7 +225,7 @@ class ReportStorage:
                 "forest_functional_level, maturity_level, dc_count, user_count, "
                 "computer_count, report_date, upload_date, global_score, high_score, "
                 "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
-                "trusts_score, anomalies_score FROM reports ORDER BY report_date"
+                "trusts_score, anomalies_score, html_file FROM reports ORDER BY report_date"
             )
             rows = c.fetchall()
         return [
@@ -270,6 +287,7 @@ class ReportStorage:
             trusts_score=row[17],
             anomalies_score=row[18],
             original_file=row[19],
+            html_file=row[20] if len(row) > 20 else None,
             findings=findings,
         )
 
@@ -299,11 +317,25 @@ class ReportStorage:
             c = conn.cursor()
             c.execute(
                 """
-              SELECT f.category, f.name, r.description, COUNT(*) as count, AVG(f.score) as avg_score
-              FROM findings f
-              LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
-              GROUP BY f.category, f.name, r.description
-              ORDER BY count DESC
+                WITH latest AS (
+                    SELECT id FROM reports ORDER BY report_date DESC LIMIT 1
+                )
+                SELECT 
+                    f.category, 
+                    f.name, 
+                    r.description, 
+                    COUNT(*) AS count, 
+                    AVG(f.score) AS avg_score,
+                    CASE WHEN EXISTS (
+                        SELECT 1 
+                        FROM findings lf 
+                        JOIN latest ON lf.report_id = latest.id
+                        WHERE lf.category = f.category AND lf.name = f.name
+                    ) THEN 1 ELSE 0 END AS in_latest
+                FROM findings f
+                LEFT JOIN risks r ON f.category = r.category AND f.name = r.name
+                GROUP BY f.category, f.name, r.description
+                ORDER BY count DESC
                 """
             )
             rows = c.fetchall()
@@ -314,6 +346,7 @@ class ReportStorage:
                 "description": row[2] or "",
                 "count": row[3],
                 "avg_score": round(row[4], 1) if row[4] else 0,
+                "inLatest": bool(row[5])
             }
             for row in rows
         ]

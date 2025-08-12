@@ -33,6 +33,11 @@
                    <option value="accepted">Accepted Only</option>
                    <option value="unaccepted">Unaccepted Only</option>
                  </select>
+                 <label class="switch" title="Show only findings present in the latest report">
+                   <input type="checkbox" id="latest-only-toggle">
+                   <span class="slider"></span>
+                 </label>
+                 <span>In latest only</span>
                </div>
                <div class="sort-controls">
                  <select id="sort-findings">
@@ -45,12 +50,19 @@
                  </select>
                </div>
              </div>
+            <div class="table-wrap">
             <table id="recurring-table">
               <thead><tr>
-                <th>Category</th><th>Name</th><th>Count</th><th>Risk Score</th><th>Accepted?</th>
+                <th data-col="category">Category</th>
+                <th data-col="name">Name</th>
+                <th data-col="count">Count</th>
+                <th data-col="avg_score">Risk Score</th>
+                <th data-col="inLatest">In Latest?</th>
+                <th data-col="accepted">Accepted?</th>
               </tr></thead>
               <tbody></tbody>
             </table>
+            </div>
           </div>
         </section>
       </div>

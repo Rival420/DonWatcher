@@ -2,6 +2,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+from datetime import datetime
 from uuid import uuid4
 
 import aiofiles
@@ -77,7 +78,7 @@ async def upload_pingcastle_report(
 ):
     # 1) Validate filename
     filename = Path(file.filename or "").name
-    if not filename.lower().endswith((".xml", ".html")):
+    if not filename.lower().endswith((".xml", ".html", ".htm")):
         raise HTTPException(status_code=400, detail="Invalid file type")
 
     # 2) Read and enforce size
@@ -93,24 +94,45 @@ async def upload_pingcastle_report(
 
     # 4) Parse and store
     try:
-        report: Report = parser.parse_report(saved_path)
-        report.original_file = str(saved_path)
-        storage.save_report(report)
+        ext = saved_path.suffix.lower()
+        response_payload = {"status": "success"}
+        if ext == '.xml':
+            report: Report = parser.parse_report(saved_path)
+            report.original_file = str(saved_path)
+            storage.save_report(report)
 
-        # 5) Alert on unaccepted findings
-        unaccepted = storage.get_unaccepted_findings(report.findings)
-        settings = storage.get_settings()
-        alerter = Alerter(storage)
-        alerter.send_alert(settings, report, unaccepted)
+            # 5) Alert on unaccepted findings
+            unaccepted = storage.get_unaccepted_findings(report.findings)
+            settings = storage.get_settings()
+            alerter = Alerter(storage)
+            alerter.send_alert(settings, report, unaccepted)
+            response_payload["report_id"] = report.id
+        elif ext in ('.html', '.htm'):
+            # Attempt to match HTML to an existing XML report by base filename (ignoring our uuid prefix)
+            base_stem = Path(filename).stem  # original filename without extension
+            matched = None
+            for r in storage.get_all_reports():
+                of = Path(r.original_file or '')
+                if of.suffix.lower() == '.xml' and of.name.endswith(f"_{base_stem}.xml"):
+                    matched = r
+                    break
+            if matched:
+                storage.update_report_html(matched.id, str(saved_path))
+                response_payload["attachedTo"] = matched.id
+            else:
+                logging.info(f"No XML match found for uploaded HTML '{filename}'. Saved as orphaned file only on disk.")
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file extension")
 
     except ValueError as ve:
         # Known parsing error (e.g. bad date)
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception:
+    except Exception as e:
         # Unexpected error
-        raise HTTPException(status_code=500, detail="Failed to process report")
+        logging.exception("Failed to process uploaded report")
+        raise HTTPException(status_code=500, detail=f"Failed to process report: {e}")
 
-    return JSONResponse({"status": "success", "report_id": report.id})
+    return JSONResponse(response_payload)
 
 
 @app.get("/api/reports", response_model=List[ReportSummary])
@@ -171,6 +193,9 @@ def reports_page():
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
     
+# Serve uploaded reports (e.g., PingCastle HTML) at /uploads
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # Mount all other paths to your frontend
 app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
 

@@ -8,6 +8,7 @@ export async function showAnalysis() {
   ]);
   renderChart(scores);
   renderRecurring(freq, accepted);
+  enableColumnDragAndDrop('#recurring-table');
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -18,8 +19,85 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("acceptance-filter").addEventListener("change", renderFilteredFindings);
+  const latestToggle = document.getElementById("latest-only-toggle");
+  if (latestToggle) latestToggle.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
 });
+
+const ORDER_STORAGE_KEY = 'recurringTableColumnOrder';
+
+function enableColumnDragAndDrop(tableSelector) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+
+  // Initialize order from storage or header
+  const initialOrder = getHeaderOrder(table);
+  const saved = loadColumnOrder() || initialOrder;
+  applyColumnOrder(table, saved);
+
+  // Make headers draggable by data key
+  const headerCells = Array.from(table.querySelectorAll('thead th'));
+  headerCells.forEach((th) => {
+    const key = th.dataset.col;
+    th.draggable = true;
+    th.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', key);
+    });
+    th.addEventListener('dragover', (e) => e.preventDefault());
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const fromKey = e.dataTransfer.getData('text/plain');
+      const toKey = th.dataset.col;
+      if (!fromKey || !toKey || fromKey === toKey) return;
+      const currentOrder = getHeaderOrder(table);
+      const fromIdx = currentOrder.indexOf(fromKey);
+      const toIdx = currentOrder.indexOf(toKey);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const newOrder = [...currentOrder];
+      const [moved] = newOrder.splice(fromIdx, 1);
+      newOrder.splice(toIdx, 0, moved);
+      saveColumnOrder(newOrder);
+      applyColumnOrder(table, newOrder);
+    });
+  });
+}
+
+function getHeaderOrder(table) {
+  return Array.from(table.querySelectorAll('thead th')).map(th => th.dataset.col);
+}
+
+function loadColumnOrder() {
+  try {
+    const raw = localStorage.getItem(ORDER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveColumnOrder(order) {
+  try { localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(order)); } catch {}
+}
+
+function applyColumnOrder(table, order) {
+  // Reorder header
+  const theadRow = table.querySelector('thead tr');
+  const thByKey = {};
+  Array.from(table.querySelectorAll('thead th')).forEach(th => { thByKey[th.dataset.col] = th; });
+  order.forEach((key) => {
+    const th = thByKey[key];
+    if (th) theadRow.appendChild(th);
+  });
+
+  // Reorder each body row according to td[data-col]
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach((row) => {
+    const tdByKey = {};
+    Array.from(row.children).forEach(td => { tdByKey[td.dataset.col] = td; });
+    order.forEach((key) => {
+      const td = tdByKey[key];
+      if (td) row.appendChild(td);
+    });
+  });
+}
 
 function renderChart(data) {
   const canvasId = "scoreChart";
@@ -66,6 +144,8 @@ function renderChart(data) {
       ]
     },
     options: {
+      responsive: true,
+      maintainAspectRatio: false,
       scales: {
         x: { title: { display: true, text: "Date" } },
         y: { title: { display: true, text: "Score" } }
@@ -99,6 +179,7 @@ function renderFilteredFindings() {
   const filterText = document.getElementById("findings-filter").value.toLowerCase();
   const categoryFilter = document.getElementById("category-filter").value;
   const acceptanceFilter = document.getElementById("acceptance-filter").value;
+  const latestOnly = !!(document.getElementById("latest-only-toggle") || { checked: false }).checked;
   const sortBy = document.getElementById("sort-findings").value;
   
   const acceptedSet = new Set(acceptedRisks.map(r => `${r.category}|${r.name}`));
@@ -119,7 +200,11 @@ function renderFilteredFindings() {
       matchesAcceptance = !isAccepted;
     }
     
-    return matchesText && matchesCategory && matchesAcceptance;
+    let matchesLatest = true;
+    if (latestOnly) {
+      matchesLatest = !!finding.inLatest;
+    }
+    return matchesText && matchesCategory && matchesAcceptance && matchesLatest;
   });
   
   filteredFindings.sort((a, b) => {
@@ -144,25 +229,24 @@ function renderFilteredFindings() {
   tbody.innerHTML = "";
   
   filteredFindings.forEach((finding) => {
-    const { category, name, count, description, avg_score } = finding;
+    const { category, name, count, description, avg_score, inLatest } = finding;
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
 
     const key = `${category}|${name}`;
     const isAccepted = acceptedSet.has(key);
 
-    tr.innerHTML = `
-      <td>${category}</td>
-      <td>${name}</td>
-      <td>${count}</td>
-      <td>${avg_score}</td>
-      <td>
-        <label class="switch">
-          <input type="checkbox" data-cat="${category}" data-name="${name}" ${isAccepted ? "checked" : ""}>
-          <span class="slider"></span>
-        </label>
-      </td>
-    `;
+    // Build cells with data-col so DnD reorders by key, not by current index
+    const cells = [
+      { key: 'category', html: category },
+      { key: 'name', html: name },
+      { key: 'count', html: count },
+      { key: 'avg_score', html: avg_score },
+      { key: 'inLatest', html: inLatest ? 'Yes' : 'No' },
+      { key: 'accepted', html: `<label class="switch"><input type="checkbox" data-cat="${category}" data-name="${name}" ${isAccepted ? "checked" : ""}><span class="slider"></span></label>` },
+    ];
+
+    tr.innerHTML = cells.map(c => `<td data-col="${c.key}">${c.html}</td>`).join('');
 
     tr.addEventListener("click", (event) => {
       if (event.target.closest('.switch')) {

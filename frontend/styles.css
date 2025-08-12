@@ -92,7 +92,8 @@ body, input, button, select {
 /* Content */
 .content { 
   padding: 2em; 
-  max-width: 800px;
+  width: 100%;
+  max-width: clamp(1000px, 95vw, 1600px);
   margin: 0 auto;
 }
 
@@ -354,7 +355,10 @@ table {
 }
 thead th {
   background: var(--blue); color: #fff; padding: 0.75em; text-align: left;
+  user-select: none;
+  cursor: grab;
 }
+thead th:active { cursor: grabbing; }
 tbody td {
   padding: 0.75em;
   border-bottom: 1px solid var(--border-color);
@@ -373,14 +377,20 @@ tbody tr { cursor: pointer; }
 .modal-content {
   background: var(--card-bg);
   border-radius: 8px;
-  width: 90%;
-  max-width: 700px;
-  max-height: 85vh;
+  width: 95vw;
+  max-width: 1400px;
+  max-height: 90vh;
   overflow-y: auto;
   padding: 1.5em;
   position: relative;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   color: var(--text);
+}
+
+/* Make description cells wrap nicely in report details */
+#findings-table td:nth-child(4) {
+  white-space: normal;
+  word-break: break-word;
 }
 .modal-close {
   position: absolute;
@@ -554,18 +564,31 @@ tbody tr { cursor: pointer; }
 
 #risk-scores .historical-charts {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5em;
 }
 
 .chart-container {
   text-align: center;
-  min-height: 100px; /* Set a minimum height */
-  aspect-ratio: 2 / 1; /* Maintain a 2:1 aspect ratio */
+  height: clamp(180px, 22vh, 320px);
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background-color: var(--gray-lighter);
+}
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Analysis page chart should grow/shrink responsively */
+.chart-wrap {
+  width: 100%;
+  height: clamp(300px, 45vh, 600px);
+}
+.chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .chart-label {
