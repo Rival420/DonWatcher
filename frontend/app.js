@@ -14,9 +14,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  const categorySelect = document.getElementById("category-select");
-  if (categorySelect) {
-    categorySelect.addEventListener("change", () => {
+  const categoryChips = document.getElementById("category-chips");
+  if (categoryChips) {
+    categoryChips.addEventListener("click", (event) => {
+      const chip = event.target.closest('.chip');
+      if (!chip) return;
+      chip.classList.toggle('selected');
       if (window.currentReport) {
         renderFindings(window.currentReport, document.getElementById("sort-select").value);
       }
@@ -134,12 +137,14 @@ async function showDetails(id) {
 function renderFindings(report, sortKey) {
   let arr = [...report.findings];
 
-  // Apply category filter if any selected
-  const catSelect = document.getElementById("category-select");
-  if (catSelect) {
-    const selected = Array.from(catSelect.selectedOptions || []).map(o => o.value);
-    if (selected.length > 0) {
-      arr = arr.filter(f => selected.includes(f.category));
+  // Apply category filter if any selected (chip-based multi-select)
+  const chipContainer = document.getElementById("category-chips");
+  if (chipContainer) {
+    const selectedCategories = Array
+      .from(chipContainer.querySelectorAll('.chip.selected'))
+      .map(chip => chip.dataset.value);
+    if (selectedCategories.length > 0) {
+      arr = arr.filter(f => selectedCategories.includes(f.category));
     }
   }
   switch (sortKey) {
@@ -167,16 +172,19 @@ function renderFindings(report, sortKey) {
 }
 
 function populateCategorySelect(report) {
-  const select = document.getElementById("category-select");
-  if (!select) return;
+  const chipsContainer = document.getElementById("category-chips");
+  if (!chipsContainer) return;
   const categories = [...new Set((report.findings || []).map(f => f.category))].sort();
-  select.innerHTML = '';
-  categories.forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat;
-    opt.textContent = cat;
-    opt.selected = false; // Start with none selected -> shows all
-    select.appendChild(opt);
+  chipsContainer.innerHTML = '';
+  categories.forEach(categoryName => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.dataset.value = categoryName;
+    chip.setAttribute('role', 'option');
+    chip.setAttribute('aria-selected', 'false');
+    chip.innerHTML = `<span class="chip-check"></span><span>${categoryName}</span>`;
+    chipsContainer.appendChild(chip);
   });
 }
 
