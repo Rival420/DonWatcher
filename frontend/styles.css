@@ -400,6 +400,10 @@ tbody tr { cursor: pointer; }
   cursor: pointer;
   color: var(--text);
 }
+.modal-content h2 { margin-bottom: 0.5em; font-weight: 500; }
+.modal-actions { margin-top: 1em; display: flex; justify-content: flex-end; gap: 0.5em; }
+#category-select { min-width: 240px; }
+.modal .save-btn { width: auto; max-width: none; }
 .sort-controls {
   margin: 1em 0 0.5em; display: flex; align-items: center;
 }

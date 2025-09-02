@@ -114,8 +114,8 @@ async function showDetails(id) {
   const report = await res.json();
   window.currentReport = report;
   populateCategorySelect(report);
-  document.getElementById("sort-select").value = 'category';
-  renderFindings(report, 'category');
+  document.getElementById("sort-select").value = 'score_desc';
+  renderFindings(report, 'score_desc');
   const openBtn = document.getElementById('open-report-btn');
   if (openBtn) {
     if (report.html_file) {
@@ -149,8 +149,8 @@ function renderFindings(report, sortKey) {
       arr.sort((a,b) => a.score - b.score); break;
     case 'name':
       arr.sort((a,b) => a.name.localeCompare(b.name)); break;
-    default: 
-      arr.sort((a,b) => a.category.localeCompare(b.category));
+    default:
+      arr.sort((a,b) => a.name.localeCompare(b.name));
   }
   const tbody = document.querySelector("#findings-table tbody");
   tbody.innerHTML = "";
