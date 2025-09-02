@@ -55,14 +55,20 @@
   <div class="modal-content">
     <span id="modal-close" class="modal-close">&times;</span>
     <h2>Report Details</h2>
-    <div class="sort-controls">
-      <label for="sort-select">Sort by:</label>
-      <select id="sort-select">
-        <option value="category">Category</option>
-        <option value="name">Name</option>
-        <option value="score_desc">Score (high→low)</option>
-        <option value="score_asc">Score (low→high)</option>
-      </select>
+    <div class="table-controls" style="margin-bottom: 0.75em;">
+      <div class="filter-controls">
+        <label for="category-select">Categories:</label>
+        <select id="category-select" multiple size="6" style="min-width:240px;"></select>
+      </div>
+      <div class="sort-controls">
+        <label for="sort-select">Sort by:</label>
+        <select id="sort-select">
+          <option value="category">Category</option>
+          <option value="name">Name</option>
+          <option value="score_desc">Score (high→low)</option>
+          <option value="score_asc">Score (low→high)</option>
+        </select>
+      </div>
     </div>
     <div class="table-wrap">
       <table id="findings-table">
