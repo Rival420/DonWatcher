@@ -14,6 +14,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  const categorySelect = document.getElementById("category-select");
+  if (categorySelect) {
+    categorySelect.addEventListener("change", () => {
+      if (window.currentReport) {
+        renderFindings(window.currentReport, document.getElementById("sort-select").value);
+      }
+    });
+  }
+
   document.getElementById("export-btn").addEventListener("click", exportCSV);
 });
 
@@ -104,6 +113,7 @@ async function showDetails(id) {
   const res = await fetch(`/api/reports/${id}`);
   const report = await res.json();
   window.currentReport = report;
+  populateCategorySelect(report);
   document.getElementById("sort-select").value = 'category';
   renderFindings(report, 'category');
   const openBtn = document.getElementById('open-report-btn');
@@ -123,6 +133,15 @@ async function showDetails(id) {
 
 function renderFindings(report, sortKey) {
   let arr = [...report.findings];
+
+  // Apply category filter if any selected
+  const catSelect = document.getElementById("category-select");
+  if (catSelect) {
+    const selected = Array.from(catSelect.selectedOptions || []).map(o => o.value);
+    if (selected.length > 0) {
+      arr = arr.filter(f => selected.includes(f.category));
+    }
+  }
   switch (sortKey) {
     case 'score_desc':
       arr.sort((a,b) => b.score - a.score); break;
@@ -144,6 +163,20 @@ function renderFindings(report, sortKey) {
       <td>${f.description}</td>
     `;
     tbody.appendChild(tr);
+  });
+}
+
+function populateCategorySelect(report) {
+  const select = document.getElementById("category-select");
+  if (!select) return;
+  const categories = [...new Set((report.findings || []).map(f => f.category))].sort();
+  select.innerHTML = '';
+  categories.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    opt.textContent = cat;
+    opt.selected = false; // Start with none selected -> shows all
+    select.appendChild(opt);
   });
 }
 
