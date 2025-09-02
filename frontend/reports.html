@@ -55,15 +55,14 @@
   <div class="modal-content">
     <span id="modal-close" class="modal-close">&times;</span>
     <h2>Report Details</h2>
-    <div class="table-controls" style="margin-bottom: 0.75em;">
+    <div class="table-controls">
       <div class="filter-controls">
         <label for="category-select">Categories:</label>
-        <select id="category-select" multiple size="6" style="min-width:240px;"></select>
+        <select id="category-select" multiple size="6"></select>
       </div>
       <div class="sort-controls">
-        <label for="sort-select">Sort by:</label>
+        <label for="sort-select">Sort</label>
         <select id="sort-select">
-          <option value="category">Category</option>
           <option value="name">Name</option>
           <option value="score_desc">Score (high→low)</option>
           <option value="score_asc">Score (low→high)</option>
@@ -83,8 +82,8 @@
         <tbody></tbody>
       </table>
     </div>
-    <div class="modal-actions" style="margin-top: 1em; display: flex; justify-content: flex-end; gap: 0.5em;">
-      <button id="open-report-btn" class="save-btn" style="max-width:none; width:auto;">Open in report</button>
+    <div class="modal-actions">
+      <button id="open-report-btn" class="save-btn">Open in report</button>
     </div>
   </div>
 </div>
