@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from alerter import Alerter
 from models import Settings
-from storage import ReportStorage, get_storage
+from storage_postgres import PostgresReportStorage, get_storage
 from fastapi.responses import PlainTextResponse, FileResponse
 import os
 
@@ -11,16 +11,21 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 
 @router.get("/api/settings", response_model=Settings)
-def get_settings_api(storage: ReportStorage = Depends(get_storage)):
+def get_settings_api(storage: PostgresReportStorage = Depends(get_storage)):
     return storage.get_settings()
 
 @router.post("/api/settings")
-def update_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
-    storage.update_settings(settings.webhook_url, settings.alert_message)
+def update_settings_api(settings: Settings, storage: PostgresReportStorage = Depends(get_storage)):
+    storage.update_settings(
+        settings.webhook_url, 
+        settings.alert_message, 
+        settings.retention_days,
+        settings.auto_accept_low_severity
+    )
     return {"status": "ok"}
 
 @router.post("/api/settings/test")
-def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_storage)):
+def test_settings_api(settings: Settings, storage: PostgresReportStorage = Depends(get_storage)):
     alerter = Alerter(storage)
     try:
         result = alerter.send_test_alert(settings)
@@ -31,7 +36,7 @@ def test_settings_api(settings: Settings, storage: ReportStorage = Depends(get_s
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/database/clear")
-def clear_database_api(storage: ReportStorage = Depends(get_storage)):
+def clear_database_api(storage: PostgresReportStorage = Depends(get_storage)):
     storage.clear_all_data()
     return PlainTextResponse("Database cleared successfully!")
 

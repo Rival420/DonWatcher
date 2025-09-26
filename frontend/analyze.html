@@ -25,6 +25,9 @@
                          <div class="table-controls">
                <div class="filter-controls">
                  <input type="text" id="findings-filter" placeholder="Filter findings..." />
+                 <select id="tool-filter">
+                   <option value="">All Tools</option>
+                 </select>
                  <select id="category-filter">
                    <option value="">All Categories</option>
                  </select>
@@ -53,10 +56,12 @@
             <div class="table-wrap">
             <table id="recurring-table">
               <thead><tr>
+                <th data-col="tool">Tool</th>
                 <th data-col="category">Category</th>
                 <th data-col="name">Name</th>
                 <th data-col="count">Count</th>
                 <th data-col="avg_score">Risk Score</th>
+                <th data-col="severity">Severity</th>
                 <th data-col="inLatest">In Latest?</th>
                 <th data-col="accepted">Accepted?</th>
               </tr></thead>
@@ -73,7 +78,9 @@
     <div class="modal-content">
       <span class="modal-close">&times;</span>
       <h2 id="risk-modal-title"></h2>
+      <p><strong>Tool:</strong> <span id="risk-modal-tool"></span></p>
       <p><strong>Category:</strong> <span id="risk-modal-category"></span></p>
+      <p><strong>Severity:</strong> <span id="risk-modal-severity"></span></p>
       <p><strong>Description:</strong></p>
       <p id="risk-modal-description"></p>
       <div class="modal-actions">

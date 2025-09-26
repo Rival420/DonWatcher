@@ -21,6 +21,7 @@ function setupUpload() {
   const dz = document.getElementById("dropzone");
   const fileInput = document.getElementById("file-input");
   const statusDiv = document.getElementById("upload-status");
+  const progressDiv = document.getElementById("upload-progress");
 
   dz.addEventListener("click", () => fileInput.click());
   dz.addEventListener("dragover", e => {
@@ -34,30 +35,89 @@ function setupUpload() {
   dz.addEventListener("drop", e => {
     e.preventDefault();
     dz.classList.remove("dragover");
-    fileInput.files = e.dataTransfer.files;
-    uploadFile(e.dataTransfer.files[0]);
+    handleFileSelection(e.dataTransfer.files);
   });
-  fileInput.addEventListener("change", () => uploadFile(fileInput.files[0]));
+  fileInput.addEventListener("change", () => handleFileSelection(fileInput.files));
 
-  async function uploadFile(file) {
+  async function handleFileSelection(files) {
+    if (files.length === 0) return;
+    
+    if (files.length === 1) {
+      await uploadSingleFile(files[0]);
+    } else {
+      await uploadMultipleFiles(files);
+    }
+  }
+
+  async function uploadSingleFile(file) {
     statusDiv.textContent = "Uploading…";
+    statusDiv.style.color = "#888";
     const form = new FormData();
     form.append("file", file);
+    
     try {
       const res = await fetch("/upload", { method: "POST", body: form });
       const data = await res.json();
       if (res.ok) {
-        const displayId = data.report_id || data.attachedTo || '';
-        statusDiv.textContent = "✓ Uploaded" + (displayId ? (": " + displayId) : "");
+        const displayId = data.report_id || data.attached_to || '';
+        statusDiv.textContent = `✓ Uploaded ${file.name}` + (displayId ? ` (ID: ${displayId})` : "");
         statusDiv.style.color = "green";
+        loadReports();
+      } else {
+        statusDiv.textContent = `✗ Error uploading ${file.name}: ` + (data.detail || res.statusText);
+        statusDiv.style.color = "red";
+      }
+    } catch (e) {
+      statusDiv.textContent = `✗ Network error uploading ${file.name}`;
+      statusDiv.style.color = "red";
+    }
+  }
+
+  async function uploadMultipleFiles(files) {
+    progressDiv.style.display = "block";
+    statusDiv.textContent = `Uploading ${files.length} files...`;
+    statusDiv.style.color = "#888";
+    
+    const form = new FormData();
+    for (let file of files) {
+      form.append("files", file);
+    }
+    
+    try {
+      const res = await fetch("/upload/multiple", { method: "POST", body: form });
+      const data = await res.json();
+      
+      if (res.ok) {
+        const results = data.results;
+        const successful = results.filter(r => r.status === "success").length;
+        const failed = results.filter(r => r.status === "error").length;
+        
+        let message = `✓ Uploaded ${successful}/${files.length} files`;
+        if (failed > 0) {
+          message += ` (${failed} failed)`;
+        }
+        
+        statusDiv.innerHTML = message;
+        if (failed > 0) {
+          statusDiv.innerHTML += "<br><small>" + 
+            results.filter(r => r.status === "error")
+                   .map(r => `${r.filename}: ${r.error}`)
+                   .join("<br>") + "</small>";
+          statusDiv.style.color = "#ff9800";
+        } else {
+          statusDiv.style.color = "green";
+        }
+        
         loadReports();
       } else {
         statusDiv.textContent = "✗ Error: " + (data.detail || res.statusText);
         statusDiv.style.color = "red";
       }
-    } catch {
-      statusDiv.textContent = "✗ Network error";
+    } catch (e) {
+      statusDiv.textContent = "✗ Network error during multi-file upload";
       statusDiv.style.color = "red";
+    } finally {
+      progressDiv.style.display = "none";
     }
   }
 }
@@ -73,31 +133,62 @@ function setupGlobalSearch() {
 }
 
 async function loadReports() {
-  const res = await fetch("/api/reports");
-  const reports = await res.json();
-  const tbody = document.querySelector("#reports-table tbody");
-  tbody.innerHTML = "";
-  reports.forEach(r => {
-    const tr = document.createElement("tr");
-    tr.dataset.id = r.id;
-    [
-      r.domain,
-      new Date(r.report_date).toLocaleDateString(),
-      r.global_score,
-      r.stale_objects_score,
-      r.privileged_accounts_score,
-      r.trusts_score,
-      r.anomalies_score,
-    ].forEach(text => {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.appendChild(td);
+  try {
+    const res = await fetch("/api/reports");
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
+    const reports = await res.json();
+    console.log("Loaded reports:", reports); // Debug log
+    
+    const tbody = document.querySelector("#reports-table tbody");
+    tbody.innerHTML = "";
+    
+    if (reports.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="8" style="text-align: center; color: #888;">No reports found. Upload some security reports to get started.</td>';
+      tbody.appendChild(tr);
+      return;
+    }
+    
+    reports.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.dataset.id = r.id;
+      
+      // Tool type badge
+      const toolTd = document.createElement("td");
+      const toolBadge = document.createElement("span");
+      toolBadge.className = `tool-badge tool-${r.tool_type}`;
+      toolBadge.textContent = r.tool_type.toUpperCase();
+      toolTd.appendChild(toolBadge);
+      tr.appendChild(toolTd);
+      
+      // Other columns
+      [
+        r.domain || 'Unknown',
+        new Date(r.report_date).toLocaleDateString(),
+        r.tool_type === 'pingcastle' ? (r.global_score || 0) : (r.total_findings || 0),
+        r.tool_type === 'pingcastle' ? (r.stale_objects_score || 0) : (r.high_severity_findings || 0),
+        r.tool_type === 'pingcastle' ? (r.privileged_accounts_score || 0) : (r.medium_severity_findings || 0),
+        r.tool_type === 'pingcastle' ? (r.trusts_score || 0) : (r.low_severity_findings || 0),
+        r.tool_type === 'pingcastle' ? (r.anomalies_score || 0) : '-',
+      ].forEach(text => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
     });
-    tbody.appendChild(tr);
-  });
-  tbody.querySelectorAll("tr[data-id]").forEach(tr => {
-    tr.addEventListener("click", () => showDetails(tr.dataset.id));
-  });
+    
+    tbody.querySelectorAll("tr[data-id]").forEach(tr => {
+      tr.addEventListener("click", () => showDetails(tr.dataset.id));
+    });
+  } catch (error) {
+    console.error("Failed to load reports:", error);
+    const tbody = document.querySelector("#reports-table tbody");
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #f44336;">Error loading reports. Please check the console for details.</td></tr>';
+  }
 }
 
 async function showDetails(id) {
@@ -130,6 +221,8 @@ function renderFindings(report, sortKey) {
       arr.sort((a,b) => a.score - b.score); break;
     case 'name':
       arr.sort((a,b) => a.name.localeCompare(b.name)); break;
+    case 'severity':
+      arr.sort((a,b) => getSeverityOrder(b.severity) - getSeverityOrder(a.severity)); break;
     default: 
       arr.sort((a,b) => a.category.localeCompare(b.category));
   }
@@ -141,17 +234,24 @@ function renderFindings(report, sortKey) {
       <td>${f.category}</td>
       <td>${f.name}</td>
       <td>${f.score}</td>
+      <td><span class="severity-badge severity-${f.severity}">${f.severity.toUpperCase()}</span></td>
       <td>${f.description}</td>
+      <td>${f.recommendation || '-'}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function getSeverityOrder(severity) {
+  const order = { 'high': 3, 'medium': 2, 'low': 1 };
+  return order[severity] || 0;
 }
 
 function exportCSV() {
   fetch("/api/reports")
     .then(r => r.json())
     .then(reports => {
-      const headers = ["domain","report_date","global_score","stale_objects_score","privileged_accounts_score","trusts_score","anomalies_score"];
+      const headers = ["tool_type","domain","report_date","total_findings","high_severity_findings","medium_severity_findings","low_severity_findings"];
       
       const escapeCsv = (val) => {
         if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
@@ -162,14 +262,23 @@ function exportCSV() {
 
       const lines = [headers.join(",")];
       reports.forEach(r => {
-        lines.push(headers.map(h => escapeCsv(r[h])).join(","));
+        const row = [
+          r.tool_type,
+          r.domain,
+          r.report_date,
+          r.total_findings || 0,
+          r.high_severity_findings || 0,
+          r.medium_severity_findings || 0,
+          r.low_severity_findings || 0
+        ];
+        lines.push(row.map(val => escapeCsv(val)).join(","));
       });
 
       const blob = new Blob([lines.join("\n")], {type:"text/csv"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "donwatch_reports.csv";
+      a.download = "donwatcher_reports.csv";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

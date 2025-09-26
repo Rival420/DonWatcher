@@ -6,6 +6,8 @@
   --blue-dark: #448aff;
   --green: #4caf50;
   --red: #ff5252;
+  --orange: #ff9800;
+  --purple: #9c27b0;
   --gray-light: #0d1b2a;        /* page background */
   --gray-lighter: #152238;      /* slightly lighter surface */
   --card-bg: #1b263b;           /* card and sidebar background */
@@ -665,4 +667,111 @@ tbody tr { cursor: pointer; }
 .tooltip:hover .tooltiptext {
   visibility: visible;
   opacity: 1;
+}
+
+/* Tool type badges */
+.tool-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: white;
+  margin-right: 4px;
+}
+
+.tool-pingcastle {
+  background-color: var(--blue);
+}
+
+.tool-locksmith {
+  background-color: var(--orange);
+}
+
+.tool-domain_analysis {
+  background-color: var(--green);
+}
+
+.tool-custom {
+  background-color: var(--purple);
+}
+
+/* Severity badges */
+.severity-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: white;
+  margin-right: 4px;
+}
+
+.severity-high {
+  background-color: var(--red);
+}
+
+.severity-medium {
+  background-color: var(--orange);
+}
+
+.severity-low {
+  background-color: var(--green);
+}
+
+/* Enhanced modal styles */
+.modal-content .form-group label {
+  font-weight: 500;
+  margin-bottom: 0.5em;
+}
+
+#risk-modal-tool,
+#risk-modal-severity {
+  margin-bottom: 0.5em;
+}
+
+/* Tool filter dropdown */
+#tool-filter {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text);
+  padding: 0.5em;
+  border-radius: 4px;
+  margin-right: 1em;
+}
+
+/* Progress bar for multi-file uploads */
+.progress-container {
+  margin-top: 1em;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s ease;
+  animation: progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.progress-text {
+  font-size: 0.9em;
+  color: var(--text);
+  margin-top: 0.5em;
+  text-align: center;
 }

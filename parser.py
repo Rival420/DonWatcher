@@ -1,10 +1,35 @@
-from models import Report, Finding
+from models import Report, Finding, SecurityToolType
+from parsers.base_parser import BaseSecurityParser
 from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 from defusedxml.ElementTree import parse as safe_parse
+from typing import List
+import logging
 
-class PingCastleParser:
+class PingCastleParser(BaseSecurityParser):
+    @property
+    def tool_type(self) -> SecurityToolType:
+        return SecurityToolType.PINGCASTLE
+    
+    @property
+    def supported_extensions(self) -> List[str]:
+        return ['.xml']
+    
+    def can_parse(self, file_path: Path) -> bool:
+        """Check if this is a PingCastle XML file."""
+        if not self.validate_file(file_path):
+            return False
+        
+        try:
+            tree = safe_parse(file_path)
+            root = tree.getroot()
+            # Check for PingCastle-specific elements
+            return (root.findtext("./DomainFQDN") is not None or 
+                   root.findtext("./GenerationDate") is not None)
+        except Exception:
+            return False
+    
     def parse_report(self, file_path: Path) -> Report:
         tree = safe_parse(file_path)
         root = tree.getroot()
@@ -103,10 +128,12 @@ class PingCastleParser:
             findings.append(Finding(
                 id=str(uuid4()),
                 report_id="",  # fill below
+                tool_type=SecurityToolType.PINGCASTLE,
                 category=cat,
                 name=rid,
                 score=score,
-                description=title
+                description=title,
+                severity=self._determine_severity(score)
             ))
 
         # Compute the new global score as sum of the four columns
@@ -119,6 +146,7 @@ class PingCastleParser:
 
         return Report(
             id=report_id,
+            tool_type=SecurityToolType.PINGCASTLE,
             domain=domain,
             domain_sid=domain_sid,
             domain_functional_level=domain_functional,
@@ -129,7 +157,7 @@ class PingCastleParser:
             computer_count=computer_count,
             report_date=report_date,
             upload_date=datetime.utcnow(),
-            global_score=global_score,                    # <-- replaced PingCastle global
+            global_score=global_score,
             high_score=high_score,
             medium_score=medium_score,
             low_score=low_score,
@@ -140,3 +168,12 @@ class PingCastleParser:
             findings=findings,
             original_file=str(file_path)
         )
+    
+    def _determine_severity(self, score: int) -> str:
+        """Determine severity based on score."""
+        if score >= 20:
+            return "high"
+        elif score >= 10:
+            return "medium"
+        else:
+            return "low"
