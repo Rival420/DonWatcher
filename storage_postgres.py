@@ -560,6 +560,16 @@ class PostgresReportStorage:
             session.commit()
             logging.info("Database cleared successfully")
 
+    def clear_reports_only(self):
+        """Clear only reports and findings data, preserving settings, accepted risks, and agents."""
+        with self._get_session() as session:
+            # Clear in order to respect foreign key constraints
+            session.execute(text("DELETE FROM group_memberships"))
+            session.execute(text("DELETE FROM findings"))
+            session.execute(text("DELETE FROM reports"))
+            session.commit()
+            logging.info("Reports and findings cleared successfully")
+
     def log_alert(self, message: str):
         """Log an alert message."""
         logging.info(f"Alert: {message}")

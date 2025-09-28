@@ -29,11 +29,30 @@ cd Donwatcher
 # Start the full stack (PostgreSQL + DonWatcher)
 docker-compose up -d
 
-# View logs
+# Wait for services to start (about 30-60 seconds)
+# Check that both services are running
+docker-compose ps
+
+# View logs to ensure everything started correctly
 docker-compose logs -f donwatcher
 
 # Access the dashboard
-# http://localhost:8080
+# Open your browser and go to: http://localhost:8080
+```
+
+#### First Time Setup
+1. **Access the Dashboard**: Navigate to [http://localhost:8080](http://localhost:8080)
+2. **Upload Your First Report**: Go to "Reports" and drag a security report file (XML, JSON, CSV, or HTML)
+3. **Configure Alerts**: Visit "Settings" > "Alerting" to set up webhook notifications
+4. **Review Results**: Check the main dashboard for visualizations and trends
+
+#### Stopping the Application
+```bash
+# Stop all services
+docker-compose down
+
+# Stop and remove all data (including database)
+docker-compose down -v
 ```
 
 ### Manual Installation
@@ -172,22 +191,61 @@ This project is licensed under the terms specified in the LICENSE file.
 
 ## Troubleshooting
 
-If you encounter issues:
+If you encounter issues, follow these steps:
 
-1. **Check the Debug Dashboard**: Visit `/debug` for real-time system status
-2. **Review Logs**: Use Docker logs or download backend logs via the settings page
-3. **Test Database Connection**: The debug dashboard shows database connectivity status
-4. **Verify Upload Formats**: Ensure files are in supported formats (XML, JSON, CSV, HTML)
-5. **Check Browser Console**: Frontend error details are logged to browser console
+### Quick Diagnostics
+1. **Check System Status**: Visit [http://localhost:8080/debug](http://localhost:8080/debug) for real-time system status
+2. **Verify Services**: Run `docker-compose ps` to ensure both containers are running
+3. **Check Logs**: View container logs with `docker-compose logs -f donwatcher`
 
-### Common Issues
-- **Reports not showing**: Check `/debug` for database connection issues, verify UUID string conversion
-- **Upload failures**: Verify file formats and check file size limits
-- **Missing findings**: Ensure parsers are registered and database schema is up-to-date
-- **Container startup errors**: Check Docker logs for import errors or database connection issues
-- **500 Internal Server Error**: Usually indicates UUID conversion or database connection problems
-- **Analysis page errors**: Frontend JavaScript errors due to missing data properties - fixed with safe property access
-- **Empty recurring findings table**: Normal if no reports uploaded yet, check browser console for JavaScript errors
+### Common Issues and Solutions
+
+#### Container Won't Start
+```bash
+# Check if port 8080 is already in use
+docker-compose logs donwatcher
+
+# If port conflict, modify docker-compose.yml:
+# ports: "8081:8080"  # Use port 8081 instead
+```
+
+#### Database Connection Issues
+```bash
+# Restart the database container
+docker-compose restart postgres
+
+# Check database logs
+docker-compose logs postgres
+
+# If persistent issues, reset the database
+docker-compose down -v && docker-compose up -d
+```
+
+#### Upload Failures
+- **File Size**: Default limit is 10MB. Check file size and adjust `MAX_UPLOAD_SIZE` if needed
+- **File Format**: Supported formats are XML, JSON, CSV, and HTML
+- **Browser Errors**: Check browser console (F12) for detailed error messages
+
+#### Report Processing Issues
+- **No Findings**: Check that your report format matches supported tools (PingCastle, Locksmith, Domain Analysis)
+- **Parsing Errors**: View the debug dashboard for parser registration status
+- **Missing Data**: Ensure uploaded files contain valid security data
+
+#### Frontend Display Issues
+- **Empty Pages**: Hard refresh the browser (Ctrl+F5) to clear cache
+- **JavaScript Errors**: Check browser console and ensure all assets are loaded
+- **Missing Charts**: Verify that reports have been successfully uploaded and parsed
+
+### Getting Help
+1. **Debug Dashboard**: Most issues can be diagnosed at `/debug`
+2. **Log Files**: Download backend logs from Settings > General > Download Logs
+3. **Browser Console**: Press F12 and check the Console tab for frontend errors
+4. **Docker Logs**: Use `docker-compose logs` to view detailed container logs
+
+### Performance Tips
+- **Large Files**: For files >5MB, upload individually rather than using multi-file upload
+- **Frequent Uploads**: Consider using the agent framework for automated data collection
+- **Database Size**: Use "Settings > Data Management > Clear Reports" to remove old data while preserving configuration
 
 ---
 

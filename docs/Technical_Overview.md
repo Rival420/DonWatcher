@@ -118,6 +118,8 @@ Location: `main.py` and `routers/settings.py`
   - `GET /debug` -> **NEW** - debug dashboard page
 - Settings & Utilities
   - Enhanced settings with retention_days, auto_accept_low_severity
+  - `POST /api/reports/clear` -> **NEW** - clear only reports and findings, preserve settings/risks
+  - `POST /api/database/clear` -> clear entire database (development use)
   - All existing endpoints with enhanced functionality
 
 Static and Pages
@@ -283,7 +285,10 @@ docker-compose down
 ### Database Management
 - **Migrations**: Schema updates via `init_db.sql` with proper constraints
 - **Backup**: Standard PostgreSQL backup tools
-- **Reset**: `POST /api/database/clear` for development
+- **Data Management**: 
+  - `POST /api/reports/clear` - Clear only reports/findings (production-safe)
+  - `POST /api/database/clear` - Full reset for development
+- **Settings Preservation**: Reports can be cleared while maintaining configuration
 
 ## Operational Notes
 - **Containerization**: Production-ready Docker setup with PostgreSQL

@@ -40,6 +40,11 @@ def clear_database_api(storage: PostgresReportStorage = Depends(get_storage)):
     storage.clear_all_data()
     return PlainTextResponse("Database cleared successfully!")
 
+@router.post("/api/reports/clear")
+def clear_reports_api(storage: PostgresReportStorage = Depends(get_storage)):
+    storage.clear_reports_only()
+    return PlainTextResponse("Reports cleared successfully!")
+
 @router.get("/api/logs/webserver")
 def download_webserver_logs_api():
     log_path = f"{LOG_DIR}/webserver.log"
