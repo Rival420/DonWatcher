@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy server code
+COPY server/ ./server/
+COPY init_db.sql .
 
 # Create logs directory
 RUN mkdir -p logs uploaded_reports
@@ -22,4 +23,4 @@ RUN mkdir -p logs uploaded_reports
 EXPOSE 8080
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8080"]

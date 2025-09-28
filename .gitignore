@@ -41,6 +41,10 @@ reports.db
 # Uploaded reports storage
 uploaded_reports/
 
+# PowerShell script logs and custom configs
+DonWatcher-Config-*.json
+DonWatcher-*.log
+
 # Environment variables
 .env
 .env.local

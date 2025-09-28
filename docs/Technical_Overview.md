@@ -3,14 +3,20 @@
 This document explains how DonWatcher works at a technical level: containerized multi-tool architecture, data models and storage, extensible parsing pipeline, alerting, REST API, agent framework, and frontend behavior. It also codifies our coding conventions to ease onboarding and ensure consistency.
 
 ## Architecture at a Glance
-- **Backend**: FastAPI app in `main.py`. Responsibilities: multi-format file upload, extensible parsing, PostgreSQL persistence, analysis endpoints, agent management, static serving, and settings/log utilities.
-- **Parser Framework**: Extensible parser system supporting multiple security tools (PingCastle, Locksmith, Domain Analysis) via `parsers/` with automatic tool detection.
-- **Storage**: `storage_postgres.PostgresReportStorage` persists data in PostgreSQL, supports multiple tool types, group monitoring, agent management, and enhanced accepted-risks with expiration.
-- **Agent Framework**: `agents/` provides data collection agents for automated scanning (Domain Scanner for AD group monitoring).
-- **Alerting**: Enhanced `alerter.Alerter` posts webhook notifications with tool-type awareness and richer metadata.
-- **Routers**: `routers.settings` exposes settings CRUD, test alert, DB clear, and log-download endpoints.
-- **Frontend**: Enhanced static files in `frontend/` with multi-tool support, severity indicators, tool badges, and filtering.
+
+### Server Components (Docker Container)
+- **Backend**: FastAPI app in `server/main.py`. Responsibilities: multi-format file upload, extensible parsing, PostgreSQL persistence, analysis endpoints, static serving, and settings/log utilities.
+- **Parser Framework**: Extensible parser system supporting multiple security tools (PingCastle, Locksmith, Domain Analysis) via `server/parsers/` with automatic tool detection.
+- **Storage**: `server/storage_postgres.PostgresReportStorage` persists data in PostgreSQL, supports multiple tool types, group monitoring, and enhanced accepted-risks with expiration.
+- **Alerting**: Enhanced `server/alerter.Alerter` posts webhook notifications with tool-type awareness and richer metadata.
+- **Routers**: `server/routers/settings.py` exposes settings CRUD, test alert, DB clear, and log-download endpoints.
+- **Frontend**: Enhanced static files in `server/frontend/` with multi-tool support, severity indicators, tool badges, and filtering.
 - **Containerization**: Docker Compose setup with PostgreSQL database and application container.
+
+### Client Components (Remote Machines)
+- **PowerShell Script**: `client/DonWatcher-DomainScanner.ps1` provides standalone domain scanning for Windows machines.
+- **Python Agents**: `client/agents/` contains agent framework for custom integrations and automated data collection.
+- **Configuration**: `client/DonWatcher-Config.json` template for flexible deployment scenarios.
 
 ## Data Model
 Location: `models.py` (Pydantic models with enums)
@@ -189,10 +195,11 @@ Location: `frontend/`
     - Persistent column ordering with localStorage
 
 ## Agent Framework
-Location: `agents/`
-- **Base Agent** (`agents/base_agent.py`): Abstract base class for all data collection agents with error handling, status reporting, and connection testing.
+Location: `client/agents/` and `client/`
+- **Base Agent** (`client/agents/base_agent.py`): Abstract base class for all data collection agents with error handling, status reporting, and connection testing.
 - **Agent Manager**: Central registry for agents with lifecycle management and batch execution.
-- **Domain Scanner Agent** (`agents/domain_scanner_agent.py`): PowerShell-based AD group membership scanner.
+- **Domain Scanner Agent** (`client/agents/domain_scanner_agent.py`): PowerShell-based AD group membership scanner.
+- **Standalone PowerShell Script** (`client/DonWatcher-DomainScanner.ps1`): Deployable script for Windows domain-joined machines.
 
 ### Agent Features
 - Automatic registration and discovery
@@ -201,6 +208,16 @@ Location: `agents/`
 - Report generation with standard format
 - Configuration management via database
 - Status reporting and logging
+
+### PowerShell Domain Scanner (`DonWatcher-DomainScanner.ps1`)
+A standalone, configurable PowerShell script for Windows domain-joined machines that:
+- Collects domain and forest information (functional levels, DC count, user/computer counts)
+- Scans privileged group memberships (Domain Admins, Enterprise Admins, etc.)
+- Sends data to DonWatcher via REST API in standard domain analysis format
+- Supports JSON configuration files for customization
+- Includes connection testing and comprehensive logging
+- Can be deployed via scheduled tasks or Group Policy
+- Requires Active Directory PowerShell module and domain membership
 
 ## Group Monitoring System
 - **Monitored Groups**: Configure which AD groups to track for membership changes.
@@ -332,6 +349,14 @@ docker-compose down
 2. Implement `collect_data()` and `test_connection()` methods
 3. Register agent in startup or configuration system
 4. Add agent-specific UI components if needed
+
+### Deploying PowerShell Domain Scanner
+1. Copy `DonWatcher-DomainScanner.ps1` and `DonWatcher-Config.json` to target machines
+2. Ensure Active Directory PowerShell module is installed (`Install-WindowsFeature RSAT-AD-PowerShell`)
+3. Configure `DonWatcher-Config.json` with appropriate DonWatcher URL and settings
+4. Test connectivity: `.\DonWatcher-DomainScanner.ps1 -TestConnection`
+5. Set up scheduled task for automated execution
+6. Monitor logs and DonWatcher dashboard for successful data collection
 
 ### Adding Analysis Features
 1. Implement queries in `storage_postgres.py` with proper tool_type filtering

@@ -1,5 +1,5 @@
-from models import Report, Finding, SecurityToolType
-from parsers.base_parser import BaseSecurityParser
+from server.models import Report, Finding, SecurityToolType
+from server.parsers.base_parser import BaseSecurityParser
 from uuid import uuid4
 from datetime import datetime
 from pathlib import Path

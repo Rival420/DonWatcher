@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Donwatcher Reports</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <div id="sidebar"></div>
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="global-search" placeholder="Search…" />
+      </div>
+    </header>
+    <div class="content">
+      <section class="card upload-card" id="upload-section">
+        <h2>Upload Security Reports</h2>
+        <div class="dropzone" id="dropzone">
+          <i class="fas fa-cloud-upload-alt fa-3x"></i>
+          <p>Drag &amp; drop files or click to browse</p>
+          <p style="font-size: 0.9em; color: #888; margin-top: 0.5em;">
+            Supports: PingCastle XML/HTML, Locksmith JSON/CSV, Domain Analysis JSON
+          </p>
+          <input type="file" id="file-input" accept=".xml,.html,.htm,.json,.csv" multiple hidden />
+        </div>
+        <div id="upload-status" class="status"></div>
+        <div id="upload-progress" class="progress-container" style="display:none;">
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <div class="progress-text">Processing files...</div>
+        </div>
+      </section>
+      <section class="card reports-card" id="reports-section">
+        <div class="card-header">
+          <h2>Existing Reports</h2>
+          <div class="controls">
+            <input type="text" id="table-search" placeholder="Search reports…" />
+            <button id="export-btn"><i class="fas fa-file-export"></i> Export</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="reports-table">
+            <thead>
+              <tr>
+                <th>Tool</th><th>Domain</th><th>Date</th><th>Score/Findings</th>
+                <th>High</th><th>Medium</th><th>Low</th><th>Extra</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<div id="modal" class="modal hidden">
+  <div class="modal-content">
+    <span id="modal-close" class="modal-close">&times;</span>
+    <h2>Report Details</h2>
+    <div class="sort-controls">
+      <label for="sort-select">Sort by:</label>
+      <select id="sort-select">
+        <option value="category">Category</option>
+        <option value="name">Name</option>
+        <option value="score_desc">Score (high→low)</option>
+        <option value="score_asc">Score (low→high)</option>
+        <option value="severity">Severity</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="findings-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Name</th>
+            <th>Score</th>
+            <th>Severity</th>
+            <th>Description</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="modal-actions" style="margin-top: 1em; display: flex; justify-content: flex-end; gap: 0.5em;">
+      <button id="open-report-btn" class="save-btn" style="max-width:none; width:auto;">Open in report</button>
+    </div>
+  </div>
+</div>
+<script src="nav.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

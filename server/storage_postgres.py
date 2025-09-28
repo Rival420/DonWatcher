@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_, desc, asc, func
 from sqlalchemy.exc import IntegrityError
 
-from database import get_db, SessionLocal
-from models import (
+from server.database import get_db, SessionLocal
+from server.models import (
     Report, Finding, ReportSummary, Settings, AcceptedRisk, Risk,
     MonitoredGroup, GroupMembership, Agent, SecurityToolType, FindingStatus,
     GroupMembershipChange

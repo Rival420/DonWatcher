@@ -1,8 +1,8 @@
 import json
 import logging
 import requests
-from models import Report, Settings, Finding
-from storage_postgres import PostgresReportStorage
+from server.models import Report, Settings, Finding
+from server.storage_postgres import PostgresReportStorage
 from typing import List
 
 class Alerter:

@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from datetime import datetime
-from models import Report, Finding, ReportSummary, Settings, AcceptedRisk, Risk
+from server.models import Report, Finding, ReportSummary, Settings, AcceptedRisk, Risk
 from typing import List, Dict
 
 
