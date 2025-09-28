@@ -52,7 +52,7 @@ class DomainScannerAgent(BaseAgent):
                     id=str(uuid4()),
                     report_id=report_id,
                     tool_type=SecurityToolType.DOMAIN_ANALYSIS,
-                    category="PrivilegedAccounts",
+                    category="DonScanner",
                     name=f"Group_{group_name.replace(' ', '_')}_Members",
                     score=self._calculate_group_risk_score(group_name, len(members)),
                     severity=self._determine_group_severity(group_name, len(members)),

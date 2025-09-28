@@ -313,7 +313,7 @@ function New-DomainAnalysisReport {
                 id = [System.Guid]::NewGuid().ToString()
                 report_id = $reportId
                 tool_type = "domain_analysis"
-                category = "PrivilegedAccounts"
+                category = "DonScanner"
                 name = "Group_$($groupName.Replace(' ', '_'))_Members"
                 score = $score
                 severity = $severity
