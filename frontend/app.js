@@ -14,6 +14,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  const categoryChips = document.getElementById("category-chips");
+  if (categoryChips) {
+    categoryChips.addEventListener("click", (event) => {
+      const chip = event.target.closest('.chip');
+      if (!chip) return;
+      chip.classList.toggle('selected');
+      if (window.currentReport) {
+        renderFindings(window.currentReport, document.getElementById("sort-select").value);
+      }
+    });
+  }
+
   document.getElementById("export-btn").addEventListener("click", exportCSV);
 });
 
@@ -195,8 +207,9 @@ async function showDetails(id) {
   const res = await fetch(`/api/reports/${id}`);
   const report = await res.json();
   window.currentReport = report;
-  document.getElementById("sort-select").value = 'category';
-  renderFindings(report, 'category');
+  populateCategorySelect(report);
+  document.getElementById("sort-select").value = 'score_desc';
+  renderFindings(report, 'score_desc');
   const openBtn = document.getElementById('open-report-btn');
   if (openBtn) {
     if (report.html_file) {
@@ -214,6 +227,17 @@ async function showDetails(id) {
 
 function renderFindings(report, sortKey) {
   let arr = [...report.findings];
+
+  // Apply category filter if any selected (chip-based multi-select)
+  const chipContainer = document.getElementById("category-chips");
+  if (chipContainer) {
+    const selectedCategories = Array
+      .from(chipContainer.querySelectorAll('.chip.selected'))
+      .map(chip => chip.dataset.value);
+    if (selectedCategories.length > 0) {
+      arr = arr.filter(f => selectedCategories.includes(f.category));
+    }
+  }
   switch (sortKey) {
     case 'score_desc':
       arr.sort((a,b) => b.score - a.score); break;
