@@ -23,6 +23,7 @@ export async function showAnalysis() {
     
     renderChart(scores);
     renderRecurring(freq, accepted);
+    loadDomainScannerData(accepted);
     enableColumnDragAndDrop('#recurring-table');
   } catch (error) {
     console.error("Failed to load analysis data:", error);
@@ -47,7 +48,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const latestToggle = document.getElementById("latest-only-toggle");
   if (latestToggle) latestToggle.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
+  setupTabs();
 });
+
+function setupTabs() {
+  document.querySelectorAll('.tab-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      switchTab(e.target.dataset.tab);
+    });
+  });
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  document.querySelectorAll('.tab-link').forEach(link => {
+    link.classList.remove('active');
+  });
+
+  document.getElementById(tabId).classList.add('active');
+  document.querySelector(`.tab-link[data-tab="${tabId}"]`).classList.add('active');
+}
 
 const ORDER_STORAGE_KEY = 'recurringTableColumnOrder';
 
@@ -187,6 +209,14 @@ function renderRecurring(freq, accepted) {
   acceptedRisks = accepted || [];
   
   console.log("Rendering recurring findings:", { freq: allFindings.length, accepted: acceptedRisks.length });
+  console.log("Sample findings:", allFindings.slice(0, 3));
+  
+  // Check if table exists
+  const table = document.querySelector("#recurring-table");
+  if (!table) {
+    console.error("Recurring table not found!");
+    return;
+  }
   
   const categoryFilter = document.getElementById("category-filter");
   const toolFilter = document.getElementById("tool-filter");
@@ -237,9 +267,12 @@ function renderFilteredFindings() {
   
   // Handle empty data
   if (!allFindings || allFindings.length === 0) {
+    console.log("No findings data available");
     tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No recurring findings found. Upload some reports to see analysis.</td></tr>';
     return;
   }
+  
+  console.log("Processing", allFindings.length, "findings");
   
   const acceptedSet = new Set(acceptedRisks.map(r => `${r.tool_type}|${r.category}|${r.name}`));
   
@@ -249,6 +282,12 @@ function renderFilteredFindings() {
     const description = finding.description || '';
     const category = finding.category || '';
     const toolType = finding.toolType || '';
+    
+    // Exclude DonScanner findings from PingCastle tab
+    if (category === 'DonScanner') {
+      console.log("Excluding DonScanner finding:", name);
+      return false;
+    }
     
     const matchesText = name.toLowerCase().includes(filterText) || 
                        description.toLowerCase().includes(filterText) ||
@@ -294,8 +333,12 @@ function renderFilteredFindings() {
   
   tbody.innerHTML = "";
   
+  console.log("Filtered findings count:", filteredFindings.length);
+  console.log("First few filtered findings:", filteredFindings.slice(0, 2));
+  console.log("Filter values:", { filterText, categoryFilter, toolFilter, acceptanceFilter, latestOnly });
+  
   if (filteredFindings.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No findings match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No findings match the current filters. Total available: ' + allFindings.length + '</td></tr>';
     return;
   }
   
@@ -410,9 +453,188 @@ function showRiskModal(finding, isAccepted) {
         const mainToggle = document.querySelector(`#recurring-table input[data-tool="${toolType}"][data-cat="${category}"][data-name="${name}"]`);
         if(mainToggle){
           mainToggle.checked = modalToggle.checked;
-        }
-    };
+    }
+  };
+}
+}
+
+// Domain Scanner functionality
+async function loadDomainScannerData(acceptedRisks) {
+  try {
+    console.log("Loading domain scanner data...");
+    
+    // Get all domain analysis reports
+    const response = await fetch("/api/reports?tool_type=domain_analysis");
+    if (!response.ok) {
+      throw new Error(`Domain scanner API error: ${response.status}`);
+    }
+    
+    const reports = await response.json();
+    console.log("Domain scanner reports loaded:", reports.length);
+    
+    // Extract group membership data from the latest report
+    if (reports.length > 0) {
+      const latestReport = reports[reports.length - 1];
+      const reportDetails = await fetch(`/api/reports/${latestReport.id}`);
+      if (reportDetails.ok) {
+        const report = await reportDetails.json();
+        renderGroupMemberships(report, acceptedRisks);
+      }
+    } else {
+      // Show empty state
+      const tbody = document.querySelector("#group-members-table tbody");
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">No domain scanner data found. Upload a domain analysis report to see group memberships.</td></tr>';
+      }
+    }
+  } catch (error) {
+    console.error("Failed to load domain scanner data:", error);
+    const tbody = document.querySelector("#group-members-table tbody");
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #f44336;">Error loading domain scanner data. Check console for details.</td></tr>';
+    }
   }
+}
+
+function renderGroupMemberships(report, acceptedRisks) {
+  const tbody = document.querySelector("#group-members-table tbody");
+  const groupFilter = document.getElementById("group-name-filter");
+  
+  if (!tbody || !report.findings) return;
+  
+  // Clear and populate group filter
+  groupFilter.innerHTML = '<option value="">All Groups</option>';
+  const groups = new Set();
+  
+  // Extract all group memberships from DonScanner findings
+  const groupMemberships = [];
+  
+  report.findings.forEach(finding => {
+    if (finding.category === "DonScanner" && finding.metadata && finding.metadata.members) {
+      const groupName = finding.metadata.group_name;
+      groups.add(groupName);
+      
+      finding.metadata.members.forEach(member => {
+        groupMemberships.push({
+          group: groupName,
+          member: member.name,
+          type: member.type,
+          sid: member.sid,
+          enabled: member.enabled,
+          finding: finding
+        });
+      });
+    }
+  });
+  
+  // Populate group filter dropdown
+  [...groups].sort().forEach(group => {
+    const option = document.createElement('option');
+    option.value = group;
+    option.textContent = group;
+    groupFilter.appendChild(option);
+  });
+  
+  // Render memberships table
+  renderFilteredGroupMemberships(groupMemberships, acceptedRisks);
+  
+  // Setup event listeners for domain scanner filters
+  document.getElementById("group-filter").addEventListener("input", () => {
+    renderFilteredGroupMemberships(groupMemberships, acceptedRisks);
+  });
+  document.getElementById("group-name-filter").addEventListener("change", () => {
+    renderFilteredGroupMemberships(groupMemberships, acceptedRisks);
+  });
+  document.getElementById("member-acceptance-filter").addEventListener("change", () => {
+    renderFilteredGroupMemberships(groupMemberships, acceptedRisks);
+  });
+}
+
+function renderFilteredGroupMemberships(memberships, acceptedRisks) {
+  const tbody = document.querySelector("#group-members-table tbody");
+  if (!tbody) return;
+  
+  // Get filter values
+  const textFilter = (document.getElementById("group-filter")?.value || "").toLowerCase();
+  const groupFilter = document.getElementById("group-name-filter")?.value || "";
+  const acceptanceFilter = document.getElementById("member-acceptance-filter")?.value || "";
+  
+  // Create accepted risks set for DonScanner findings
+  const acceptedSet = new Set(
+    acceptedRisks
+      .filter(r => r.tool_type === 'domain_analysis')
+      .map(r => `${r.category}|${r.name}`)
+  );
+  
+  // Filter memberships
+  let filtered = memberships.filter(m => {
+    const matchesText = textFilter === "" || 
+                       m.group.toLowerCase().includes(textFilter) ||
+                       m.member.toLowerCase().includes(textFilter);
+    const matchesGroup = groupFilter === "" || m.group === groupFilter;
+    
+    const memberKey = `DonScanner|Group_${m.group.replace(' ', '_')}_Member_${m.member.replace(' ', '_')}`;
+    const isAccepted = acceptedSet.has(memberKey);
+    const matchesAcceptance = acceptanceFilter === "" ||
+                             (acceptanceFilter === "accepted" && isAccepted) ||
+                             (acceptanceFilter === "unaccepted" && !isAccepted);
+    
+    return matchesText && matchesGroup && matchesAcceptance;
+  });
+  
+  // Clear table
+  tbody.innerHTML = "";
+  
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">No memberships match the current filters.</td></tr>';
+    return;
+  }
+  
+  // Render filtered memberships
+  filtered.forEach(membership => {
+    const memberKey = `DonScanner|Group_${membership.group.replace(' ', '_')}_Member_${membership.member.replace(' ', '_')}`;
+    const isAccepted = acceptedSet.has(memberKey);
+    
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${membership.group}</strong></td>
+      <td>
+        ${membership.member}
+        ${!membership.enabled ? '<span style="color: var(--orange); margin-left: 5px;">(Disabled)</span>' : ''}
+      </td>
+      <td><span class="member-type-badge type-${membership.type}">${membership.type.toUpperCase()}</span></td>
+      <td><code style="font-size: 0.8em;">${membership.sid}</code></td>
+      <td>
+        <label class="switch">
+          <input type="checkbox" 
+                 data-tool="domain_analysis" 
+                 data-cat="DonScanner" 
+                 data-name="Group_${membership.group.replace(' ', '_')}_Member_${membership.member.replace(' ', '_')}"
+                 ${isAccepted ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </td>
+    `;
+    
+    // Add click handler for the switch
+    const toggle = tr.querySelector(".switch input");
+    toggle.addEventListener("change", async (e) => {
+      const isChecked = e.target.checked;
+      const toolType = e.target.dataset.tool;
+      const category = e.target.dataset.cat;
+      const name = e.target.dataset.name;
+      
+      try {
+        await updateAcceptedRisk(toolType, category, name, isChecked);
+        console.log(`Updated accepted risk: ${name} = ${isChecked}`);
+      } catch (error) {
+        console.error("Failed to update accepted risk:", error);
+        e.target.checked = !isChecked; // Revert on error
+      }
+    });
+    
+    tbody.appendChild(tr);
+  });
 }
 
 async function updateAcceptedRisk(toolType, category, name, isAccepted) {

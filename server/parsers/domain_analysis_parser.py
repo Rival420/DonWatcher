@@ -28,9 +28,19 @@ class DomainAnalysisParser(BaseSecurityParser):
                 data = json.load(f)
             
             # Check for domain analysis specific structure
-            return (isinstance(data, dict) and 
-                   ('domain' in data or 'domain_info' in data) and
-                   ('groups' in data or 'privileged_groups' in data))
+            # Support both raw format and DonWatcher report format
+            if isinstance(data, dict):
+                # Check for DonWatcher report format (from PowerShell agent)
+                if (data.get('tool_type') == 'domain_analysis' and 
+                    'domain' in data and 'findings' in data):
+                    return True
+                
+                # Check for raw domain analysis format  
+                if (('domain' in data or 'domain_info' in data) and
+                    ('groups' in data or 'privileged_groups' in data)):
+                    return True
+            
+            return False
         except Exception:
             return False
     
@@ -39,6 +49,39 @@ class DomainAnalysisParser(BaseSecurityParser):
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        # Check if this is already a DonWatcher report format
+        if data.get('tool_type') == 'domain_analysis' and 'findings' in data:
+            return self._parse_donwatcher_format(data)
+        
+        # Otherwise parse as raw domain analysis format
+        return self._parse_raw_format(data)
+    
+    def _parse_donwatcher_format(self, data: Dict[str, Any]) -> Report:
+        """Parse data that's already in DonWatcher report format."""
+        from server.models import Report, Finding
+        
+        # Convert findings data to Finding objects
+        findings = []
+        for finding_data in data.get('findings', []):
+            finding = Finding(**finding_data)
+            findings.append(finding)
+        
+        # Create report object
+        report_data = data.copy()
+        report_data['findings'] = findings
+        
+        # Parse dates if they're strings
+        for date_field in ['report_date', 'upload_date']:
+            if date_field in report_data and isinstance(report_data[date_field], str):
+                try:
+                    report_data[date_field] = datetime.fromisoformat(report_data[date_field].replace('Z', '+00:00'))
+                except ValueError:
+                    report_data[date_field] = datetime.utcnow()
+        
+        return Report(**report_data)
+    
+    def _parse_raw_format(self, data: Dict[str, Any]) -> Report:
+        """Parse raw domain analysis data format."""
         # Extract basic information
         domain = data.get('domain', data.get('domain_info', {}).get('name', 'Unknown'))
         report_date_str = data.get('scan_date', data.get('timestamp', datetime.utcnow().isoformat()))
@@ -76,7 +119,7 @@ class DomainAnalysisParser(BaseSecurityParser):
                     id=str(uuid4()),
                     report_id=report_id,
                     tool_type=SecurityToolType.DOMAIN_ANALYSIS,
-                    category="PrivilegedAccounts",
+                    category="DonScanner",
                     name=f"Group_{group_name}_Members",
                     score=self._calculate_group_risk_score(group_name, len(members)),
                     severity=self._determine_group_severity(group_name, len(members)),
@@ -165,7 +208,7 @@ class DomainAnalysisParser(BaseSecurityParser):
         memberships = []
         
         for finding in report.findings:
-            if finding.category == "PrivilegedAccounts" and finding.name.startswith("Group_"):
+            if finding.category == "DonScanner" and finding.name.startswith("Group_"):
                 group_name = finding.metadata.get('group_name', '')
                 members = finding.metadata.get('members', [])
                 

@@ -26,11 +26,17 @@ from server.database import init_database
 try:
     from server.parsers import parser_registry
     # Note: Agents are now client-side components
-    parser_registry = parser_registry
     agent_manager = None  # Agents now run on client machines
-    logging.info("Successfully imported parsers")
-except ImportError as e:
+    if parser_registry:
+        logging.info(f"Successfully imported parsers - Registry has {len(parser_registry.get_all_parsers())} parsers")
+        logging.info(f"Supported extensions: {list(parser_registry._extension_map.keys())}")
+    else:
+        logging.error("Parser registry is None after import")
+except Exception as e:
     logging.error(f"Failed to import parsers: {e}")
+    logging.error(f"Exception type: {type(e)}")
+    import traceback
+    logging.error(f"Traceback: {traceback.format_exc()}")
     # Continue without advanced features
     parser_registry = None
     agent_manager = None
@@ -80,7 +86,7 @@ else:
     logging.warning("Parser registry not available, using fallback mode")
 
 # Directory to store uploaded reports
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent  # Go up one level from server/ to get to project root
 UPLOAD_DIR = BASE_DIR / "uploaded_reports"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -377,28 +383,28 @@ def add_monitored_group(group: MonitoredGroup, storage: PostgresReportStorage = 
 @app.get("/analyze")
 def analyze_page():
     # Serve the standalone analysis page
-    return FileResponse(BASE_DIR / "server" / "frontend" / "analyze.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "analyze.html")
 
 
 @app.get("/reports")
 def reports_page():
     # Serve the reports page
-    return FileResponse(BASE_DIR / "server" / "frontend" / "reports.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "reports.html")
 
 
 @app.get("/settings")
 def settings_page():
-    return FileResponse(BASE_DIR / "server" / "frontend" / "settings.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "settings.html")
 
 @app.get("/debug")
 def debug_page():
-    return FileResponse(BASE_DIR / "server" / "frontend" / "debug.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "debug.html")
     
 # Serve uploaded reports (e.g., PingCastle HTML) at /uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Mount all other paths to your frontend
-app.mount("/", StaticFiles(directory=BASE_DIR / "server" / "frontend", html=True), name="frontend")
+app.mount("/", StaticFiles(directory=Path(__file__).parent / "frontend", html=True), name="frontend")
 
 
 # Note: Agent initialization removed - agents now run on client machines

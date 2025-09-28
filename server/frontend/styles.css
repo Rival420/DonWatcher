@@ -693,6 +693,30 @@ tbody tr { cursor: pointer; }
   background-color: var(--green);
 }
 
+/* Member type badges */
+.member-type-badge {
+  padding: 0.2em 0.4em;
+  border-radius: 0.2em;
+  font-size: 0.7em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.type-user {
+  background-color: var(--green);
+  color: #fff;
+}
+
+.type-computer {
+  background-color: var(--blue);
+  color: #fff;
+}
+
+.type-group {
+  background-color: var(--purple);
+  color: #fff;
+}
+
 .tool-custom {
   background-color: var(--purple);
 }

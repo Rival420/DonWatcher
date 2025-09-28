@@ -195,7 +195,7 @@ class PostgresReportStorage:
                 description=f.description or "",
                 recommendation=f.recommendation or "",
                 status=FindingStatus(f.status),
-                metadata=json.loads(f.metadata) if f.metadata else {}
+                metadata=json.loads(f.metadata) if isinstance(f.metadata, str) and f.metadata else (f.metadata if isinstance(f.metadata, dict) else {})
             )
             for f in findings_result
         ]
