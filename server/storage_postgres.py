@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_, desc, asc, func
 from sqlalchemy.exc import IntegrityError
 
-from database import get_db, SessionLocal
-from models import (
+from server.database import get_db, SessionLocal
+from server.models import (
     Report, Finding, ReportSummary, Settings, AcceptedRisk, Risk,
     MonitoredGroup, GroupMembership, Agent, SecurityToolType, FindingStatus,
     GroupMembershipChange
@@ -195,7 +195,7 @@ class PostgresReportStorage:
                 description=f.description or "",
                 recommendation=f.recommendation or "",
                 status=FindingStatus(f.status),
-                metadata=json.loads(f.metadata) if f.metadata else {}
+                metadata=json.loads(f.metadata) if isinstance(f.metadata, str) and f.metadata else (f.metadata if isinstance(f.metadata, dict) else {})
             )
             for f in findings_result
         ]

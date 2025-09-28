@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from alerter import Alerter
-from models import Settings
-from storage_postgres import PostgresReportStorage, get_storage
+from server.alerter import Alerter
+from server.models import Settings
+from server.storage_postgres import PostgresReportStorage, get_storage
 from fastapi.responses import PlainTextResponse, FileResponse
 import os
 

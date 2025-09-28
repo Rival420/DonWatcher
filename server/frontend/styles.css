@@ -402,56 +402,6 @@ tbody tr { cursor: pointer; }
   cursor: pointer;
   color: var(--text);
 }
-.modal-content h2 { margin-bottom: 0.5em; font-weight: 500; }
-.modal-actions { margin-top: 1em; display: flex; justify-content: flex-end; gap: 0.5em; }
-.chip-select {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5em;
-  min-height: 40px;
-  padding: 0.5em;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--gray-lighter);
-  min-width: 280px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  padding: 0.35em 0.7em;
-  border-radius: 999px;
-  border: 1px solid var(--border-color);
-  background: var(--gray-light);
-  color: var(--text);
-  font-size: 0.85em;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.chip:hover {
-  border-color: var(--blue);
-}
-
-.chip.selected {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-}
-
-.chip .chip-check {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-}
-.modal .save-btn { width: auto; max-width: none; }
 .sort-controls {
   margin: 1em 0 0.5em; display: flex; align-items: center;
 }
@@ -741,6 +691,30 @@ tbody tr { cursor: pointer; }
 
 .tool-domain_analysis {
   background-color: var(--green);
+}
+
+/* Member type badges */
+.member-type-badge {
+  padding: 0.2em 0.4em;
+  border-radius: 0.2em;
+  font-size: 0.7em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.type-user {
+  background-color: var(--green);
+  color: #fff;
+}
+
+.type-computer {
+  background-color: var(--blue);
+  color: #fff;
+}
+
+.type-group {
+  background-color: var(--purple);
+  color: #fff;
 }
 
 .tool-custom {

@@ -12,24 +12,31 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List, Optional
 
-from models import (
+from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
     UploadResponse, SecurityToolType
 )
-from storage_postgres import PostgresReportStorage, get_storage
-from parser import PingCastleParser
-from alerter import Alerter
-from routers import settings as settings_router
-from database import init_database
+from server.storage_postgres import PostgresReportStorage, get_storage
+from server.parser import PingCastleParser
+from server.alerter import Alerter
+from server.routers import settings as settings_router
+from server.database import init_database
 
 # Import parsers and agents with error handling
 try:
-    from parsers import parser_registry
-    from agents.base_agent import agent_manager
-    from agents.domain_scanner_agent import DomainScannerAgent
-    logging.info("Successfully imported parsers and agents")
-except ImportError as e:
-    logging.error(f"Failed to import parsers or agents: {e}")
+    from server.parsers import parser_registry
+    # Note: Agents are now client-side components
+    agent_manager = None  # Agents now run on client machines
+    if parser_registry:
+        logging.info(f"Successfully imported parsers - Registry has {len(parser_registry.get_all_parsers())} parsers")
+        logging.info(f"Supported extensions: {list(parser_registry._extension_map.keys())}")
+    else:
+        logging.error("Parser registry is None after import")
+except Exception as e:
+    logging.error(f"Failed to import parsers: {e}")
+    logging.error(f"Exception type: {type(e)}")
+    import traceback
+    logging.error(f"Traceback: {traceback.format_exc()}")
     # Continue without advanced features
     parser_registry = None
     agent_manager = None
@@ -79,7 +86,7 @@ else:
     logging.warning("Parser registry not available, using fallback mode")
 
 # Directory to store uploaded reports
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent  # Go up one level from server/ to get to project root
 UPLOAD_DIR = BASE_DIR / "uploaded_reports"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -195,7 +202,7 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
         
         # Handle group memberships for domain analysis reports
         if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
-            from parsers.domain_analysis_parser import DomainAnalysisParser
+            from server.parsers.domain_analysis_parser import DomainAnalysisParser
             if isinstance(parser, DomainAnalysisParser):
                 memberships = parser.extract_group_memberships(report)
                 if memberships:
@@ -205,6 +212,7 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
         unaccepted = storage.get_unaccepted_findings(report.findings)
         if unaccepted:
             settings = storage.get_settings()
+            from server.alerter import Alerter
             alerter = Alerter(storage)
             alerter.send_alert(settings, report, unaccepted)
         
@@ -369,109 +377,37 @@ def add_monitored_group(group: MonitoredGroup, storage: PostgresReportStorage = 
     group_id = storage.add_monitored_group(group)
     return {"status": "ok", "group_id": group_id}
 
-# Agent Management
-@app.get("/api/agents", response_model=List[dict])
-def get_agents():
-    """Get all registered agents and their status."""
-    if agent_manager:
-        return list(agent_manager.get_agent_statuses().values())
-    else:
-        return []
-
-@app.post("/api/agents/{agent_name}/run")
-async def run_agent(agent_name: str, storage: PostgresReportStorage = Depends(get_storage)):
-    """Manually trigger an agent to collect data."""
-    if not agent_manager:
-        raise HTTPException(status_code=503, detail="Agent manager not available")
-        
-    try:
-        report = await agent_manager.run_agent(agent_name)
-        if report:
-            # Save the report
-            report_id = storage.save_report(report)
-            
-            # Handle group memberships for domain analysis
-            if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
-                # This would be implemented in the agent
-                pass
-            
-            return {"status": "success", "report_id": report_id, "findings_count": len(report.findings)}
-        else:
-            return {"status": "no_data", "message": "No new data collected"}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logging.error(f"Agent run failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Agent execution failed: {e}")
-
-@app.post("/api/agents/{agent_name}/test")
-async def test_agent_connection(agent_name: str):
-    """Test an agent's connection to its data source."""
-    if not agent_manager:
-        raise HTTPException(status_code=503, detail="Agent manager not available")
-        
-    try:
-        agent = agent_manager.get_agent(agent_name)
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        
-        success = await agent.test_connection()
-        return {"status": "success" if success else "failed", "connected": success}
-    except Exception as e:
-        logging.error(f"Agent connection test failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+# Note: Agent Management endpoints removed - agents now run on client machines and submit data via /upload
 
 
 @app.get("/analyze")
 def analyze_page():
     # Serve the standalone analysis page
-    return FileResponse(BASE_DIR / "frontend" / "analyze.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "analyze.html")
 
 
 @app.get("/reports")
 def reports_page():
     # Serve the reports page
-    return FileResponse(BASE_DIR / "frontend" / "reports.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "reports.html")
 
 
 @app.get("/settings")
 def settings_page():
-    return FileResponse(BASE_DIR / "frontend" / "settings.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "settings.html")
 
 @app.get("/debug")
 def debug_page():
-    return FileResponse(BASE_DIR / "frontend" / "debug.html")
+    return FileResponse(Path(__file__).parent / "frontend" / "debug.html")
     
 # Serve uploaded reports (e.g., PingCastle HTML) at /uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Mount all other paths to your frontend
-app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
+app.mount("/", StaticFiles(directory=Path(__file__).parent / "frontend", html=True), name="frontend")
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize agents on startup."""
-    # This would typically load agent configurations from database
-    # For now, we'll create a default domain scanner agent
-    try:
-        if agent_manager and DomainScannerAgent:
-            from models import Agent
-            default_agent = Agent(
-                name="default_domain_scanner",
-                agent_type="domain_scanner", 
-                domain="*",  # Will be determined at runtime
-                is_active=False  # Disabled by default
-            )
-            
-            domain_agent = DomainScannerAgent(default_agent)
-            agent_manager.register_agent(domain_agent)
-            
-            logging.info("Agent initialization complete")
-        else:
-            logging.warning("Agent manager not available, skipping agent initialization")
-    except Exception as e:
-        logging.error(f"Failed to initialize agents: {e}")
+# Note: Agent initialization removed - agents now run on client machines
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))

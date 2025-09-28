@@ -24,6 +24,10 @@ venv.bak/
 .vscode/
 .idea/
 
+#Cursor stuff
+.cursorrules
+.cursor/
+
 # Coverage and test reports
 htmlcov/
 .coverage
@@ -40,6 +44,10 @@ reports.db
 
 # Uploaded reports storage
 uploaded_reports/
+
+# PowerShell script logs and custom configs
+DonWatcher-Config-*.json
+DonWatcher-*.log
 
 # Environment variables
 .env

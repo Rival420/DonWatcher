@@ -17,6 +17,38 @@ DonWatcher is a modern, containerized web-based dashboard for monitoring the hea
 - **Responsive Design**: Mobile-friendly interface with enhanced filtering and sorting capabilities
 - **Robust Error Handling**: Comprehensive error reporting and user-friendly error states
 
+## Repository Structure
+
+DonWatcher is organized into server and client components:
+
+```
+DonWatcher/
+├── server/                    # Server components (Docker container)
+│   ├── main.py               # FastAPI application
+│   ├── models.py             # Data models
+│   ├── parsers/              # Security tool parsers
+│   ├── frontend/             # Web interface
+│   └── ...                   # Other server modules
+├── client/                    # Client components (remote machines)
+│   ├── agents/               # Python agent framework
+│   ├── DonWatcher-DomainScanner.ps1  # PowerShell script
+│   └── DonWatcher-Config.json # Configuration template
+├── docker-compose.yml        # Container orchestration
+├── Dockerfile               # Server container definition
+└── docs/                    # Documentation
+```
+
+### Server Components
+- **FastAPI Backend**: REST API, file processing, database management
+- **Web Frontend**: Modern responsive dashboard with multi-tool support
+- **Parser Framework**: Extensible system for multiple security tools
+- **PostgreSQL Storage**: Robust data persistence with tool-type awareness
+
+### Client Components  
+- **PowerShell Script**: Standalone domain scanner for Windows machines
+- **Python Agents**: Extensible agent framework for custom integrations
+- **Configuration**: Flexible JSON-based configuration system
+
 ## Installation
 
 ### Quick Start with Docker (Recommended)
@@ -128,6 +160,7 @@ uvicorn main:app --reload --port 8080 --host 0.0.0.0
 
 ### Agent-Based Collection
 - **Domain Scanner Agent**: PowerShell-based AD group membership collection
+- **Standalone PowerShell Script**: `DonWatcher-DomainScanner.ps1` for Windows domain-joined machines
 - **Extensible Framework**: Easy to add new data collection agents
 - **Health Monitoring**: Built-in agent status monitoring and connection testing
 
@@ -136,12 +169,75 @@ uvicorn main:app --reload --port 8080 --host 0.0.0.0
 - **Multi-Tool Security Monitoring**: Centralized dashboard for all your AD security tools with multi-file upload support
 - **Batch Report Processing**: Upload multiple security reports simultaneously for efficient data ingestion
 - **Privileged Access Management**: Track and alert on changes to critical AD groups
+- **Remote Domain Scanning**: Deploy PowerShell scripts on domain controllers for automated data collection
 - **Certificate Authority Security**: Monitor ADCS configurations and detect misconfigurations
 - **Risk Trend Analysis**: Historical analysis across all security tools with unified severity mapping
 - **Compliance Reporting**: Generate comprehensive security reports across multiple assessment tools
 - **Team Collaboration**: Shared risk acceptance and finding management across security teams
 - **Automated Monitoring**: Agent-based continuous data collection and alerting
 - **System Diagnostics**: Built-in debug tools for troubleshooting and system health monitoring
+
+## Remote Domain Scanning
+
+DonWatcher includes a standalone PowerShell script for automated domain scanning from Windows domain-joined machines.
+
+### PowerShell Domain Scanner
+
+The `client/DonWatcher-DomainScanner.ps1` script can be deployed on domain controllers or any domain-joined Windows machine to automatically collect and send domain analysis data to your DonWatcher instance.
+
+#### Features
+- **Configurable**: JSON configuration file for easy customization
+- **Privileged Group Monitoring**: Scans Domain Admins, Enterprise Admins, and other critical groups
+- **Domain Information**: Collects domain/forest functional levels, DC count, user/computer counts
+- **Flexible Deployment**: Can run manually, via scheduled tasks, or Group Policy
+- **Connection Testing**: Built-in connectivity verification to DonWatcher
+- **Comprehensive Logging**: Detailed logging with configurable verbosity
+
+#### Quick Start
+```powershell
+# Download the client components to a domain-joined Windows machine
+# Ensure Active Directory PowerShell module is installed
+
+# Basic usage - will create default config file
+.\client\DonWatcher-DomainScanner.ps1 -DonWatcherUrl "http://your-donwatcher:8080"
+
+# Test connection only  
+.\client\DonWatcher-DomainScanner.ps1 -DonWatcherUrl "http://your-donwatcher:8080" -TestConnection
+
+# Use custom configuration file
+.\client\DonWatcher-DomainScanner.ps1 -ConfigFile "custom-config.json" -Verbose
+```
+
+#### Configuration
+The script uses `client/DonWatcher-Config.json` for configuration:
+```json
+{
+  "DonWatcherUrl": "http://localhost:8080",
+  "PrivilegedGroups": [
+    "Domain Admins",
+    "Enterprise Admins",
+    "Schema Admins"
+  ],
+  "MaxUsers": 5000,
+  "MaxComputers": 5000,
+  "TimeoutSeconds": 300
+}
+```
+
+#### Prerequisites
+- Windows PowerShell 5.1+ or PowerShell Core 6+
+- Active Directory PowerShell module (`RSAT-AD-PowerShell`)
+- Domain-joined machine with appropriate permissions
+- Network connectivity to DonWatcher instance
+
+#### Scheduled Execution
+For automated scanning, create a scheduled task:
+```powershell
+$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-File C:\Scripts\DonWatcher-DomainScanner.ps1"
+$Trigger = New-ScheduledTaskTrigger -Daily -At "02:00AM"
+$Principal = New-ScheduledTaskPrincipal -UserId "DOMAIN\ServiceAccount" -LogonType Password
+Register-ScheduledTask -TaskName "DonWatcher Domain Scan" -Action $Action -Trigger $Trigger -Principal $Principal
+```
 
 ## Documentation
 

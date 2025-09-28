@@ -120,23 +120,47 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    clearReportsBtn.addEventListener('click', async () => {
-        if (confirm("Are you sure you want to clear all reports and findings? Settings and accepted risks will be preserved.")) {
-            const response = await fetch("/api/reports/clear", { method: "POST" });
-            const result = await response.text();
-            alert(result);
-            location.reload();
-        }
-    });
+    if (clearReportsBtn) {
+        clearReportsBtn.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to clear all reports and findings? Settings and accepted risks will be preserved.")) {
+                try {
+                    const response = await fetch("/api/reports/clear", { method: "POST" });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const result = await response.text();
+                    alert(result);
+                    location.reload();
+                } catch (error) {
+                    console.error("Failed to clear reports:", error);
+                    alert(`Failed to clear reports: ${error.message}`);
+                }
+            }
+        });
+    } else {
+        console.error("Clear reports button not found!");
+    }
 
-    clearDatabaseBtn.addEventListener('click', async () => {
-        if (confirm("Are you sure you want to permanently clear the entire database? This action cannot be undone.")) {
-            const response = await fetch("/api/database/clear", { method: "POST" });
-            const result = await response.text();
-            alert(result);
-            location.reload();
-        }
-    });
+    if (clearDatabaseBtn) {
+        clearDatabaseBtn.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to permanently clear the entire database? This action cannot be undone.")) {
+                try {
+                    const response = await fetch("/api/database/clear", { method: "POST" });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const result = await response.text();
+                    alert(result);
+                    location.reload();
+                } catch (error) {
+                    console.error("Failed to clear database:", error);
+                    alert(`Failed to clear database: ${error.message}`);
+                }
+            }
+        });
+    } else {
+        console.error("Clear database button not found!");
+    }
     
     async function triggerLogDownload(url, filename, buttonElement) {
         const originalText = buttonElement.innerHTML;

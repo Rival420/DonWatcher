@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from models import Report, Finding, SecurityToolType
+from server.models import Report, Finding, SecurityToolType
 
 class BaseSecurityParser(ABC):
     """Base class for all security tool parsers."""

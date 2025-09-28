@@ -1,8 +1,0 @@
-always_include:
-  - docs/Technical_Overview.md
-  - README.md
-
-notes:
-  - Keep Technical_Overview.md updated whenever backend/frontend behavior or APIs change.
-  - Preserve indentation style of edited files.
-
