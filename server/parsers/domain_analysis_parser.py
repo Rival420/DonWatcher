@@ -63,7 +63,12 @@ class DomainAnalysisParser(BaseSecurityParser):
         # Convert findings data to Finding objects
         findings = []
         for finding_data in data.get('findings', []):
-            finding = Finding(**finding_data)
+            # Normalize categories produced by older agents/scripts
+            normalized = dict(finding_data)
+            name_value = normalized.get('name', '')
+            if normalized.get('category') == 'PrivilegedAccounts' and isinstance(name_value, str) and name_value.startswith('Group_'):
+                normalized['category'] = 'DonScanner'
+            finding = Finding(**normalized)
             findings.append(finding)
         
         # Create report object
@@ -208,7 +213,8 @@ class DomainAnalysisParser(BaseSecurityParser):
         memberships = []
         
         for finding in report.findings:
-            if finding.category == "DonScanner" and finding.name.startswith("Group_"):
+            # Accept both legacy and normalized categories
+            if finding.category in ("DonScanner", "PrivilegedAccounts") and finding.name.startswith("Group_"):
                 group_name = finding.metadata.get('group_name', '')
                 members = finding.metadata.get('members', [])
                 
