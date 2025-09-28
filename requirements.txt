@@ -1,7 +1,10 @@
 python-multipart
 fastapi
-uvicorn
+uvicorn[standard]
 aiofiles
 defusedxml
 pydantic
 requests
+psycopg2-binary
+sqlalchemy
+alembic

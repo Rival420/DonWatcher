@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const copyBtn = document.getElementById("copy-webhook");
     const testAlertBtn = document.getElementById("test-alert-btn");
     const clearDatabaseBtn = document.getElementById("clear-database-btn");
+    const clearReportsBtn = document.getElementById("clear-reports-btn");
     const downloadBackendLogsBtn = document.getElementById("download-backend-logs");
 
     function switchTab(tabId) {
@@ -117,6 +118,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 throw new Error(result.detail || 'Failed to send test alert');
             }
         });
+    });
+
+    clearReportsBtn.addEventListener('click', async () => {
+        if (confirm("Are you sure you want to clear all reports and findings? Settings and accepted risks will be preserved.")) {
+            const response = await fetch("/api/reports/clear", { method: "POST" });
+            const result = await response.text();
+            alert(result);
+            location.reload();
+        }
     });
 
     clearDatabaseBtn.addEventListener('click', async () => {

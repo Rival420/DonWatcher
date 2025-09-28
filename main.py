@@ -10,17 +10,29 @@ import uvicorn
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from typing import List
+from typing import List, Optional
 
 from models import (
-    Report,
-    ReportSummary,
-    AcceptedRisk,
+    Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
+    UploadResponse, SecurityToolType
 )
-from storage import ReportStorage, get_storage
+from storage_postgres import PostgresReportStorage, get_storage
 from parser import PingCastleParser
 from alerter import Alerter
 from routers import settings as settings_router
+from database import init_database
+
+# Import parsers and agents with error handling
+try:
+    from parsers import parser_registry
+    from agents.base_agent import agent_manager
+    from agents.domain_scanner_agent import DomainScannerAgent
+    logging.info("Successfully imported parsers and agents")
+except ImportError as e:
+    logging.error(f"Failed to import parsers or agents: {e}")
+    # Continue without advanced features
+    parser_registry = None
+    agent_manager = None
 
 # --------------------------------------------------------------------------------------
 # Logging
@@ -41,8 +53,30 @@ root_logger.addHandler(log_handler)
 root_logger.setLevel(logging.INFO)
 # --------------------------------------------------------------------------------------
 
-app = FastAPI()
-parser = PingCastleParser()
+app = FastAPI(
+    title="DonWatcher Security Dashboard",
+    description="Multi-tool security monitoring dashboard for Active Directory environments",
+    version="2.0.0"
+)
+
+# Initialize database
+try:
+    if not init_database():
+        logging.error("Failed to initialize database. Please check your PostgreSQL connection.")
+        logging.error("Make sure PostgreSQL is running and DATABASE_URL is set correctly.")
+        exit(1)
+    logging.info("Database initialization successful")
+except Exception as e:
+    logging.error(f"Database initialization failed with exception: {e}")
+    logging.error("Please check PostgreSQL connection and schema.")
+    exit(1)
+
+# Register PingCastle parser (others are registered in parsers/__init__.py)
+if parser_registry:
+    parser_registry.register_parser(PingCastleParser())
+    logging.info("Registered PingCastle parser")
+else:
+    logging.warning("Parser registry not available, using fallback mode")
 
 # Directory to store uploaded reports
 BASE_DIR = Path(__file__).parent
@@ -62,24 +96,62 @@ async def log_request(request: Request, call_next):
     logging.info(f"Request: {request.method} {request.url}")
     try:
         response = await call_next(request)
+        logging.info(f"Response: {request.method} {request.url} - {response.status_code}")
         return response
     except HTTPException as e:
         logging.error(f"HTTP Exception: {e.status_code} {e.detail}")
+        raise  # Re-raise the HTTPException without modification
+    except Exception as e:
+        logging.exception(f"Unhandled exception for {request.method} {request.url}: {e}")
+        # Don't raise a new HTTPException here, let FastAPI handle it
         raise
-    except Exception:
-        logging.exception("An unhandled exception occurred")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@app.post("/upload")
-async def upload_pingcastle_report(
+@app.post("/upload", response_model=UploadResponse)
+async def upload_security_report(
     file: UploadFile = File(...),
-    storage: ReportStorage = Depends(get_storage)
+    storage: PostgresReportStorage = Depends(get_storage)
 ):
+    return await _process_single_file(file, storage)
+
+@app.post("/upload/multiple")
+async def upload_multiple_files(
+    files: List[UploadFile] = File(...),
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Upload multiple files at once."""
+    results = []
+    
+    for file in files:
+        try:
+            result = await _process_single_file(file, storage)
+            results.append({
+                "filename": file.filename,
+                "status": "success", 
+                "result": result
+            })
+        except HTTPException as e:
+            results.append({
+                "filename": file.filename,
+                "status": "error",
+                "error": e.detail
+            })
+        except Exception as e:
+            logging.exception(f"Failed to process file {file.filename}")
+            results.append({
+                "filename": file.filename,
+                "status": "error", 
+                "error": str(e)
+            })
+    
+    return {"results": results}
+
+async def _process_single_file(file: UploadFile, storage: PostgresReportStorage) -> UploadResponse:
+    """Process a single uploaded file."""
     # 1) Validate filename
     filename = Path(file.filename or "").name
-    if not filename.lower().endswith((".xml", ".html", ".htm")):
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    if not filename.lower().endswith((".xml", ".html", ".htm", ".json", ".csv")):
+        raise HTTPException(status_code=400, detail="Invalid file type. Supported: XML, HTML, JSON, CSV")
 
     # 2) Read and enforce size
     contents = await file.read()
@@ -92,89 +164,262 @@ async def upload_pingcastle_report(
     async with aiofiles.open(saved_path, "wb") as out_file:
         await out_file.write(contents)
 
-    # 4) Parse and store
+    # 4) Find appropriate parser and process
     try:
         ext = saved_path.suffix.lower()
-        response_payload = {"status": "success"}
-        if ext == '.xml':
-            report: Report = parser.parse_report(saved_path)
-            report.original_file = str(saved_path)
-            storage.save_report(report)
+        
+        if ext in ('.html', '.htm'):
+            # Handle HTML files (PingCastle reports)
+            response = await _handle_html_upload(filename, saved_path, storage)
+            return UploadResponse(**response)
+        
+        # Find parser for the file
+        if parser_registry:
+            parser = parser_registry.find_parser_for_file(saved_path)
+        else:
+            # Fallback to PingCastle parser for XML files
+            if ext == '.xml':
+                parser = PingCastleParser()
+            else:
+                parser = None
+        
+        if not parser:
+            raise HTTPException(status_code=400, detail=f"No parser available for file type: {ext}")
+        
+        # Parse the report
+        report: Report = parser.parse_report(saved_path)
+        report.original_file = str(saved_path)
+        
+        # Save to database
+        report_id = storage.save_report(report)
+        
+        # Handle group memberships for domain analysis reports
+        if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
+            from parsers.domain_analysis_parser import DomainAnalysisParser
+            if isinstance(parser, DomainAnalysisParser):
+                memberships = parser.extract_group_memberships(report)
+                if memberships:
+                    storage.save_group_memberships(report_id, memberships)
 
-            # 5) Alert on unaccepted findings
-            unaccepted = storage.get_unaccepted_findings(report.findings)
+        # Alert on unaccepted findings
+        unaccepted = storage.get_unaccepted_findings(report.findings)
+        if unaccepted:
             settings = storage.get_settings()
             alerter = Alerter(storage)
             alerter.send_alert(settings, report, unaccepted)
-            response_payload["report_id"] = report.id
-        elif ext in ('.html', '.htm'):
-            # Attempt to match HTML to an existing XML report by base filename (ignoring our uuid prefix)
-            base_stem = Path(filename).stem  # original filename without extension
-            matched = None
-            for r in storage.get_all_reports():
-                of = Path(r.original_file or '')
-                if of.suffix.lower() == '.xml' and of.name.endswith(f"_{base_stem}.xml"):
-                    matched = r
-                    break
-            if matched:
-                storage.update_report_html(matched.id, str(saved_path))
-                response_payload["attachedTo"] = matched.id
-            else:
-                logging.info(f"No XML match found for uploaded HTML '{filename}'. Saved as orphaned file only on disk.")
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file extension")
+        
+        return UploadResponse(
+            status="success",
+            report_id=report_id,
+            tool_type=report.tool_type,
+            message=f"Successfully processed {parser.tool_type.value} report with {len(report.findings)} findings"
+        )
 
     except ValueError as ve:
-        # Known parsing error (e.g. bad date)
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        # Unexpected error
         logging.exception("Failed to process uploaded report")
         raise HTTPException(status_code=500, detail=f"Failed to process report: {e}")
 
-    return JSONResponse(response_payload)
+async def _handle_html_upload(filename: str, saved_path: Path, storage: PostgresReportStorage) -> dict:
+    """Handle HTML file uploads (typically PingCastle reports)."""
+    base_stem = Path(filename).stem
+    
+    # Try to match with existing XML report by searching more broadly
+    reports = storage.get_all_reports_summary()
+    matched = None
+    
+    # Try different matching strategies
+    for report in reports:
+        if not report.original_file:
+            continue
+            
+        original_path = Path(report.original_file)
+        original_stem = original_path.stem
+        
+        # Remove UUID prefix from stored filename to get original stem
+        if '_' in original_stem:
+            actual_stem = '_'.join(original_stem.split('_')[1:])
+        else:
+            actual_stem = original_stem
+            
+        # Match by stem (without extensions)
+        if (original_path.suffix.lower() == '.xml' and 
+            (actual_stem == base_stem or 
+             actual_stem.endswith(base_stem) or 
+             base_stem.endswith(actual_stem))):
+            matched = report
+            break
+    
+    if matched:
+        storage.update_report_html(matched.id, str(saved_path))
+        return {
+            "status": "success",
+            "attached_to": matched.id,
+            "tool_type": SecurityToolType.PINGCASTLE,
+            "message": f"HTML report attached to existing report {matched.id}"
+        }
+    else:
+        logging.info(f"No XML match found for HTML '{filename}'. Saved as orphaned file.")
+        return {
+            "status": "success", 
+            "tool_type": SecurityToolType.PINGCASTLE,
+            "message": f"HTML file saved but no matching XML report found"
+        }
 
 
+# Debug endpoint
+@app.get("/api/debug/status")
+def debug_status(storage: PostgresReportStorage = Depends(get_storage)):
+    """Debug endpoint to check system status."""
+    try:
+        # Test database connection
+        reports = storage.get_all_reports_summary()
+        findings = storage.get_recurring_findings()
+        
+        return {
+            "status": "ok",
+            "database_connected": True,
+            "reports_count": len(reports),
+            "findings_count": len(findings),
+            "parsers_registered": len(parser_registry.get_all_parsers()) if parser_registry else 1,  # At least PingCastle
+            "database_url_set": bool(os.getenv("DATABASE_URL")),
+            "agent_manager_available": agent_manager is not None
+        }
+    except Exception as e:
+        logging.exception("Debug status check failed")
+        return {
+            "status": "error",
+            "error": str(e),
+            "database_connected": False
+        }
+
+# Report Management Endpoints
 @app.get("/api/reports", response_model=List[ReportSummary])
-def list_reports(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_all_reports_summary()
-
+def list_reports(
+    tool_type: Optional[SecurityToolType] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all reports, optionally filtered by tool type."""
+    try:
+        reports = storage.get_all_reports_summary()
+        if tool_type:
+            reports = [r for r in reports if r.tool_type == tool_type]
+        logging.info(f"Returning {len(reports)} reports")
+        return reports
+    except Exception as e:
+        logging.exception("Failed to get reports")
+        raise HTTPException(status_code=500, detail=f"Failed to get reports: {e}")
 
 @app.get("/api/reports/{report_id}", response_model=Report)
-def get_report(report_id: str, storage: ReportStorage = Depends(get_storage)):
+def get_report(report_id: str, storage: PostgresReportStorage = Depends(get_storage)):
     try:
         return storage.get_report(report_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Report not found")
 
-
+# Analysis Endpoints
 @app.get("/analysis/scores")
-def analysis_scores(storage: ReportStorage = Depends(get_storage)):
-    """Return historical score breakdown for charting."""
+def analysis_scores(storage: PostgresReportStorage = Depends(get_storage)):
+    """Return historical score breakdown for charting (PingCastle only)."""
     return storage.get_score_history()
 
-
 @app.get("/analysis/frequency")
-def analysis_frequency(storage: ReportStorage = Depends(get_storage)):
+def analysis_frequency(
+    tool_type: Optional[SecurityToolType] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
     """Return recurring findings aggregated across reports."""
-    return storage.get_recurring_findings()
+    findings = storage.get_recurring_findings()
+    if tool_type:
+        findings = [f for f in findings if f.get('toolType') == tool_type.value]
+    return findings
 
-
+# Accepted Risks Management
 @app.get("/api/accepted_risks", response_model=List[AcceptedRisk])
-def get_accepted_risks(storage: ReportStorage = Depends(get_storage)):
-    return storage.get_accepted_risks()
-
+def get_accepted_risks(
+    tool_type: Optional[SecurityToolType] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get accepted risks, optionally filtered by tool type."""
+    risks = storage.get_accepted_risks()
+    if tool_type:
+        risks = [r for r in risks if r.tool_type == tool_type]
+    return risks
 
 @app.post("/api/accepted_risks")
-def add_accepted_risks(risk: AcceptedRisk, storage: ReportStorage = Depends(get_storage)):
-    storage.add_accepted_risk(risk.category, risk.name)
+def add_accepted_risks(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
+    storage.add_accepted_risk(risk.tool_type, risk.category, risk.name, risk.reason, risk.accepted_by)
     return {"status": "ok"}
-
 
 @app.delete("/api/accepted_risks")
-def delete_accepted_risk(risk: AcceptedRisk, storage: ReportStorage = Depends(get_storage)):
-    storage.remove_accepted_risk(risk.category, risk.name)
+def delete_accepted_risk(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
+    storage.remove_accepted_risk(risk.tool_type, risk.category, risk.name)
     return {"status": "ok"}
+
+# Monitored Groups Management
+@app.get("/api/monitored_groups", response_model=List[MonitoredGroup])
+def get_monitored_groups(storage: PostgresReportStorage = Depends(get_storage)):
+    """Get all monitored groups."""
+    return storage.get_monitored_groups()
+
+@app.post("/api/monitored_groups")
+def add_monitored_group(group: MonitoredGroup, storage: PostgresReportStorage = Depends(get_storage)):
+    """Add a new monitored group."""
+    group_id = storage.add_monitored_group(group)
+    return {"status": "ok", "group_id": group_id}
+
+# Agent Management
+@app.get("/api/agents", response_model=List[dict])
+def get_agents():
+    """Get all registered agents and their status."""
+    if agent_manager:
+        return list(agent_manager.get_agent_statuses().values())
+    else:
+        return []
+
+@app.post("/api/agents/{agent_name}/run")
+async def run_agent(agent_name: str, storage: PostgresReportStorage = Depends(get_storage)):
+    """Manually trigger an agent to collect data."""
+    if not agent_manager:
+        raise HTTPException(status_code=503, detail="Agent manager not available")
+        
+    try:
+        report = await agent_manager.run_agent(agent_name)
+        if report:
+            # Save the report
+            report_id = storage.save_report(report)
+            
+            # Handle group memberships for domain analysis
+            if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
+                # This would be implemented in the agent
+                pass
+            
+            return {"status": "success", "report_id": report_id, "findings_count": len(report.findings)}
+        else:
+            return {"status": "no_data", "message": "No new data collected"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Agent run failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent execution failed: {e}")
+
+@app.post("/api/agents/{agent_name}/test")
+async def test_agent_connection(agent_name: str):
+    """Test an agent's connection to its data source."""
+    if not agent_manager:
+        raise HTTPException(status_code=503, detail="Agent manager not available")
+        
+    try:
+        agent = agent_manager.get_agent(agent_name)
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        
+        success = await agent.test_connection()
+        return {"status": "success" if success else "failed", "connected": success}
+    except Exception as e:
+        logging.error(f"Agent connection test failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
 
 
 @app.get("/analyze")
@@ -192,6 +437,10 @@ def reports_page():
 @app.get("/settings")
 def settings_page():
     return FileResponse(BASE_DIR / "frontend" / "settings.html")
+
+@app.get("/debug")
+def debug_page():
+    return FileResponse(BASE_DIR / "frontend" / "debug.html")
     
 # Serve uploaded reports (e.g., PingCastle HTML) at /uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -199,6 +448,30 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # Mount all other paths to your frontend
 app.mount("/", StaticFiles(directory=BASE_DIR / "frontend", html=True), name="frontend")
 
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize agents on startup."""
+    # This would typically load agent configurations from database
+    # For now, we'll create a default domain scanner agent
+    try:
+        if agent_manager and DomainScannerAgent:
+            from models import Agent
+            default_agent = Agent(
+                name="default_domain_scanner",
+                agent_type="domain_scanner", 
+                domain="*",  # Will be determined at runtime
+                is_active=False  # Disabled by default
+            )
+            
+            domain_agent = DomainScannerAgent(default_agent)
+            agent_manager.register_agent(domain_agent)
+            
+            logging.info("Agent initialization complete")
+        else:
+            logging.warning("Agent manager not available, skipping agent initialization")
+    except Exception as e:
+        logging.error(f"Failed to initialize agents: {e}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))

@@ -1,0 +1,37 @@
+
+services:
+  donwatcher:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://donwatcher:donwatcher_pass@postgres:5432/donwatcher
+      - MAX_UPLOAD_SIZE=10485760
+    volumes:
+      - ./uploaded_reports:/app/uploaded_reports
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=donwatcher
+      - POSTGRES_USER=donwatcher
+      - POSTGRES_PASSWORD=donwatcher_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U donwatcher -d donwatcher"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

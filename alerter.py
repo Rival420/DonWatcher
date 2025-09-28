@@ -2,11 +2,11 @@ import json
 import logging
 import requests
 from models import Report, Settings, Finding
-from storage import ReportStorage
+from storage_postgres import PostgresReportStorage
 from typing import List
 
 class Alerter:
-    def __init__(self, storage: ReportStorage):
+    def __init__(self, storage: PostgresReportStorage):
         self.storage = storage
 
     def send_alert(self, settings: Settings, report: Report, unaccepted: List[Finding]):
@@ -14,13 +14,15 @@ class Alerter:
             return
 
         findings_str = "\n".join(
-            [f"- {f.name} (in {f.category})" for f in unaccepted]
+            [f"- {f.name} (in {f.category}) [{f.tool_type.value}]" for f in unaccepted]
         )
 
-        message = (settings.alert_message or "New unaccepted findings detected!").format(
+        message = (settings.alert_message or "New unaccepted findings detected in {domain}!").format(
             report_id=report.id,
+            domain=report.domain,
             findings_count=len(unaccepted),
-            findings=findings_str
+            findings=findings_str,
+            tool_type=report.tool_type.value
         )
 
         if "ntfy" in settings.webhook_url:
@@ -29,7 +31,7 @@ class Alerter:
                 settings.webhook_url,
                 data=message.encode(encoding='utf-8'),
                 headers={
-                    "Title": f"DonWatcher - {len(unaccepted)} unaccepted risk(s)",
+                    "Title": f"DonWatcher - {len(unaccepted)} unaccepted risk(s) [{report.tool_type.value}]",
                     "Tags": "warning"
                 },
                 timeout=10
@@ -40,8 +42,16 @@ class Alerter:
             payload = {
                 "message": message,
                 "report_id": report.id,
+                "tool_type": report.tool_type.value,
+                "domain": report.domain,
                 "findings": [
-                    {"category": f.category, "name": f.name, "score": f.score}
+                    {
+                        "category": f.category, 
+                        "name": f.name, 
+                        "score": f.score,
+                        "severity": f.severity,
+                        "tool_type": f.tool_type.value
+                    }
                     for f in unaccepted
                 ],
             }
@@ -70,8 +80,10 @@ class Alerter:
         
         message_filled = message.format(
             report_id="TEST-REPORT-123",
+            domain="test.domain.com",
+            tool_type="pingcastle",
             findings_count=2,
-            findings="- Finding: TestFinding1 (Category1)\n- Finding: TestFinding2 (Category2)"
+            findings="- TestFinding1 (Category1) [pingcastle]\n- TestFinding2 (Category2) [locksmith]"
         )
 
         if "ntfy" in settings.webhook_url:
@@ -90,9 +102,11 @@ class Alerter:
             payload = {
                 "message": message_filled,
                 "report_id": "TEST-REPORT-123",
+                "tool_type": "test",
+                "domain": "test.domain.com",
                 "findings": [
-                    {"category": "Category1", "name": "TestFinding1", "score": 10},
-                    {"category": "Category2", "name": "TestFinding2", "score": 20}
+                    {"category": "Category1", "name": "TestFinding1", "score": 10, "severity": "medium", "tool_type": "pingcastle"},
+                    {"category": "Category2", "name": "TestFinding2", "score": 20, "severity": "high", "tool_type": "locksmith"}
                 ]
             }
             response = requests.post(
