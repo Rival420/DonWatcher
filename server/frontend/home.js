@@ -2,6 +2,7 @@ import { createChart, destroyChart } from './chartManager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   loadDomainInfo();
+  loadDomainScannerData();
 });
 
 async function loadDomainInfo() {
@@ -33,7 +34,7 @@ async function loadDomainInfo() {
       document.getElementById('user-count').textContent = detail.user_count;
       document.getElementById('computer-count').textContent = detail.computer_count;
       
-      renderGlobalGauge(detail.global_score);
+      renderGlobalGauge(detail.pingcastle_global_score);
 
       const historicalData = reports.slice(-12);
       
@@ -51,6 +52,100 @@ async function loadDomainInfo() {
   } catch (error) {
     console.error('Failed to load domain info:', error);
   }
+}
+
+async function loadDomainScannerData() {
+  try {
+    // Get domain analysis reports
+    const res = await fetch('/api/reports?tool_type=domain_analysis');
+    const reports = await res.json();
+    
+    const loadingEl = document.getElementById('domain-scanner-loading');
+    const contentEl = document.getElementById('domain-scanner-content');
+    const emptyEl = document.getElementById('domain-scanner-empty');
+    
+    if (!reports || reports.length === 0) {
+      loadingEl.style.display = 'none';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    
+    // Get the latest domain scanner report
+    const latestReport = reports[reports.length - 1];
+    const detailRes = await fetch(`/api/reports/${latestReport.id}`);
+    const reportDetail = await detailRes.json();
+    
+    loadingEl.style.display = 'none';
+    
+    if (!reportDetail.findings || reportDetail.findings.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    
+    // Group findings by group name
+    const groupData = {};
+    reportDetail.findings.forEach(finding => {
+      if (finding.category === 'DonScanner' && finding.name.startsWith('Group_')) {
+        const groupName = finding.metadata?.group_name || 'Unknown Group';
+        const memberCount = finding.metadata?.member_count || 0;
+        const severity = finding.severity || 'medium';
+        
+        groupData[groupName] = {
+          name: groupName,
+          memberCount: memberCount,
+          severity: severity,
+          members: finding.metadata?.members || []
+        };
+      }
+    });
+    
+    // Render group tiles
+    contentEl.innerHTML = '';
+    Object.values(groupData).forEach(group => {
+      const tile = createGroupTile(group);
+      contentEl.appendChild(tile);
+    });
+    
+    contentEl.style.display = 'grid';
+    
+  } catch (error) {
+    console.error('Failed to load domain scanner data:', error);
+    document.getElementById('domain-scanner-loading').style.display = 'none';
+    document.getElementById('domain-scanner-empty').style.display = 'block';
+  }
+}
+
+function createGroupTile(group) {
+  const tile = document.createElement('div');
+  tile.className = `group-tile ${group.severity}-risk`;
+  
+  tile.innerHTML = `
+    <div class="group-header">
+      <div class="group-name">${group.name}</div>
+      <div class="group-severity ${group.severity}">${group.severity}</div>
+    </div>
+    <div class="group-stats">
+      <i class="fas fa-users"></i>
+      <span class="member-count">${group.memberCount}</span>
+      <span>members</span>
+    </div>
+  `;
+  
+  // Add click handler to show member details
+  tile.addEventListener('click', () => {
+    showGroupDetails(group);
+  });
+  
+  return tile;
+}
+
+function showGroupDetails(group) {
+  // Create a simple modal or alert with member details
+  const memberNames = group.members.map(m => 
+    typeof m === 'string' ? m : m.name || 'Unknown'
+  ).join('\n');
+  
+  alert(`${group.name} Members (${group.memberCount}):\n\n${memberNames}`);
 }
 
 function gaugeColor(v) {

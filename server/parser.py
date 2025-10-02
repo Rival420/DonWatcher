@@ -136,8 +136,8 @@ class PingCastleParser(BaseSecurityParser):
                 severity=self._determine_severity(score)
             ))
 
-        # Compute the new global score as sum of the four columns
-        global_score = sum(categories.values())
+        # Compute the new PingCastle global score as sum of the four columns
+        pingcastle_global_score = sum(categories.values())
 
         # Assign report_id to all findings
         report_id = str(uuid4())
@@ -157,7 +157,7 @@ class PingCastleParser(BaseSecurityParser):
             computer_count=computer_count,
             report_date=report_date,
             upload_date=datetime.utcnow(),
-            global_score=global_score,
+            pingcastle_global_score=pingcastle_global_score,
             high_score=high_score,
             medium_score=medium_score,
             low_score=low_score,
