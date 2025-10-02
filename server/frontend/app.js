@@ -168,7 +168,7 @@ async function loadReports() {
       [
         r.domain || 'Unknown',
         new Date(r.report_date).toLocaleDateString(),
-        r.pingcastle_global_score || 0,
+        r.global_score || 0,
         r.stale_objects_score || 0,
         r.privileged_accounts_score || 0,
         r.trusts_score || 0,
