@@ -33,37 +33,65 @@ class PostgresReportStorage:
         """Save a report and its findings to the database."""
         with self._get_session() as session:
             try:
-                # Insert or update report
-                session.execute(text("""
-                    INSERT INTO reports (
-                        id, tool_type, domain, report_date, upload_date,
-                        global_score, high_score, medium_score, low_score,
-                        stale_objects_score, privileged_accounts_score,
-                        trusts_score, anomalies_score, domain_sid,
-                        domain_functional_level, forest_functional_level,
-                        maturity_level, dc_count, user_count, computer_count,
-                        original_file, html_file, metadata
-                    ) VALUES (
-                        :id, :tool_type, :domain, :report_date, :upload_date,
-                        :global_score, :high_score, :medium_score, :low_score,
-                        :stale_objects_score, :privileged_accounts_score,
-                        :trusts_score, :anomalies_score, :domain_sid,
-                        :domain_functional_level, :forest_functional_level,
-                        :maturity_level, :dc_count, :user_count, :computer_count,
-                        :original_file, :html_file, :metadata
-                    )
-                    ON CONFLICT (id) DO UPDATE SET
-                        upload_date = EXCLUDED.upload_date,
-                        html_file = EXCLUDED.html_file,
-                        metadata = EXCLUDED.metadata,
-                        updated_at = NOW()
-                """), {
+                # Handle domain scanner reports differently - don't overwrite domain info
+                if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
+                    # For domain scanner, only save basic report info and domain_sid for validation
+                    session.execute(text("""
+                        INSERT INTO reports (
+                            id, tool_type, domain, report_date, upload_date,
+                            domain_sid, original_file, metadata
+                        ) VALUES (
+                            :id, :tool_type, :domain, :report_date, :upload_date,
+                            :domain_sid, :original_file, :metadata
+                        )
+                        ON CONFLICT (id) DO UPDATE SET
+                            upload_date = EXCLUDED.upload_date,
+                            metadata = EXCLUDED.metadata,
+                            updated_at = NOW()
+                    """), {
+                        'id': report.id,
+                        'tool_type': report.tool_type.value,
+                        'domain': report.domain,
+                        'report_date': report.report_date,
+                        'upload_date': report.upload_date,
+                        'domain_sid': report.domain_sid,
+                        'original_file': report.original_file,
+                        'metadata': report.metadata
+                    })
+                else:
+                    # For PingCastle and other tools, save full report data
+                    # Try with new column name first, fallback to old if migration not run
+                    try:
+                        session.execute(text("""
+                            INSERT INTO reports (
+                                id, tool_type, domain, report_date, upload_date,
+                                pingcastle_global_score, high_score, medium_score, low_score,
+                                stale_objects_score, privileged_accounts_score,
+                                trusts_score, anomalies_score, domain_sid,
+                                domain_functional_level, forest_functional_level,
+                                maturity_level, dc_count, user_count, computer_count,
+                                original_file, html_file, metadata
+                            ) VALUES (
+                                :id, :tool_type, :domain, :report_date, :upload_date,
+                                :pingcastle_global_score, :high_score, :medium_score, :low_score,
+                                :stale_objects_score, :privileged_accounts_score,
+                                :trusts_score, :anomalies_score, :domain_sid,
+                                :domain_functional_level, :forest_functional_level,
+                                :maturity_level, :dc_count, :user_count, :computer_count,
+                                :original_file, :html_file, :metadata
+                            )
+                            ON CONFLICT (id) DO UPDATE SET
+                                upload_date = EXCLUDED.upload_date,
+                                html_file = EXCLUDED.html_file,
+                                metadata = EXCLUDED.metadata,
+                                updated_at = NOW()
+                        """), {
                     'id': report.id,
                     'tool_type': report.tool_type.value,
                     'domain': report.domain,
                     'report_date': report.report_date,
                     'upload_date': report.upload_date,
-                    'global_score': report.global_score or 0,
+                    'pingcastle_global_score': report.pingcastle_global_score or 0,
                     'high_score': report.high_score or 0,
                     'medium_score': report.medium_score or 0,
                     'low_score': report.low_score or 0,
@@ -82,6 +110,59 @@ class PostgresReportStorage:
                     'html_file': report.html_file,
                     'metadata': json.dumps(report.metadata)
                 })
+                    except Exception as e:
+                        if "pingcastle_global_score" in str(e):
+                            # Fallback to old column name if migration not run
+                            session.execute(text("""
+                                INSERT INTO reports (
+                                    id, tool_type, domain, report_date, upload_date,
+                                    global_score, high_score, medium_score, low_score,
+                                    stale_objects_score, privileged_accounts_score,
+                                    trusts_score, anomalies_score, domain_sid,
+                                    domain_functional_level, forest_functional_level,
+                                    maturity_level, dc_count, user_count, computer_count,
+                                    original_file, html_file, metadata
+                                ) VALUES (
+                                    :id, :tool_type, :domain, :report_date, :upload_date,
+                                    :global_score, :high_score, :medium_score, :low_score,
+                                    :stale_objects_score, :privileged_accounts_score,
+                                    :trusts_score, :anomalies_score, :domain_sid,
+                                    :domain_functional_level, :forest_functional_level,
+                                    :maturity_level, :dc_count, :user_count, :computer_count,
+                                    :original_file, :html_file, :metadata
+                                )
+                                ON CONFLICT (id) DO UPDATE SET
+                                    upload_date = EXCLUDED.upload_date,
+                                    html_file = EXCLUDED.html_file,
+                                    metadata = EXCLUDED.metadata,
+                                    updated_at = NOW()
+                            """), {
+                                'id': report.id,
+                                'tool_type': report.tool_type.value,
+                                'domain': report.domain,
+                                'report_date': report.report_date,
+                                'upload_date': report.upload_date,
+                                'global_score': report.pingcastle_global_score or 0,
+                                'high_score': report.high_score or 0,
+                                'medium_score': report.medium_score or 0,
+                                'low_score': report.low_score or 0,
+                                'stale_objects_score': report.stale_objects_score or 0,
+                                'privileged_accounts_score': report.privileged_accounts_score or 0,
+                                'trusts_score': report.trusts_score or 0,
+                                'anomalies_score': report.anomalies_score or 0,
+                                'domain_sid': report.domain_sid,
+                                'domain_functional_level': report.domain_functional_level,
+                                'forest_functional_level': report.forest_functional_level,
+                                'maturity_level': report.maturity_level,
+                                'dc_count': report.dc_count or 0,
+                                'user_count': report.user_count or 0,
+                                'computer_count': report.computer_count or 0,
+                                'original_file': report.original_file,
+                                'html_file': report.html_file,
+                                'metadata': json.dumps(report.metadata)
+                            })
+                        else:
+                            raise
 
                 # Save findings
                 for finding in report.findings:
@@ -160,10 +241,11 @@ class PostgresReportStorage:
     def get_report(self, report_id: str) -> Report:
         """Get a single report with all its findings."""
         with self._get_session() as session:
-            # Get report
-            result = session.execute(text("""
-                SELECT id, tool_type, domain, report_date, upload_date,
-                       global_score, high_score, medium_score, low_score,
+            # Get report - try with new column name first, fallback to old
+            try:
+                result = session.execute(text("""
+                    SELECT id, tool_type, domain, report_date, upload_date,
+                           pingcastle_global_score, high_score, medium_score, low_score,
                        stale_objects_score, privileged_accounts_score,
                        trusts_score, anomalies_score, domain_sid,
                        domain_functional_level, forest_functional_level,
@@ -171,6 +253,21 @@ class PostgresReportStorage:
                        original_file, html_file, metadata
                 FROM reports WHERE id = :report_id
             """), {'report_id': report_id}).fetchone()
+            except Exception as e:
+                if "pingcastle_global_score" in str(e):
+                    # Fallback to old column name
+                    result = session.execute(text("""
+                        SELECT id, tool_type, domain, report_date, upload_date,
+                               global_score, high_score, medium_score, low_score,
+                               stale_objects_score, privileged_accounts_score,
+                               trusts_score, anomalies_score, domain_sid,
+                               domain_functional_level, forest_functional_level,
+                               maturity_level, dc_count, user_count, computer_count,
+                               original_file, html_file, metadata
+                        FROM reports WHERE id = :report_id
+                    """), {'report_id': report_id}).fetchone()
+                else:
+                    raise
 
             if not result:
                 raise ValueError(f"Report {report_id} not found")
@@ -206,7 +303,7 @@ class PostgresReportStorage:
             domain=result.domain,
             report_date=result.report_date,
             upload_date=result.upload_date,
-            global_score=result.global_score,
+            pingcastle_global_score=getattr(result, 'pingcastle_global_score', None) or getattr(result, 'global_score', 0),
             high_score=result.high_score,
             medium_score=result.medium_score,
             low_score=result.low_score,
@@ -230,9 +327,11 @@ class PostgresReportStorage:
     def get_all_reports_summary(self) -> List[ReportSummary]:
         """Get summary of all reports."""
         with self._get_session() as session:
-            results = session.execute(text("""
-                SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                       r.global_score, r.high_score, r.medium_score, r.low_score,
+            # Try with new column name first, fallback to old if migration not run
+            try:
+                results = session.execute(text("""
+                    SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                           r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                        r.stale_objects_score, r.privileged_accounts_score,
                        r.trusts_score, r.anomalies_score, r.domain_sid,
                        r.domain_functional_level, r.forest_functional_level,
@@ -245,7 +344,7 @@ class PostgresReportStorage:
                 FROM reports r
                 LEFT JOIN findings f ON r.id = f.report_id
                 GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                         r.global_score, r.high_score, r.medium_score, r.low_score,
+                         r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                          r.stale_objects_score, r.privileged_accounts_score,
                          r.trusts_score, r.anomalies_score, r.domain_sid,
                          r.domain_functional_level, r.forest_functional_level,
@@ -253,6 +352,34 @@ class PostgresReportStorage:
                          r.original_file, r.html_file
                 ORDER BY r.report_date DESC
             """)).fetchall()
+            except Exception as e:
+                if "pingcastle_global_score" in str(e):
+                    # Fallback to old column name if migration not run
+                    results = session.execute(text("""
+                        SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                               r.global_score, r.high_score, r.medium_score, r.low_score,
+                               r.stale_objects_score, r.privileged_accounts_score,
+                               r.trusts_score, r.anomalies_score, r.domain_sid,
+                               r.domain_functional_level, r.forest_functional_level,
+                               r.maturity_level, r.dc_count, r.user_count, r.computer_count,
+                               r.original_file, r.html_file,
+                               COUNT(f.id) as total_findings,
+                               COUNT(CASE WHEN f.severity = 'high' THEN 1 END) as high_severity_findings,
+                               COUNT(CASE WHEN f.severity = 'medium' THEN 1 END) as medium_severity_findings,
+                               COUNT(CASE WHEN f.severity = 'low' THEN 1 END) as low_severity_findings
+                        FROM reports r
+                        LEFT JOIN findings f ON r.id = f.report_id
+                        GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                                 r.global_score, r.high_score, r.medium_score, r.low_score,
+                                 r.stale_objects_score, r.privileged_accounts_score,
+                                 r.trusts_score, r.anomalies_score, r.domain_sid,
+                                 r.domain_functional_level, r.forest_functional_level,
+                                 r.maturity_level, r.dc_count, r.user_count, r.computer_count,
+                                 r.original_file, r.html_file
+                        ORDER BY r.report_date DESC
+                    """)).fetchall()
+                else:
+                    raise
 
             return [
                 ReportSummary(
@@ -261,7 +388,7 @@ class PostgresReportStorage:
                     domain=r.domain,
                     report_date=r.report_date,
                     upload_date=r.upload_date,
-                    global_score=r.global_score,
+                    pingcastle_global_score=getattr(r, 'pingcastle_global_score', None) or getattr(r, 'global_score', 0),
                     high_score=r.high_score,
                     medium_score=r.medium_score,
                     low_score=r.low_score,

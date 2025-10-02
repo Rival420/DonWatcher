@@ -134,13 +134,13 @@ function setupGlobalSearch() {
 
 async function loadReports() {
   try {
-    const res = await fetch("/api/reports");
+    const res = await fetch("/api/reports?tool_type=pingcastle");
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
     const reports = await res.json();
-    console.log("Loaded reports:", reports); // Debug log
+    console.log("Loaded PingCastle reports:", reports); // Debug log
     
     const tbody = document.querySelector("#reports-table tbody");
     tbody.innerHTML = "";

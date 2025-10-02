@@ -41,6 +41,9 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("Failed to load analysis data");
   });
 
+  // Setup tab switching
+  setupTabs();
+
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("tool-filter").addEventListener("change", renderFilteredFindings);
@@ -652,3 +655,183 @@ async function updateAcceptedRisk(toolType, category, name, isAccepted) {
         body: payload
     });
 }
+
+function setupTabs() {
+  const tabLinks = document.querySelectorAll('.tab-link');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  tabLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      const targetTab = link.getAttribute('data-tab');
+      
+      // Remove active class from all tabs and contents
+      tabLinks.forEach(l => l.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+      
+      // Add active class to clicked tab and corresponding content
+      link.classList.add('active');
+      document.getElementById(targetTab).classList.add('active');
+      
+      // Load domain scanner data when switching to that tab
+      if (targetTab === 'domain-scanner') {
+        loadDomainScannerAnalysis();
+      }
+    });
+  });
+}
+
+async function loadDomainScannerAnalysis() {
+  try {
+    console.log("Loading domain scanner analysis data...");
+    
+    // Get domain analysis reports
+    const reportsRes = await fetch('/api/reports?tool_type=domain_analysis');
+    const reports = await reportsRes.json();
+    
+    if (!reports || reports.length === 0) {
+      renderDomainScannerTable([]);
+      return;
+    }
+    
+    // Get detailed data for all reports
+    const detailedReports = await Promise.all(
+      reports.map(async (report) => {
+        const detailRes = await fetch(`/api/reports/${report.id}`);
+        return detailRes.json();
+      })
+    );
+    
+    // Extract group data from all reports
+    const groupData = [];
+    detailedReports.forEach(report => {
+      if (report.findings) {
+        report.findings.forEach(finding => {
+          if (finding.category === 'DonScanner' && finding.name.startsWith('Group_')) {
+            groupData.push({
+              reportId: report.id,
+              reportDate: new Date(report.report_date),
+              groupName: finding.metadata?.group_name || 'Unknown Group',
+              memberCount: finding.metadata?.member_count || 0,
+              severity: finding.severity || 'medium',
+              score: finding.score || 0,
+              members: finding.metadata?.members || [],
+              description: finding.description || '',
+              recommendation: finding.recommendation || ''
+            });
+          }
+        });
+      }
+    });
+    
+    renderDomainScannerTable(groupData);
+    setupDomainScannerFilters(groupData);
+    
+  } catch (error) {
+    console.error('Failed to load domain scanner analysis:', error);
+    renderDomainScannerTable([]);
+  }
+}
+
+function renderDomainScannerTable(groupData) {
+  const tbody = document.querySelector('#domain-scanner-table tbody');
+  if (!tbody) return;
+  
+  if (!groupData || groupData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">No domain scanner data available</td></tr>';
+    return;
+  }
+  
+  // Sort by report date (newest first)
+  groupData.sort((a, b) => b.reportDate - a.reportDate);
+  
+  tbody.innerHTML = groupData.map(group => `
+    <tr class="finding-row ${group.severity}-severity" data-group="${group.groupName}" data-severity="${group.severity}">
+      <td>${group.reportDate.toLocaleDateString()}</td>
+      <td>
+        <div class="finding-name">${group.groupName}</div>
+      </td>
+      <td>
+        <span class="member-count-badge">${group.memberCount}</span>
+      </td>
+      <td>
+        <span class="severity-badge ${group.severity}">${group.severity.toUpperCase()}</span>
+      </td>
+      <td>${group.score}</td>
+      <td>
+        <button class="view-members-btn" onclick="showGroupMembers('${group.groupName}', ${JSON.stringify(group.members).replace(/"/g, '&quot;')})">
+          View Members
+        </button>
+      </td>
+      <td>
+        <button class="info-btn" onclick="showGroupInfo('${group.groupName}', '${group.description}', '${group.recommendation}')">
+          <i class="fas fa-info-circle"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function setupDomainScannerFilters(groupData) {
+  // Populate group filter
+  const groupFilter = document.getElementById('scanner-group-filter');
+  if (groupFilter) {
+    const uniqueGroups = [...new Set(groupData.map(g => g.groupName))].sort();
+    groupFilter.innerHTML = '<option value="">All Groups</option>' +
+      uniqueGroups.map(group => `<option value="${group}">${group}</option>`).join('');
+  }
+  
+  // Add filter event listeners
+  const filterElements = [
+    'domain-scanner-filter',
+    'scanner-group-filter', 
+    'scanner-severity-filter',
+    'scanner-report-filter'
+  ];
+  
+  filterElements.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener('input', () => filterDomainScannerTable(groupData));
+      element.addEventListener('change', () => filterDomainScannerTable(groupData));
+    }
+  });
+}
+
+function filterDomainScannerTable(allData) {
+  const searchTerm = document.getElementById('domain-scanner-filter')?.value.toLowerCase() || '';
+  const groupFilter = document.getElementById('scanner-group-filter')?.value || '';
+  const severityFilter = document.getElementById('scanner-severity-filter')?.value || '';
+  const reportFilter = document.getElementById('scanner-report-filter')?.value || 'latest';
+  
+  let filteredData = allData.filter(group => {
+    const matchesSearch = !searchTerm || 
+      group.groupName.toLowerCase().includes(searchTerm) ||
+      group.members.some(m => (typeof m === 'string' ? m : m.name || '').toLowerCase().includes(searchTerm));
+    
+    const matchesGroup = !groupFilter || group.groupName === groupFilter;
+    const matchesSeverity = !severityFilter || group.severity === severityFilter;
+    
+    return matchesSearch && matchesGroup && matchesSeverity;
+  });
+  
+  // Handle report filter
+  if (reportFilter === 'latest') {
+    const latestDate = Math.max(...filteredData.map(g => g.reportDate.getTime()));
+    filteredData = filteredData.filter(g => g.reportDate.getTime() === latestDate);
+  }
+  
+  renderDomainScannerTable(filteredData);
+}
+
+// Global functions for button clicks
+window.showGroupMembers = function(groupName, members) {
+  const memberList = members.map(m => 
+    typeof m === 'string' ? m : `${m.name || 'Unknown'} (${m.type || 'user'})`
+  ).join('\n');
+  
+  alert(`${groupName} Members:\n\n${memberList}`);
+};
+
+window.showGroupInfo = function(groupName, description, recommendation) {
+  alert(`${groupName}\n\nDescription: ${description}\n\nRecommendation: ${recommendation}`);
+};

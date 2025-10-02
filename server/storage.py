@@ -30,7 +30,7 @@ class ReportStorage:
                     computer_count INTEGER,
                     report_date TEXT,
                     upload_date TEXT,
-                    global_score INTEGER,
+                    pingcastle_global_score INTEGER,
                     high_score INTEGER,
                     medium_score INTEGER,
                     low_score INTEGER,
@@ -122,7 +122,7 @@ class ReportStorage:
                     domain_functional_level, forest_functional_level,
                     maturity_level, dc_count, user_count, computer_count,
                     report_date, upload_date,
-                    global_score, high_score, medium_score, low_score,
+                    pingcastle_global_score, high_score, medium_score, low_score,
                     stale_objects_score, privileged_accounts_score,
                     trusts_score, anomalies_score,
                     original_file, html_file
@@ -139,7 +139,7 @@ class ReportStorage:
                 report.computer_count,
                 report.report_date.isoformat(),
                 report.upload_date.isoformat(),
-                report.global_score,
+                report.pingcastle_global_score,
                 report.high_score,
                 report.medium_score,
                 report.low_score,
@@ -202,7 +202,7 @@ class ReportStorage:
                 computer_count=row[8],
                 report_date=datetime.fromisoformat(row[9]),
                 upload_date=datetime.fromisoformat(row[10]),
-                global_score=row[11],
+                pingcastle_global_score=row[11],
                 high_score=row[12],
                 medium_score=row[13],
                 low_score=row[14],
@@ -223,7 +223,7 @@ class ReportStorage:
             c.execute(
                 "SELECT id, domain, domain_sid, domain_functional_level, "
                 "forest_functional_level, maturity_level, dc_count, user_count, "
-                "computer_count, report_date, upload_date, global_score, high_score, "
+                "computer_count, report_date, upload_date, pingcastle_global_score, high_score, "
                 "medium_score, low_score, stale_objects_score, privileged_accounts_score, "
                 "trusts_score, anomalies_score, html_file FROM reports ORDER BY report_date"
             )
@@ -241,7 +241,7 @@ class ReportStorage:
                 computer_count=row[8],
                 report_date=datetime.fromisoformat(row[9]),
                 upload_date=datetime.fromisoformat(row[10]),
-                global_score=row[11],
+                pingcastle_global_score=row[11],
                 high_score=row[12],
                 medium_score=row[13],
                 low_score=row[14],
