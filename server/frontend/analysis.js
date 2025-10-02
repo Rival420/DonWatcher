@@ -9,11 +9,11 @@ export async function showAnalysis() {
         if (!r.ok) throw new Error(`Scores API error: ${r.status}`);
         return r.json();
       }),
-      fetch("/analysis/frequency").then(r => {
+      fetch("/analysis/frequency?tool_type=pingcastle").then(r => {
         if (!r.ok) throw new Error(`Frequency API error: ${r.status}`);
         return r.json();
       }),
-      fetch("/api/accepted_risks").then(r => {
+      fetch("/api/accepted_risks?tool_type=pingcastle").then(r => {
         if (!r.ok) throw new Error(`Accepted risks API error: ${r.status}`);
         return r.json();
       }),

@@ -441,7 +441,7 @@ class PostgresReportStorage:
         with self._get_session() as session:
             results = session.execute(text("""
                 WITH latest_report AS (
-                    SELECT id FROM reports ORDER BY report_date DESC LIMIT 1
+                    SELECT id FROM reports WHERE tool_type = 'pingcastle' ORDER BY report_date DESC LIMIT 1
                 )
                 SELECT 
                     f.tool_type,
