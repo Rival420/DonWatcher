@@ -271,6 +271,92 @@ body, input, button, select {
   border-color: var(--blue);
 }
 
+/* Agent Download Page Styles */
+.download-btn {
+  padding: 0.75em 1.5em;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  transition: background-color 0.2s;
+  margin-top: 1em;
+}
+
+.download-btn:hover {
+  background: #45a049;
+}
+
+.download-btn.secondary {
+  background: var(--blue);
+}
+
+.download-btn.secondary:hover {
+  background: var(--blue-dark);
+}
+
+.agent-info {
+  margin: 1em 0;
+  padding: 1em;
+  background: var(--gray-lighter);
+  border-radius: 6px;
+  border-left: 3px solid var(--blue);
+}
+
+.agent-detail {
+  display: flex;
+  align-items: center;
+  margin: 0.5em 0;
+  gap: 0.5em;
+}
+
+.agent-detail i {
+  color: var(--blue);
+  width: 16px;
+}
+
+.deployment-instructions {
+  margin-top: 1em;
+}
+
+.deployment-instructions h3 {
+  margin: 1.5em 0 0.5em 0;
+  color: var(--blue);
+}
+
+.deployment-instructions ol {
+  margin-left: 1.5em;
+}
+
+.deployment-instructions li {
+  margin: 0.5em 0;
+  line-height: 1.5;
+}
+
+.deployment-instructions code {
+  background: var(--gray-lighter);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.config-example {
+  background: var(--gray-lighter);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-top: 0.5em;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
 /* Table Controls */
 .table-controls {
   display: flex;

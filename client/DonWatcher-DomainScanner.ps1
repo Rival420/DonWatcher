@@ -425,28 +425,16 @@ function Send-ReportToDonWatcher {
         # Send to DonWatcher upload endpoint
         $uploadUrl = "$BaseUrl/upload"
         
-        # Create a temporary file to simulate file upload
-        $tempFile = [System.IO.Path]::GetTempFileName()
-        $tempFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
-        
         try {
-            $jsonReport | Out-File -FilePath $tempFile -Encoding UTF8
-            
-            # Use Invoke-RestMethod with file upload
-            $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -InFile $tempFile -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
-            
+            # Use Invoke-RestMethod with body parameter for JSON data
+            $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -Body $jsonReport -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
+
             Write-Log "✅ Report uploaded successfully!" -Level Info
             Write-Log "Report ID: $($response.report_id)" -Level Info
             Write-Log "Tool Type: $($response.tool_type)" -Level Info
             Write-Log "Message: $($response.message)" -Level Info
-            
+
             return $true
-        }
-        finally {
-            # Clean up temp file
-            if (Test-Path $tempFile) {
-                Remove-Item $tempFile -Force
-            }
         }
     }
     catch {

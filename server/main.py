@@ -396,6 +396,10 @@ def reports_page():
 def settings_page():
     return FileResponse(Path(__file__).parent / "frontend" / "settings.html")
 
+@app.get("/agents")
+def agents_page():
+    return FileResponse(Path(__file__).parent / "frontend" / "agents.html")
+
 @app.get("/debug")
 def debug_page():
     return FileResponse(Path(__file__).parent / "frontend" / "debug.html")
