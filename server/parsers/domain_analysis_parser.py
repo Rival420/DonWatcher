@@ -102,14 +102,11 @@ class DomainAnalysisParser(BaseSecurityParser):
         # Generate report ID
         report_id = str(uuid4())
         
-        # Extract domain metadata
+        # Extract domain metadata - but don't set scores that are PingCastle specific
         domain_info = data.get('domain_info', {})
         domain_sid = domain_info.get('sid', '')
-        domain_functional_level = domain_info.get('functional_level', '')
-        forest_functional_level = domain_info.get('forest_functional_level', '')
-        dc_count = domain_info.get('domain_controllers_count', 0)
-        user_count = domain_info.get('users_count', 0)
-        computer_count = domain_info.get('computers_count', 0)
+        # Note: Domain scanner should not overwrite domain functional levels, counts etc.
+        # These should be preserved from PingCastle reports which have more accurate data
         
         findings = []
         
@@ -162,11 +159,8 @@ class DomainAnalysisParser(BaseSecurityParser):
             tool_type=SecurityToolType.DOMAIN_ANALYSIS,
             domain=domain,
             domain_sid=domain_sid,
-            domain_functional_level=domain_functional_level,
-            forest_functional_level=forest_functional_level,
-            dc_count=dc_count,
-            user_count=user_count,
-            computer_count=computer_count,
+            # Don't set domain functional levels, counts etc. - these should come from PingCastle
+            # Domain scanner is only for group membership tracking
             report_date=report_date,
             upload_date=datetime.utcnow(),
             metadata=data.get('metadata', {}),

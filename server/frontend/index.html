@@ -70,7 +70,7 @@
 
         <!-- Risk Scores -->
         <section class="card" id="risk-scores">
-          <h2>Risk Scores</h2>
+          <h2>PingCastle Risk Scores</h2>
           <div class="global-risk-container">
             <canvas id="global-risk-chart"></canvas>
           </div>
@@ -91,6 +91,22 @@
               <canvas id="anomalies-chart"></canvas>
               <div class="chart-label">Anomalies</div>
             </div>
+          </div>
+        </section>
+
+        <!-- Domain Scanner Results -->
+        <section class="card" id="domain-scanner-results">
+          <h2>Domain Scanner - Privileged Groups</h2>
+          <div id="domain-scanner-loading" class="loading-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>Loading domain scanner data...</span>
+          </div>
+          <div id="domain-scanner-content" class="domain-scanner-grid" style="display: none;">
+            <!-- Domain scanner tiles will be populated here -->
+          </div>
+          <div id="domain-scanner-empty" class="empty-state" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <span>No domain scanner data available. Run the domain scanner agent to see privileged group information.</span>
           </div>
         </section>
       </div>
