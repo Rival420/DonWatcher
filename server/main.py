@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
-    UploadResponse, SecurityToolType
+    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig
 )
 from server.storage_postgres import PostgresReportStorage, get_storage
 from server.parser import PingCastleParser
@@ -376,6 +376,43 @@ def add_monitored_group(group: MonitoredGroup, storage: PostgresReportStorage = 
     """Add a new monitored group."""
     group_id = storage.add_monitored_group(group)
     return {"status": "ok", "group_id": group_id}
+
+# Accepted Group Members Management
+@app.get("/api/accepted_group_members", response_model=List[AcceptedGroupMember])
+def get_accepted_group_members(
+    domain: Optional[str] = None,
+    group_name: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get accepted group members, optionally filtered by domain or group."""
+    return storage.get_accepted_group_members(domain, group_name)
+
+@app.post("/api/accepted_group_members")
+def add_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
+    """Accept a group member."""
+    member_id = storage.add_accepted_group_member(member)
+    return {"status": "ok", "member_id": member_id}
+
+@app.delete("/api/accepted_group_members")
+def remove_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
+    """Remove acceptance for a group member."""
+    storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
+    return {"status": "ok"}
+
+# Group Risk Configuration Management
+@app.get("/api/group_risk_configs", response_model=List[GroupRiskConfig])
+def get_group_risk_configs(
+    domain: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get group risk configurations."""
+    return storage.get_group_risk_configs(domain)
+
+@app.post("/api/group_risk_configs")
+def add_group_risk_config(config: GroupRiskConfig, storage: PostgresReportStorage = Depends(get_storage)):
+    """Add or update a group risk configuration."""
+    config_id = storage.save_group_risk_config(config)
+    return {"status": "ok", "config_id": config_id}
 
 # Note: Agent Management endpoints removed - agents now run on client machines and submit data via /upload
 

@@ -173,6 +173,40 @@ INSERT INTO settings (key, value, description) VALUES
     ('retention_days', '365', 'Number of days to retain old reports'),
     ('auto_accept_low_severity', 'false', 'Automatically accept low severity findings');
 
+-- Accepted group members - individual members marked as acceptable in groups
+CREATE TABLE accepted_group_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_name TEXT NOT NULL,
+    member_name TEXT NOT NULL,
+    member_sid TEXT,
+    domain TEXT NOT NULL,
+    reason TEXT,
+    accepted_by TEXT,
+    accepted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(domain, group_name, member_name)
+);
+
+-- Group risk configurations - configurable risk scores per group
+CREATE TABLE group_risk_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_name TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    base_risk_score INTEGER DEFAULT 10,
+    max_acceptable_members INTEGER DEFAULT 5,
+    alert_threshold INTEGER DEFAULT 10,
+    description TEXT,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(domain, group_name)
+);
+
 -- Insert default monitored groups (common high-privilege groups)
 INSERT INTO monitored_groups (group_name, domain, description, alert_on_changes) VALUES
     ('Domain Admins', '*', 'Domain administrators group', true),
@@ -183,3 +217,14 @@ INSERT INTO monitored_groups (group_name, domain, description, alert_on_changes)
     ('Backup Operators', '*', 'Backup operators group', true),
     ('Server Operators', '*', 'Server operators group', true),
     ('Print Operators', '*', 'Print operators group', true);
+
+-- Insert default group risk configurations
+INSERT INTO group_risk_configs (group_name, domain, base_risk_score, max_acceptable_members, alert_threshold) VALUES
+    ('Domain Admins', '*', 35, 3, 5),
+    ('Enterprise Admins', '*', 40, 2, 3),
+    ('Schema Admins', '*', 30, 1, 2),
+    ('Administrators', '*', 25, 5, 8),
+    ('Account Operators', '*', 20, 3, 6),
+    ('Backup Operators', '*', 15, 5, 8),
+    ('Server Operators', '*', 15, 3, 6),
+    ('Print Operators', '*', 10, 5, 8);

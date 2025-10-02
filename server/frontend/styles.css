@@ -460,6 +460,119 @@ body, input, button, select {
   color: var(--orange);
 }
 
+/* Domain Scanner Member Table Styles */
+.member-row {
+  transition: background-color 0.2s;
+}
+
+.member-row:hover {
+  background-color: var(--gray-lighter);
+}
+
+.group-name-cell {
+  font-weight: 500;
+  color: var(--blue);
+}
+
+.member-name-cell {
+  font-weight: 500;
+}
+
+.member-type-badge {
+  padding: 0.2em 0.5em;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.member-type-badge.user {
+  background: var(--blue);
+  color: white;
+}
+
+.member-type-badge.computer {
+  background: var(--purple);
+  color: white;
+}
+
+.member-type-badge.group {
+  background: var(--orange);
+  color: white;
+}
+
+.enabled-badge {
+  padding: 0.2em 0.5em;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 500;
+}
+
+.enabled-badge.enabled {
+  background: var(--green);
+  color: white;
+}
+
+.enabled-badge.disabled {
+  background: var(--red);
+  color: white;
+}
+
+.risk-score-badge {
+  padding: 0.2em 0.5em;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 600;
+  background: var(--gray-lighter);
+  color: var(--text);
+}
+
+.risk-status {
+  padding: 0.2em 0.5em;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.risk-status.accepted {
+  background: var(--green);
+  color: white;
+}
+
+.risk-status.unaccepted {
+  background: var(--red);
+  color: white;
+}
+
+.accept-btn {
+  padding: 0.3em 0.8em;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  margin-right: 0.5em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  transition: all 0.2s;
+}
+
+.accept-btn:not(.accepted) {
+  background: var(--green);
+  color: white;
+}
+
+.accept-btn.accepted {
+  background: var(--red);
+  color: white;
+}
+
+.accept-btn:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
 /* Table Controls */
 .table-controls {
   display: flex;

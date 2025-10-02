@@ -56,7 +56,7 @@ class PostgresReportStorage:
                         'upload_date': report.upload_date,
                         'domain_sid': report.domain_sid,
                         'original_file': report.original_file,
-                        'metadata': report.metadata
+                        'metadata': json.dumps(report.metadata)
                     })
                 else:
                     # For PingCastle and other tools, save full report data
@@ -700,3 +700,134 @@ class PostgresReportStorage:
     def log_alert(self, message: str):
         """Log an alert message."""
         logging.info(f"Alert: {message}")
+
+    # Accepted Group Members Management
+    def get_accepted_group_members(self, domain: str = None, group_name: str = None) -> List:
+        """Get accepted group members with optional filtering."""
+        with self._get_session() as session:
+            query = "SELECT id, group_name, member_name, member_sid, domain, reason, accepted_by, accepted_at, expires_at FROM accepted_group_members WHERE 1=1"
+            params = {}
+            
+            if domain:
+                query += " AND domain = :domain"
+                params['domain'] = domain
+            if group_name:
+                query += " AND group_name = :group_name"
+                params['group_name'] = group_name
+                
+            query += " ORDER BY accepted_at DESC"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            from server.models import AcceptedGroupMember
+            return [
+                AcceptedGroupMember(
+                    id=str(r.id),
+                    group_name=r.group_name,
+                    member_name=r.member_name,
+                    member_sid=r.member_sid,
+                    domain=r.domain,
+                    reason=r.reason,
+                    accepted_by=r.accepted_by,
+                    accepted_at=r.accepted_at,
+                    expires_at=r.expires_at
+                )
+                for r in results
+            ]
+
+    def add_accepted_group_member(self, member) -> str:
+        """Add an accepted group member."""
+        with self._get_session() as session:
+            member_id = str(uuid4())
+            session.execute(text("""
+                INSERT INTO accepted_group_members (
+                    id, group_name, member_name, member_sid, domain, reason, accepted_by
+                ) VALUES (
+                    :id, :group_name, :member_name, :member_sid, :domain, :reason, :accepted_by
+                )
+                ON CONFLICT (domain, group_name, member_name) DO UPDATE SET
+                    reason = EXCLUDED.reason,
+                    accepted_by = EXCLUDED.accepted_by,
+                    accepted_at = NOW(),
+                    updated_at = NOW()
+            """), {
+                'id': member_id,
+                'group_name': member.group_name,
+                'member_name': member.member_name,
+                'member_sid': member.member_sid,
+                'domain': member.domain,
+                'reason': member.reason,
+                'accepted_by': member.accepted_by
+            })
+            session.commit()
+            return member_id
+
+    def remove_accepted_group_member(self, domain: str, group_name: str, member_name: str):
+        """Remove an accepted group member."""
+        with self._get_session() as session:
+            session.execute(text("""
+                DELETE FROM accepted_group_members 
+                WHERE domain = :domain AND group_name = :group_name AND member_name = :member_name
+            """), {
+                'domain': domain,
+                'group_name': group_name,
+                'member_name': member_name
+            })
+            session.commit()
+
+    # Group Risk Configuration Management
+    def get_group_risk_configs(self, domain: str = None) -> List:
+        """Get group risk configurations."""
+        with self._get_session() as session:
+            query = "SELECT id, group_name, domain, base_risk_score, max_acceptable_members, alert_threshold, description FROM group_risk_configs WHERE 1=1"
+            params = {}
+            
+            if domain:
+                query += " AND domain = :domain"
+                params['domain'] = domain
+                
+            query += " ORDER BY group_name"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            from server.models import GroupRiskConfig
+            return [
+                GroupRiskConfig(
+                    id=str(r.id),
+                    group_name=r.group_name,
+                    domain=r.domain,
+                    base_risk_score=r.base_risk_score,
+                    max_acceptable_members=r.max_acceptable_members,
+                    alert_threshold=r.alert_threshold,
+                    description=r.description
+                )
+                for r in results
+            ]
+
+    def save_group_risk_config(self, config) -> str:
+        """Save a group risk configuration."""
+        with self._get_session() as session:
+            config_id = str(uuid4())
+            session.execute(text("""
+                INSERT INTO group_risk_configs (
+                    id, group_name, domain, base_risk_score, max_acceptable_members, alert_threshold, description
+                ) VALUES (
+                    :id, :group_name, :domain, :base_risk_score, :max_acceptable_members, :alert_threshold, :description
+                )
+                ON CONFLICT (domain, group_name) DO UPDATE SET
+                    base_risk_score = EXCLUDED.base_risk_score,
+                    max_acceptable_members = EXCLUDED.max_acceptable_members,
+                    alert_threshold = EXCLUDED.alert_threshold,
+                    description = EXCLUDED.description,
+                    updated_at = NOW()
+            """), {
+                'id': config_id,
+                'group_name': config.group_name,
+                'domain': config.domain,
+                'base_risk_score': config.base_risk_score,
+                'max_acceptable_members': config.max_acceptable_members,
+                'alert_threshold': config.alert_threshold,
+                'description': config.description
+            })
+            session.commit()
+            return config_id
