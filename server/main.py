@@ -204,7 +204,7 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
         if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
             from server.parsers.domain_analysis_parser import DomainAnalysisParser
             if isinstance(parser, DomainAnalysisParser):
-                memberships = parser.extract_group_memberships(report)
+                memberships = parser.extract_group_memberships(report, storage)
                 if memberships:
                     storage.save_group_memberships(report_id, memberships)
 

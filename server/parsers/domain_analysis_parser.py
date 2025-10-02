@@ -208,8 +208,11 @@ class DomainAnalysisParser(BaseSecurityParser):
         else:
             return "low"
     
-    def extract_group_memberships(self, report: Report) -> List[GroupMembership]:
+    def extract_group_memberships(self, report: Report, storage=None) -> List[GroupMembership]:
         """Extract group membership data from the report."""
+        if not storage:
+            return []  # Can't process without storage access
+            
         memberships = []
         
         for finding in report.findings:
@@ -218,10 +221,29 @@ class DomainAnalysisParser(BaseSecurityParser):
                 group_name = finding.metadata.get('group_name', '')
                 members = finding.metadata.get('members', [])
                 
-                # This would need to be matched with monitored groups from the database
-                # For now, we'll create a placeholder group_id
-                group_id = str(uuid4())  # In real implementation, lookup from monitored_groups
+                # Look up or create monitored group
+                monitored_groups = storage.get_monitored_groups()
+                group_id = None
                 
+                # Find existing monitored group by name
+                for monitored_group in monitored_groups:
+                    if monitored_group.group_name == group_name:
+                        group_id = monitored_group.id
+                        break
+                
+                # If group is not monitored, create it
+                if not group_id:
+                    from server.models import MonitoredGroup
+                    new_group = MonitoredGroup(
+                        group_name=group_name,
+                        domain=report.domain,
+                        description=f"Auto-created from domain scan for {group_name}",
+                        is_active=True,
+                        alert_on_changes=True
+                    )
+                    group_id = storage.add_monitored_group(new_group)
+                
+                # Create memberships for this group
                 for member in members:
                     membership = GroupMembership(
                         report_id=report.id,
