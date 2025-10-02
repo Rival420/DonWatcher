@@ -20,6 +20,8 @@ export async function showAnalysis() {
     ]);
     
     console.log("Analysis data loaded:", { scores, freq, accepted });
+    console.log("Frequency data details:", freq);
+    console.log("Number of findings:", freq ? freq.length : 0);
     
     renderChart(scores);
     renderRecurring(freq, accepted);
@@ -51,7 +53,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const latestToggle = document.getElementById("latest-only-toggle");
   if (latestToggle) latestToggle.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
-  setupTabs();
 });
 
 function setupTabs() {
@@ -72,6 +73,11 @@ function switchTab(tabId) {
 
   document.getElementById(tabId).classList.add('active');
   document.querySelector(`.tab-link[data-tab="${tabId}"]`).classList.add('active');
+  
+  // Load domain scanner data when switching to that tab
+  if (tabId === 'domain-scanner') {
+    loadDomainScannerAnalysis();
+  }
 }
 
 const ORDER_STORAGE_KEY = 'recurringTableColumnOrder';
@@ -271,9 +277,11 @@ function renderFilteredFindings() {
   // Handle empty data
   if (!allFindings || allFindings.length === 0) {
     console.log("No findings data available");
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No recurring findings found. Upload some reports to see analysis.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No recurring findings found. Upload some PingCastle reports to see analysis.</td></tr>';
     return;
   }
+  
+  console.log("Total findings before filtering:", allFindings.length);
   
   console.log("Processing", allFindings.length, "findings");
   
@@ -286,11 +294,7 @@ function renderFilteredFindings() {
     const category = finding.category || '';
     const toolType = finding.toolType || '';
     
-    // Exclude DonScanner findings from PingCastle tab
-    if (category === 'DonScanner') {
-      console.log("Excluding DonScanner finding:", name);
-      return false;
-    }
+    // No need to exclude DonScanner findings since we're filtering at API level
     
     const matchesText = name.toLowerCase().includes(filterText) || 
                        description.toLowerCase().includes(filterText) ||
@@ -656,29 +660,6 @@ async function updateAcceptedRisk(toolType, category, name, isAccepted) {
     });
 }
 
-function setupTabs() {
-  const tabLinks = document.querySelectorAll('.tab-link');
-  const tabContents = document.querySelectorAll('.tab-content');
-  
-  tabLinks.forEach(link => {
-    link.addEventListener('click', () => {
-      const targetTab = link.getAttribute('data-tab');
-      
-      // Remove active class from all tabs and contents
-      tabLinks.forEach(l => l.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
-      
-      // Add active class to clicked tab and corresponding content
-      link.classList.add('active');
-      document.getElementById(targetTab).classList.add('active');
-      
-      // Load domain scanner data when switching to that tab
-      if (targetTab === 'domain-scanner') {
-        loadDomainScannerAnalysis();
-      }
-    });
-  });
-}
 
 async function loadDomainScannerAnalysis() {
   try {

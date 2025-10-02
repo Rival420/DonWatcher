@@ -34,7 +34,7 @@ async function loadDomainInfo() {
       document.getElementById('user-count').textContent = detail.user_count;
       document.getElementById('computer-count').textContent = detail.computer_count;
       
-      renderGlobalGauge(detail.pingcastle_global_score);
+      renderGlobalGauge(detail.global_score);
 
       const historicalData = reports.slice(-12);
       
