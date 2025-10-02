@@ -248,7 +248,7 @@ function Get-PrivilegedGroupMemberships {
                 
                 foreach ($member in $groupMembers) {
                     try {
-                        $memberDetails = Get-ADObject -Identity $member.SID -Properties Name, SID, ObjectClass, Enabled -ErrorAction SilentlyContinue
+                        $memberDetails = Get-ADObject -Identity $member.DistinguishedName -Properties Name, ObjectClass, Enabled -ErrorAction SilentlyContinue
                         
                         $memberInfo = @{
                             name = $memberDetails.Name
