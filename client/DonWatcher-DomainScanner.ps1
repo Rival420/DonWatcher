@@ -386,12 +386,17 @@ function Get-GroupSeverity {
         [string]$GroupName,
         [int]$MemberCount
     )
-    
-    $highRiskGroups = @("Domain Admins", "Enterprise Admins", "Schema Admins")
-    
+
+    $SchemaAdmins = "Schema Admins"
+    $highRiskGroups = @("Domain Admins", "Enterprise Admins")
+
+    if ($GroupName -in $SchemaAdmins) {
+        if ($MemberCount -gt 1) { return "high" }
+        else { return "low" }
+    }
+
     if ($GroupName -in $highRiskGroups) {
         if ($MemberCount -gt 5) { return "high" }
-        elseif ($MemberCount -gt 2) { return "medium" }
         else { return "low" }
     }
     else {
