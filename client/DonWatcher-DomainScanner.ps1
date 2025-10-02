@@ -408,21 +408,34 @@ function Send-ReportToDonWatcher {
     
     Write-Log "Sending report to DonWatcher..." -Level Info
     
+    # Create a temporary file for upload
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    $jsonFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
+    
     try {
-        # Convert report to JSON
-        $jsonReport = $Report | ConvertTo-Json -Depth 10 -Compress
+        # Convert report to JSON and save to file
+        $Report | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonFile -Encoding UTF8
         
-        # Prepare headers
-        $headers = @{
-            "Content-Type" = "application/json"
-            "User-Agent" = $Config.UserAgent
-        }
-        
-        # Send to DonWatcher upload endpoint
+        # Send to DonWatcher upload endpoint using multipart form data
         $uploadUrl = "$BaseUrl/upload"
         
-        # Use Invoke-RestMethod with body parameter for JSON data
-        $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -Body $jsonReport -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
+        # Create multipart form data
+        $boundary = [System.Guid]::NewGuid().ToString()
+        $LF = "`r`n"
+        
+        $fileContent = Get-Content -Path $jsonFile -Raw
+        $fileName = "domain-scan-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+        
+        $bodyLines = @(
+            "--$boundary",
+            "Content-Disposition: form-data; name=`"file`"; filename=`"$fileName`"",
+            "Content-Type: application/json$LF",
+            $fileContent,
+            "--$boundary--$LF"
+        ) -join $LF
+        
+        # Send the request
+        $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $bodyLines -TimeoutSec $Config.TimeoutSeconds
 
         Write-Log "[SUCCESS] Report uploaded successfully!" -Level Info
         Write-Log "Report ID: $($response.report_id)" -Level Info
@@ -434,6 +447,15 @@ function Send-ReportToDonWatcher {
     catch {
         Write-Log "[ERROR] Failed to upload report: $($_.Exception.Message)" -Level Error
         return $false
+    }
+    finally {
+        # Clean up temporary files
+        if (Test-Path $tempFile) {
+            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $jsonFile) {
+            Remove-Item $jsonFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 #endregion
