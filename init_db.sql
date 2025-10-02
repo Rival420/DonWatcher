@@ -16,9 +16,7 @@ CREATE TABLE reports (
     upload_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     
     -- PingCastle specific fields
-    pingcastle_global_score INTEGER DEFAULT 0,
-    -- Aggregate global risk score from all security tools
-    aggregate_global_score INTEGER DEFAULT 0,
+    global_score INTEGER DEFAULT 0,
     high_score INTEGER DEFAULT 0,
     medium_score INTEGER DEFAULT 0,
     low_score INTEGER DEFAULT 0,

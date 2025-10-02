@@ -42,9 +42,7 @@ class ReportSummary(BaseModel):
     upload_date: datetime
     
     # PingCastle specific scores (optional for other tools)
-    pingcastle_global_score: Optional[int] = 0
-    # Aggregate global risk score incorporating all security tools
-    aggregate_global_score: Optional[int] = 0
+    global_score: Optional[int] = 0
     high_score: Optional[int] = 0
     medium_score: Optional[int] = 0
     low_score: Optional[int] = 0
@@ -80,9 +78,7 @@ class Report(BaseModel):
     upload_date: datetime
     
     # PingCastle specific scores
-    pingcastle_global_score: Optional[int] = 0
-    # Aggregate global risk score incorporating all security tools
-    aggregate_global_score: Optional[int] = 0
+    global_score: Optional[int] = 0
     high_score: Optional[int] = 0
     medium_score: Optional[int] = 0
     low_score: Optional[int] = 0
