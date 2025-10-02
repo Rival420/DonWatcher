@@ -58,15 +58,11 @@ param(
     [string[]]$Groups,
     
     [Parameter(Mandatory=$false)]
-    [switch]$TestConnection,
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$Verbose
+    [switch]$TestConnection
 )
 
 # Set error handling
 $ErrorActionPreference = "Stop"
-if ($Verbose) { $VerbosePreference = "Continue" }
 
 #region Configuration
 # Default configuration
@@ -130,7 +126,7 @@ function Write-Log {
         "Info" { Write-Host $logMessage -ForegroundColor Green }
         "Warning" { Write-Warning $logMessage }
         "Error" { Write-Error $logMessage }
-        "Debug" { if ($Verbose) { Write-Host $logMessage -ForegroundColor Cyan } }
+        "Debug" { Write-Verbose $logMessage }
     }
 }
 #endregion
