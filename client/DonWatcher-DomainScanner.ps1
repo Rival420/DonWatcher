@@ -176,18 +176,18 @@ function Test-DonWatcherConnection {
         $response = Invoke-RestMethod -Uri $statusUrl -Method Get -TimeoutSec 30 -UseBasicParsing
         
         if ($response.status -eq "ok") {
-            Write-Log "✅ DonWatcher connection successful" -Level Info
+            Write-Log "[OK] DonWatcher connection successful" -Level Info
             Write-Log "Database connected: $($response.database_connected)" -Level Debug
             Write-Log "Reports count: $($response.reports_count)" -Level Debug
             return $true
         }
         else {
-            Write-Log "❌ DonWatcher returned unexpected status: $($response.status)" -Level Error
+            Write-Log "[ERROR] DonWatcher returned unexpected status: $($response.status)" -Level Error
             return $false
         }
     }
     catch {
-        Write-Log "❌ Failed to connect to DonWatcher: $($_.Exception.Message)" -Level Error
+        Write-Log "[ERROR] Failed to connect to DonWatcher: $($_.Exception.Message)" -Level Error
         return $false
     }
 }
@@ -428,7 +428,7 @@ function Send-ReportToDonWatcher {
         # Use Invoke-RestMethod with body parameter for JSON data
         $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -Body $jsonReport -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
 
-        Write-Log "✅ Report uploaded successfully!" -Level Info
+        Write-Log "[SUCCESS] Report uploaded successfully!" -Level Info
         Write-Log "Report ID: $($response.report_id)" -Level Info
         Write-Log "Tool Type: $($response.tool_type)" -Level Info
         Write-Log "Message: $($response.message)" -Level Info
@@ -436,7 +436,7 @@ function Send-ReportToDonWatcher {
         return $true
     }
     catch {
-        Write-Log "❌ Failed to upload report: $($_.Exception.Message)" -Level Error
+        Write-Log "[ERROR] Failed to upload report: $($_.Exception.Message)" -Level Error
         return $false
     }
 }
@@ -444,7 +444,7 @@ function Send-ReportToDonWatcher {
 
 #region Main Execution
 function Main {
-    Write-Log "🔍 DonWatcher Domain Scanner Starting..." -Level Info
+    Write-Log "DonWatcher Domain Scanner Starting..." -Level Info
     Write-Log "Version: 1.0" -Level Info
     Write-Log "Machine: $env:COMPUTERNAME" -Level Info
     Write-Log "User: $env:USERDOMAIN\$env:USERNAME" -Level Info
@@ -452,19 +452,19 @@ function Main {
     try {
         # Check prerequisites
         if (-not (Test-Prerequisites)) {
-            Write-Log "❌ Prerequisites check failed" -Level Error
+            Write-Log "[ERROR] Prerequisites check failed" -Level Error
             exit 1
         }
         
         # Test connection to DonWatcher
         if (-not (Test-DonWatcherConnection -BaseUrl $Config.DonWatcherUrl)) {
-            Write-Log "❌ Cannot connect to DonWatcher" -Level Error
+            Write-Log "[ERROR] Cannot connect to DonWatcher" -Level Error
             exit 1
         }
         
         # If only testing connection, exit here
         if ($TestConnection) {
-            Write-Log "✅ Connection test completed successfully" -Level Info
+            Write-Log "[SUCCESS] Connection test completed successfully" -Level Info
             exit 0
         }
         
@@ -479,16 +479,16 @@ function Main {
         
         # Send report to DonWatcher
         if (Send-ReportToDonWatcher -Report $report -BaseUrl $Config.DonWatcherUrl) {
-            Write-Log "✅ Domain scan completed successfully!" -Level Info
+            Write-Log "[SUCCESS] Domain scan completed successfully!" -Level Info
             exit 0
         }
         else {
-            Write-Log "❌ Failed to send report to DonWatcher" -Level Error
+            Write-Log "[ERROR] Failed to send report to DonWatcher" -Level Error
             exit 1
         }
     }
     catch {
-        Write-Log "❌ Fatal error: $($_.Exception.Message)" -Level Error
+        Write-Log "[ERROR] Fatal error: $($_.Exception.Message)" -Level Error
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Debug
         exit 1
     }
