@@ -425,17 +425,15 @@ function Send-ReportToDonWatcher {
         # Send to DonWatcher upload endpoint
         $uploadUrl = "$BaseUrl/upload"
         
-        try {
-            # Use Invoke-RestMethod with body parameter for JSON data
-            $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -Body $jsonReport -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
+        # Use Invoke-RestMethod with body parameter for JSON data
+        $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -Body $jsonReport -ContentType "application/json" -TimeoutSec $Config.TimeoutSeconds
 
-            Write-Log "✅ Report uploaded successfully!" -Level Info
-            Write-Log "Report ID: $($response.report_id)" -Level Info
-            Write-Log "Tool Type: $($response.tool_type)" -Level Info
-            Write-Log "Message: $($response.message)" -Level Info
+        Write-Log "✅ Report uploaded successfully!" -Level Info
+        Write-Log "Report ID: $($response.report_id)" -Level Info
+        Write-Log "Tool Type: $($response.tool_type)" -Level Info
+        Write-Log "Message: $($response.message)" -Level Info
 
-            return $true
-        }
+        return $true
     }
     catch {
         Write-Log "❌ Failed to upload report: $($_.Exception.Message)" -Level Error
