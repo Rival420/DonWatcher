@@ -8,6 +8,7 @@
       - Configured groups and their members (name, samaccountname, sid, type, enabled)
     Optional domain SID mismatch enforcement.
     Uploads JSON via multipart/form-data to DonWatcher /upload.
+    Saves JSON reports to ./reports/ directory for testing and debugging.
 #>
 
 [CmdletBinding()]
@@ -244,11 +245,36 @@ function Send-ReportToDonWatcher {
 
     Write-Log "Uploading JSON report to DonWatcher..." -Level Info
 
+    # Create reports directory if it doesn't exist
+    $reportsDir = Join-Path (Get-Location) "reports"
+    if (-not (Test-Path $reportsDir)) {
+        New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
+        Write-Log "Created reports directory: $reportsDir" -Level Debug
+    }
+
+    # Generate timestamped filename for saved report
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $savedReportFile = Join-Path $reportsDir "groupscan_$timestamp.json"
+    
     $tempFile = [System.IO.Path]::GetTempFileName()
     $jsonFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
 
     try {
-        $Report | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonFile -Encoding UTF8
+        # Convert report to JSON
+        $jsonContent = $Report | ConvertTo-Json -Depth 10
+        
+        # Save to temporary file for upload
+        $jsonContent | Out-File -FilePath $jsonFile -Encoding UTF8
+        
+        # Save to persistent reports directory for testing/debugging
+        try {
+            $jsonContent | Out-File -FilePath $savedReportFile -Encoding UTF8
+            Write-Log "Report saved to: $savedReportFile" -Level Info
+        }
+        catch {
+            Write-Log "Warning: Failed to save report file: $($_.Exception.Message)" -Level Warning
+            # Continue with upload even if save fails
+        }
 
         $uploadUrl = "$BaseUrl/upload"
         $boundary = [System.Guid]::NewGuid().ToString()
