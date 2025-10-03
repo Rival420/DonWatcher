@@ -8,53 +8,102 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadDomainInfo() {
   try {
-    const res = await fetch('/api/reports');
-    const reports = await res.json();
-    if (reports.length) {
-      reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
+    // 🔧 BUG FIX: Separate PingCastle and domain scanner data sources
+    
+    // Get PingCastle reports ONLY for domain overview
+    const pingcastleRes = await fetch('/api/reports?tool_type=pingcastle');
+    const pingcastleReports = await pingcastleRes.json();
+    
+    // Get all reports to determine latest domain
+    const allReportsRes = await fetch('/api/reports');
+    const allReports = await allReportsRes.json();
+    
+    if (allReports.length === 0) return;
+    
+    // Get latest domain name from any report type
+    allReports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
+    const latestDomain = allReports[allReports.length - 1].domain;
+    document.getElementById('domain-name').textContent = latestDomain;
+    
+    // Use ONLY PingCastle data for domain overview metadata
+    if (pingcastleReports.length > 0) {
+      // Get latest PingCastle report for this domain
+      const domainPingcastleReports = pingcastleReports.filter(r => r.domain === latestDomain);
       
-      const latest = reports[reports.length - 1];
-      document.getElementById('domain-name').textContent = latest.domain;
-      document.getElementById('latest-date').textContent = new Date(latest.report_date).toLocaleDateString();
+      if (domainPingcastleReports.length > 0) {
+        domainPingcastleReports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
+        const latestPingcastle = domainPingcastleReports[domainPingcastleReports.length - 1];
+        
+        // Update date to latest PingCastle report date
+        document.getElementById('latest-date').textContent = new Date(latestPingcastle.report_date).toLocaleDateString();
 
-      let detail = latest;
-      try {
-        const detailRes = await fetch(`/api/reports/${latest.id}`);
-        if (detailRes.ok) {
-          detail = await detailRes.json();
+        // Get PingCastle detail
+        let pingcastleDetail = latestPingcastle;
+        try {
+          const detailRes = await fetch(`/api/reports/${latestPingcastle.id}`);
+          if (detailRes.ok) {
+            pingcastleDetail = await detailRes.json();
+          }
+        } catch {
+          // Fallback to summary data
         }
-      } catch {
-        // Fallback to summary data
-      }
-      
-      document.getElementById('domain-sid').textContent = detail.domain_sid;
-      document.getElementById('domain-func').textContent = detail.domain_functional_level;
-      document.getElementById('forest-func').textContent = detail.forest_functional_level;
-      document.getElementById('maturity-level').textContent = detail.maturity_level;
-      document.getElementById('dc-count').textContent = detail.dc_count;
-      document.getElementById('user-count').textContent = detail.user_count;
-      document.getElementById('computer-count').textContent = detail.computer_count;
-      
-      // Use enhanced risk visualization if available, fallback to legacy
-      if (window.RiskManager) {
-        loadEnhancedGlobalRisk(detail.domain);
+        
+        // ✅ ONLY use PingCastle data for domain overview
+        document.getElementById('domain-sid').textContent = pingcastleDetail.domain_sid || '-';
+        document.getElementById('domain-func').textContent = pingcastleDetail.domain_functional_level || '-';
+        document.getElementById('forest-func').textContent = pingcastleDetail.forest_functional_level || '-';
+        document.getElementById('maturity-level').textContent = pingcastleDetail.maturity_level || '-';
+        document.getElementById('dc-count').textContent = pingcastleDetail.dc_count || '-';
+        document.getElementById('user-count').textContent = pingcastleDetail.user_count || '-';
+        document.getElementById('computer-count').textContent = pingcastleDetail.computer_count || '-';
+        
+        // ✅ Always show PingCastle score in PingCastle section
+        renderPingCastleGauge(pingcastleDetail.global_score || 0);
+        
+        // ✅ Load combined global risk in separate section
+        if (window.RiskManager) {
+          loadEnhancedGlobalRisk(latestDomain);
+        }
+
+        // ✅ ONLY use PingCastle reports for historical charts
+        const historicalPingcastle = domainPingcastleReports.slice(-12);
+        
+        const labels = historicalPingcastle.map(r => new Date(r.report_date).toLocaleDateString());
+        const staleScores = historicalPingcastle.map(r => r.stale_objects_score || 0);
+        const privScores = historicalPingcastle.map(r => r.privileged_accounts_score || 0);
+        const trustScores = historicalPingcastle.map(r => r.trusts_score || 0);
+        const anomScores = historicalPingcastle.map(r => r.anomalies_score || 0);
+
+        renderHistoricalChart('stale-objects-chart', 'Stale Objects', labels, staleScores);
+        renderHistoricalChart('privileged-accounts-chart', 'Privileged Accounts', labels, privScores);
+        renderHistoricalChart('trusts-chart', 'Trusts', labels, trustScores);
+        renderHistoricalChart('anomalies-chart', 'Anomalies', labels, anomScores);
       } else {
-        renderGlobalGauge(detail.global_score);
+        // No PingCastle data for this domain - show placeholders
+        document.getElementById('latest-date').textContent = 'No PingCastle data';
+        document.getElementById('domain-sid').textContent = '-';
+        document.getElementById('domain-func').textContent = '-';
+        document.getElementById('forest-func').textContent = '-';
+        document.getElementById('maturity-level').textContent = '-';
+        document.getElementById('dc-count').textContent = '-';
+        document.getElementById('user-count').textContent = '-';
+        document.getElementById('computer-count').textContent = '-';
+        
+        // Still try to load global risk if available
+        if (window.RiskManager) {
+          loadEnhancedGlobalRisk(latestDomain);
+        }
       }
-
-      const historicalData = reports.slice(-12);
+    } else {
+      // No PingCastle data available - show domain name only
+      document.getElementById('latest-date').textContent = 'No PingCastle data available';
       
-      const labels = historicalData.map(r => new Date(r.report_date).toLocaleDateString());
-      const staleScores = historicalData.map(r => r.stale_objects_score);
-      const privScores = historicalData.map(r => r.privileged_accounts_score);
-      const trustScores = historicalData.map(r => r.trusts_score);
-      const anomScores = historicalData.map(r => r.anomalies_score);
-
-      renderHistoricalChart('stale-objects-chart', 'Stale Objects', labels, staleScores);
-      renderHistoricalChart('privileged-accounts-chart', 'Privileged Accounts', labels, privScores);
-      renderHistoricalChart('trusts-chart', 'Trusts', labels, trustScores);
-      renderHistoricalChart('anomalies-chart', 'Anomalies', labels, anomScores);
+      // Still try to load global risk for domain scanner only scenarios
+      if (window.RiskManager) {
+        loadEnhancedGlobalRisk(latestDomain);
+      }
     }
+    
   } catch (error) {
     console.error('Failed to load domain info:', error);
   }
@@ -327,23 +376,35 @@ async function loadEnhancedGlobalRisk(domain) {
     
     const riskData = await window.RiskManager.getGlobalRisk(domain);
     
-    // Render enhanced global gauge
+    // Create separate Global Risk section if it doesn't exist
+    let globalRiskSection = document.getElementById('global-risk-section');
+    if (!globalRiskSection) {
+      globalRiskSection = document.createElement('section');
+      globalRiskSection.id = 'global-risk-section';
+      globalRiskSection.className = 'card';
+      globalRiskSection.innerHTML = `
+        <h2>Global Risk Score</h2>
+        <p class="section-description">Combined infrastructure security (PingCastle) and access governance (Domain Groups)</p>
+        <div class="global-risk-container">
+          <canvas id="global-risk-chart"></canvas>
+        </div>
+      `;
+      
+      // Insert after PingCastle risk scores section
+      const pingcastleSection = document.getElementById('risk-scores');
+      if (pingcastleSection) {
+        pingcastleSection.parentNode.insertBefore(globalRiskSection, pingcastleSection.nextSibling);
+      }
+    }
+    
+    // Render enhanced global gauge in separate section
     window.RiskManager.renderEnhancedGlobalGauge('global-risk-chart', riskData);
     
-    // Update domain SID from risk data if available
-    if (riskData.domain_sid && document.getElementById('domain-sid')) {
-      document.getElementById('domain-sid').textContent = riskData.domain_sid;
-    }
+    // ✅ DON'T update domain SID - that comes from PingCastle only
     
   } catch (error) {
     console.error('Failed to load enhanced global risk:', error);
-    // Fallback to legacy gauge
-    const reports = await fetch('/api/reports');
-    const reportsData = await reports.json();
-    if (reportsData.length > 0) {
-      const latest = reportsData[reportsData.length - 1];
-      renderGlobalGauge(latest.global_score || 0);
-    }
+    // Don't show fallback here - global risk is optional enhancement
   }
 }
 
@@ -420,8 +481,8 @@ function gaugeColor(v) {
   return '#b71c1c';
 }
 
-function renderGlobalGauge(value) {
-  const canvasId = 'global-risk-chart';
+function renderPingCastleGauge(value) {
+  const canvasId = 'pingcastle-risk-chart';
   
   createChart(canvasId, {
     type: 'doughnut',
@@ -454,11 +515,14 @@ function renderGlobalGauge(value) {
   });
 
   const textContainer = document.createElement('div');
-  textContainer.className = 'global-risk-label';
-  textContainer.textContent = value;
+  textContainer.className = 'pingcastle-risk-label';
+  textContainer.innerHTML = `
+    <div class="pingcastle-score">${value}</div>
+    <div class="pingcastle-label">PingCastle Score</div>
+  `;
   
-  const container = document.querySelector('.global-risk-container');
-  const existingLabel = container.querySelector('.global-risk-label');
+  const container = document.querySelector('.pingcastle-risk-container');
+  const existingLabel = container.querySelector('.pingcastle-risk-label');
   if (existingLabel) {
     container.removeChild(existingLabel);
   }

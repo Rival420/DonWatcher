@@ -1069,7 +1069,54 @@ body, input, button, select {
   }
 }
 
-/* Enhanced Risk Visualization - Phase 3 */
+/* PingCastle Risk Gauge - Bug Fix */
+.pingcastle-risk-container {
+  position: relative;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pingcastle-risk-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.pingcastle-score {
+  font-size: 2.5em;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pingcastle-label {
+  font-size: 0.8em;
+  opacity: 0.7;
+  margin-top: 0.25em;
+  color: var(--text);
+}
+
+.section-description {
+  font-size: 0.9em;
+  opacity: 0.7;
+  margin-bottom: 1em;
+  color: var(--text);
+  text-align: center;
+}
+
+/* Global Risk Visualization - Phase 3 (Separate Section) */
+.global-risk-container {
+  position: relative;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .risk-score-overlay {
   position: absolute;
   top: 50%;

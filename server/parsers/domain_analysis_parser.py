@@ -254,14 +254,30 @@ class DomainAnalysisParser(BaseSecurityParser):
             id=report_id,
             tool_type=SecurityToolType.DOMAIN_ANALYSIS,
             domain=domain,
-            domain_sid=domain_sid,
-            # Don't override domain metadata - preserve from PingCastle reports
+            domain_sid=domain_sid,  # ✅ Keep for validation
+            # ✅ CRITICAL: Don't set PingCastle-specific fields for domain scanner
+            domain_functional_level=None,  # Only PingCastle should set this
+            forest_functional_level=None,  # Only PingCastle should set this
+            maturity_level=None,           # Only PingCastle should set this
+            dc_count=None,                 # Only PingCastle should set this
+            user_count=None,               # Only PingCastle should set this
+            computer_count=None,           # Only PingCastle should set this
+            # ✅ Domain scanner specific scores should be 0/None
+            global_score=None,             # Don't set PingCastle global score
+            high_score=None,               # Domain scanner doesn't have these
+            medium_score=None,             # Domain scanner doesn't have these
+            low_score=None,                # Domain scanner doesn't have these
+            stale_objects_score=None,      # Domain scanner doesn't have these
+            privileged_accounts_score=None, # Domain scanner doesn't have these
+            trusts_score=None,             # Domain scanner doesn't have these
+            anomalies_score=None,          # Domain scanner doesn't have these
             report_date=report_date,
             upload_date=datetime.utcnow(),
             metadata={
                 'tool_type': 'domain_group_members',
                 'scanner_metadata': data.get('metadata', {}),
-                'processed_groups': list(groups_data.keys())
+                'processed_groups': list(groups_data.keys()),
+                'data_scope': 'group_memberships_only'  # Clear scope indication
             },
             findings=findings,
             original_file=str(file_path)
