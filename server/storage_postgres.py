@@ -28,6 +28,11 @@ class PostgresReportStorage:
     def _get_session(self) -> Session:
         """Get a new database session."""
         return self.db_session()
+    
+    def get_connection(self):
+        """Get database connection for raw SQL operations."""
+        from server.database import engine
+        return engine.connect()
 
     def save_report(self, report: Report) -> str:
         """Save a report and its findings to the database."""
@@ -320,7 +325,7 @@ class PostgresReportStorage:
             computer_count=result.computer_count,
             original_file=result.original_file,
             html_file=result.html_file,
-            metadata=json.loads(result.metadata) if result.metadata else {},
+            metadata=result.metadata if result.metadata else {},
             findings=findings
         )
 

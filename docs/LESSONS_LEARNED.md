@@ -92,3 +92,54 @@ This lesson has been immediately applied to ensure the DonWatcher project is ful
 This mistake reinforces the importance of thorough impact analysis and systematic validation when making structural changes. I will continue to apply comprehensive checking procedures to ensure all changes are complete and consistent.
 
 **Thank you for catching this - it's now fixed and documented to prevent future occurrences! 🙏**
+
+## 🐛 **Lesson 2: JSONB vs JSON String Handling**
+
+### **Issue Encountered**:
+Storage layer was trying to `json.loads()` metadata that was already parsed by PostgreSQL JSONB, causing `TypeError: the JSON object must be str, bytes or bytearray, not dict`.
+
+### **Root Cause**:
+Confusion between JSON storage formats:
+- **JSONB Column**: PostgreSQL automatically parses JSON and returns dict objects
+- **JSON String**: Requires `json.loads()` to parse into dict
+- **Code Assumption**: Assumed all JSON needed parsing
+
+### **Resolution Applied**:
+✅ **Fixed Metadata Handling**: `metadata=result.metadata` instead of `json.loads(result.metadata)`  
+✅ **Added Storage Method**: `get_connection()` method for risk service compatibility  
+✅ **Comprehensive Testing**: Validated with real domain scanner JSON uploads  
+
+### **Lesson Learned**:
+**Understand database column types and their automatic parsing behavior.** Key considerations:
+1. **JSONB columns return parsed dictionaries**
+2. **TEXT columns with JSON require manual parsing**
+3. **Test with real data to catch type mismatches**
+4. **Document data type expectations clearly**
+
+### **Prevention Measures**:
+1. **Type Annotations**: Clearly specify expected data types in functions
+2. **Database Documentation**: Document column types and parsing behavior
+3. **Integration Testing**: Test with real database data, not just mocks
+4. **Error Handling**: Graceful handling of type mismatches
+
+## 🔧 **Storage Layer Best Practices**
+
+### **JSONB Handling**:
+```python
+# ✅ CORRECT: JSONB columns return dicts
+metadata = result.metadata if result.metadata else {}
+
+# ❌ WRONG: Don't parse already-parsed JSONB
+metadata = json.loads(result.metadata)  # TypeError!
+```
+
+### **Connection vs Session**:
+```python
+# For SQLAlchemy ORM operations
+with storage._get_session() as session:
+    result = session.query(Model).filter(...)
+
+# For raw SQL operations  
+with storage.get_connection() as conn:
+    result = conn.execute(text("SELECT ..."))
+```
