@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server code
+# Copy server code and migrations
 COPY server/ ./server/
-COPY init_db.sql .
+COPY migrations/ ./migrations/
 
 # Create logs directory
 RUN mkdir -p logs uploaded_reports

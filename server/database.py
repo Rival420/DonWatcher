@@ -53,7 +53,7 @@ def init_database():
             tables_exist = result.scalar()
             
             if not tables_exist:
-                logging.warning("Database tables not found. Please run the init_db.sql script.")
+                logging.warning("Database tables not found. Please run the migrations/init_db.sql script.")
                 return False
                 
         logging.info("Database initialization complete")
