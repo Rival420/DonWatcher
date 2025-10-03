@@ -845,6 +845,22 @@ function filterDomainScannerTable(allData) {
   renderDomainScannerTable(filteredData);
 }
 
+// Helper function to get current domain from reports
+async function getCurrentDomainFromReports() {
+  try {
+    const response = await fetch('/api/reports?tool_type=domain_analysis');
+    const reports = await response.json();
+    if (reports && reports.length > 0) {
+      // Get the most recent domain analysis report's domain
+      const latestReport = reports[reports.length - 1];
+      return latestReport.domain;
+    }
+  } catch (error) {
+    console.error('Failed to get current domain from reports:', error);
+  }
+  return null;
+}
+
 // Global functions for button clicks
 window.showGroupMembers = function(groupName, members) {
   const memberList = members.map(m => 
@@ -866,16 +882,20 @@ window.toggleMemberAcceptance = async function(groupName, memberName, accept) {
     const confirmed = confirm(`${accept ? 'Accept' : 'Remove acceptance for'} ${memberName} in ${groupName}?`);
     
     if (confirmed) {
+      // Get current domain from latest reports or use fallback
+      const currentDomain = await getCurrentDomainFromReports() || 'onenet.be';
+      
       const memberData = {
         group_name: groupName,
         member_name: memberName,
-        domain: 'onenet.be', // TODO: Get from current domain context
+        domain: currentDomain,
         reason: accept ? 'Accepted via domain scanner analysis' : null,
         accepted_by: 'dashboard_user'
       };
       
       const method = accept ? 'POST' : 'DELETE';
-      const response = await fetch('/api/accepted_group_members', {
+      // FIXED: Use standardized domain groups API endpoint
+      const response = await fetch('/api/domain_groups/members/accept', {
         method: method,
         headers: {
           'Content-Type': 'application/json'
@@ -884,16 +904,24 @@ window.toggleMemberAcceptance = async function(groupName, memberName, accept) {
       });
       
       if (response.ok) {
+        const result = await response.json();
         console.log(`Member ${memberName} ${accept ? 'accepted' : 'unaccepted'} successfully`);
+        
+        // Check for risk calculation status if available
+        if (result.risk_calculation_status === 'failed') {
+          console.warn('Risk scores may not have been updated');
+        }
+        
         // Reload the table to reflect changes
         loadDomainScannerAnalysis();
       } else {
-        throw new Error(`API call failed: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `API call failed: ${response.status}`);
       }
     }
   } catch (error) {
     console.error('Failed to toggle member acceptance:', error);
-    alert('Failed to update member acceptance');
+    alert(`Failed to update member acceptance: ${error.message}`);
   }
 };
 

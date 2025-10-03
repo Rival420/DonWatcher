@@ -234,6 +234,34 @@ class PostgresReportStorage:
             'severity': finding.severity
         })
 
+    def _ensure_risk_in_catalog(self, session: Session, tool_type: SecurityToolType, category: str, name: str):
+        """Ensure a risk exists in the catalog, creating it if necessary."""
+        # Check if risk exists
+        result = session.execute(text("""
+            SELECT id FROM risks 
+            WHERE tool_type = :tool_type AND category = :category AND name = :name
+        """), {
+            'tool_type': tool_type.value,
+            'category': category,
+            'name': name
+        }).fetchone()
+        
+        if not result:
+            # Risk doesn't exist, create a basic entry
+            logging.warning(f"Risk not found in catalog, creating basic entry: {tool_type.value}/{category}/{name}")
+            session.execute(text("""
+                INSERT INTO risks (tool_type, category, name, description, recommendation, severity)
+                VALUES (:tool_type, :category, :name, :description, :recommendation, :severity)
+            """), {
+                'tool_type': tool_type.value,
+                'category': category,
+                'name': name,
+                'description': f'Auto-generated risk entry for {name}',
+                'recommendation': 'Review this finding and determine appropriate action',
+                'severity': 'medium'
+            })
+            logging.info(f"Created missing risk in catalog: {tool_type.value}/{category}/{name}")
+
     def update_report_html(self, report_id: str, html_file: str):
         """Update the HTML file path for a report."""
         with self._get_session() as session:
@@ -491,21 +519,31 @@ class PostgresReportStorage:
                          reason: str = None, accepted_by: str = None):
         """Add an accepted risk."""
         with self._get_session() as session:
-            session.execute(text("""
-                INSERT INTO accepted_risks (tool_type, category, name, reason, accepted_by)
-                VALUES (:tool_type, :category, :name, :reason, :accepted_by)
-                ON CONFLICT (tool_type, category, name) DO UPDATE SET
-                    reason = EXCLUDED.reason,
-                    accepted_by = EXCLUDED.accepted_by,
-                    accepted_at = NOW()
-            """), {
-                'tool_type': tool_type.value,
-                'category': category,
-                'name': name,
-                'reason': reason,
-                'accepted_by': accepted_by
-            })
-            session.commit()
+            try:
+                # First, ensure the risk exists in the catalog
+                self._ensure_risk_in_catalog(session, tool_type, category, name)
+                
+                # Then add to accepted risks
+                session.execute(text("""
+                    INSERT INTO accepted_risks (tool_type, category, name, reason, accepted_by)
+                    VALUES (:tool_type, :category, :name, :reason, :accepted_by)
+                    ON CONFLICT (tool_type, category, name) DO UPDATE SET
+                        reason = EXCLUDED.reason,
+                        accepted_by = EXCLUDED.accepted_by,
+                        accepted_at = NOW()
+                """), {
+                    'tool_type': tool_type.value,
+                    'category': category,
+                    'name': name,
+                    'reason': reason,
+                    'accepted_by': accepted_by
+                })
+                session.commit()
+                logging.info(f"Successfully added accepted risk: {tool_type.value}/{category}/{name}")
+            except Exception as e:
+                session.rollback()
+                logging.error(f"Failed to add accepted risk {tool_type.value}/{category}/{name}: {e}")
+                raise
 
     def remove_accepted_risk(self, tool_type: SecurityToolType, category: str, name: str):
         """Remove an accepted risk."""

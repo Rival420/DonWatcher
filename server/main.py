@@ -367,8 +367,14 @@ def get_accepted_risks(
 
 @app.post("/api/accepted_risks")
 def add_accepted_risks(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
-    storage.add_accepted_risk(risk.tool_type, risk.category, risk.name, risk.reason, risk.accepted_by)
-    return {"status": "ok"}
+    """Add an accepted risk with enhanced error handling."""
+    try:
+        storage.add_accepted_risk(risk.tool_type, risk.category, risk.name, risk.reason, risk.accepted_by)
+        logging.info(f"Successfully accepted risk: {risk.tool_type.value}/{risk.category}/{risk.name}")
+        return {"status": "ok"}
+    except Exception as e:
+        logging.exception(f"Failed to accept risk {risk.tool_type.value}/{risk.category}/{risk.name}")
+        raise HTTPException(status_code=500, detail=f"Failed to accept risk: {e}")
 
 @app.delete("/api/accepted_risks")
 def delete_accepted_risk(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
@@ -399,15 +405,32 @@ def get_accepted_group_members(
 
 @app.post("/api/accepted_group_members")
 def add_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
-    """Accept a group member."""
+    """Accept a group member.
+    
+    DEPRECATED: Use /api/domain_groups/members/accept instead.
+    This endpoint is maintained for backward compatibility but will be removed in a future version.
+    """
+    logging.warning("DEPRECATED: /api/accepted_group_members endpoint used. Please migrate to /api/domain_groups/members/accept")
     member_id = storage.add_accepted_group_member(member)
-    return {"status": "ok", "member_id": member_id}
+    return {
+        "status": "ok", 
+        "member_id": member_id,
+        "warning": "This endpoint is deprecated. Use /api/domain_groups/members/accept instead."
+    }
 
 @app.delete("/api/accepted_group_members")
 def remove_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
-    """Remove acceptance for a group member."""
+    """Remove acceptance for a group member.
+    
+    DEPRECATED: Use /api/domain_groups/members/accept instead.
+    This endpoint is maintained for backward compatibility but will be removed in a future version.
+    """
+    logging.warning("DEPRECATED: /api/accepted_group_members endpoint used. Please migrate to /api/domain_groups/members/accept")
     storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "warning": "This endpoint is deprecated. Use /api/domain_groups/members/accept instead."
+    }
 
 # Group Risk Configuration Management
 @app.get("/api/group_risk_configs", response_model=List[GroupRiskConfig])
@@ -566,15 +589,29 @@ async def accept_group_member(
     try:
         member_id = storage.add_accepted_group_member(member)
         
-        # Trigger risk score update
+        # Trigger risk score update with enhanced error reporting
+        risk_update_success = True
+        risk_error_message = None
         try:
             risk_service = get_risk_service(storage)
             await risk_service.update_risk_scores_for_member_change(member.domain, member.group_name)
+            logging.info(f"Successfully updated risk scores after accepting {member.member_name}")
         except Exception as e:
+            risk_update_success = False
+            risk_error_message = str(e)
             logging.warning(f"Failed to update risk scores after member acceptance: {e}")
             # Don't fail the operation if risk calculation fails
         
-        return {"status": "ok", "member_id": member_id}
+        response = {
+            "status": "ok", 
+            "member_id": member_id,
+            "risk_calculation_status": "success" if risk_update_success else "failed"
+        }
+        
+        if not risk_update_success:
+            response["risk_error"] = risk_error_message
+            
+        return response
     except Exception as e:
         logging.exception(f"Failed to accept member {member.member_name} in group {member.group_name}")
         raise HTTPException(status_code=500, detail=f"Failed to accept member: {e}")
@@ -588,15 +625,28 @@ async def remove_accepted_group_member(
     try:
         storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
         
-        # Trigger risk score update
+        # Trigger risk score update with enhanced error reporting
+        risk_update_success = True
+        risk_error_message = None
         try:
             risk_service = get_risk_service(storage)
             await risk_service.update_risk_scores_for_member_change(member.domain, member.group_name)
+            logging.info(f"Successfully updated risk scores after denying {member.member_name}")
         except Exception as e:
+            risk_update_success = False
+            risk_error_message = str(e)
             logging.warning(f"Failed to update risk scores after member denial: {e}")
             # Don't fail the operation if risk calculation fails
         
-        return {"status": "ok"}
+        response = {
+            "status": "ok",
+            "risk_calculation_status": "success" if risk_update_success else "failed"
+        }
+        
+        if not risk_update_success:
+            response["risk_error"] = risk_error_message
+            
+        return response
     except Exception as e:
         logging.exception(f"Failed to remove acceptance for member {member.member_name} in group {member.group_name}")
         raise HTTPException(status_code=500, detail=f"Failed to remove member acceptance: {e}")
