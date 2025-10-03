@@ -7,6 +7,7 @@ class SecurityToolType(str, Enum):
     PINGCASTLE = "pingcastle"
     LOCKSMITH = "locksmith"
     DOMAIN_ANALYSIS = "domain_analysis"
+    DOMAIN_GROUP_MEMBERS = "domain_group_members"
     CUSTOM = "custom"
 
 class FindingStatus(str, Enum):

@@ -1,76 +1,38 @@
 #Requires -Modules ActiveDirectory
 <#
 .SYNOPSIS
-    DonWatcher Domain Scanner Agent - PowerShell Script
-    
+    DonWatcher Domain Scanner Agent (Minimal)
 .DESCRIPTION
-    A configurable PowerShell script that scans Active Directory domain information
-    and sends the results back to a DonWatcher instance via REST API.
-    
-    This script collects:
-    - Domain and forest information
-    - Privileged group memberships
-    - User and computer counts
-    - Domain controller information
-    
-.PARAMETER DonWatcherUrl
-    The base URL of the DonWatcher instance (e.g., "http://donwatcher.company.com:8080")
-    
-.PARAMETER ConfigFile
-    Path to a JSON configuration file (optional)
-    
-.PARAMETER Groups
-    Comma-separated list of privileged groups to monitor (optional)
-    
-.PARAMETER TestConnection
-    Test connection to DonWatcher without sending data
-    
-.PARAMETER Verbose
-    Enable verbose output
-    
-.EXAMPLE
-    .\DonWatcher-DomainScanner.ps1 -DonWatcherUrl "http://192.168.1.100:8080"
-    
-.EXAMPLE
-    .\DonWatcher-DomainScanner.ps1 -ConfigFile "config.json" -Verbose
-    
-.EXAMPLE
-    .\DonWatcher-DomainScanner.ps1 -DonWatcherUrl "http://donwatcher:8080" -TestConnection
-    
-.NOTES
-    Author: DonWatcher Team
-    Version: 1.0
-    Requires: PowerShell 5.1+, ActiveDirectory Module, Domain-joined machine
-    
-.LINK
-    https://github.com/rival420/DonWatcher
+    Collects only:
+      - Domain SID
+      - Configured groups and their members (name, samaccountname, sid, type, enabled)
+    Optional domain SID mismatch enforcement.
+    Uploads JSON via multipart/form-data to DonWatcher /upload.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$false)]
     [string]$DonWatcherUrl,
-    
+
     [Parameter(Mandatory=$false)]
     [string]$ConfigFile = "DonWatcher-Config.json",
-    
+
     [Parameter(Mandatory=$false)]
     [string[]]$Groups,
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$TestConnection
 )
 
-# Set error handling
 $ErrorActionPreference = "Stop"
 
 #region Configuration
-# Default configuration
 $DefaultConfig = @{
     DonWatcherUrl = "http://localhost:8080"
     PrivilegedGroups = @(
         "Domain Admins",
-        "Enterprise Admins", 
+        "Enterprise Admins",
         "Schema Admins",
         "Administrators",
         "Account Operators",
@@ -78,25 +40,20 @@ $DefaultConfig = @{
         "Server Operators",
         "Print Operators"
     )
-    MaxUsers = 5000
-    MaxComputers = 5000
     TimeoutSeconds = 300
     UserAgent = "DonWatcher-DomainScanner/1.0"
     LogLevel = "Info"
+    # Optional: ExpectedDomainSID = "S-1-5-21-..."
 }
 
-# Load configuration from file if it exists
 $Config = $DefaultConfig.Clone()
 if (Test-Path $ConfigFile) {
     try {
         Write-Verbose "Loading configuration from: $ConfigFile"
-        $FileConfig = Get-Content $ConfigFile | ConvertFrom-Json
-        
-        # Merge configurations
+        $FileConfig = Get-Content $ConfigFile -Raw | ConvertFrom-Json
         foreach ($key in $FileConfig.PSObject.Properties.Name) {
             $Config[$key] = $FileConfig.$key
         }
-        Write-Verbose "Configuration loaded successfully"
     }
     catch {
         Write-Warning "Failed to load config file '$ConfigFile': $($_.Exception.Message)"
@@ -104,38 +61,31 @@ if (Test-Path $ConfigFile) {
     }
 }
 
-# Override with command line parameters
 if ($DonWatcherUrl) { $Config.DonWatcherUrl = $DonWatcherUrl }
 if ($Groups) { $Config.PrivilegedGroups = $Groups }
-
-Write-Verbose "Using DonWatcher URL: $($Config.DonWatcherUrl)"
 #endregion
 
 #region Logging
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet("Info", "Warning", "Error", "Debug")]
+        [ValidateSet("Info","Warning","Error","Debug")]
         [string]$Level = "Info"
     )
-    
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
-    
     switch ($Level) {
-        "Info" { Write-Host $logMessage -ForegroundColor Green }
+        "Info"    { Write-Host $logMessage -ForegroundColor Green }
         "Warning" { Write-Warning $logMessage }
-        "Error" { Write-Error $logMessage }
-        "Debug" { Write-Verbose $logMessage }
+        "Error"   { Write-Error $logMessage }
+        "Debug"   { Write-Verbose $logMessage }
     }
 }
 #endregion
 
-#region Helper Functions
+#region Helpers
 function Test-Prerequisites {
     Write-Log "Checking prerequisites..." -Level Debug
-    
-    # Check if running on domain-joined machine
     try {
         $domain = (Get-WmiObject Win32_ComputerSystem).Domain
         if (-not $domain -or $domain -eq "WORKGROUP") {
@@ -147,8 +97,7 @@ function Test-Prerequisites {
         Write-Log "Failed to detect domain: $($_.Exception.Message)" -Level Error
         return $false
     }
-    
-    # Check Active Directory module
+
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
         Write-Log "Active Directory module loaded successfully" -Level Debug
@@ -158,250 +107,132 @@ function Test-Prerequisites {
         Write-Log "Please install RSAT-AD-PowerShell feature" -Level Error
         return $false
     }
-    
     return $true
 }
 
+# Returns JSON status or $null
 function Test-DonWatcherConnection {
     param([string]$BaseUrl)
-    
     Write-Log "Testing connection to DonWatcher at: $BaseUrl" -Level Debug
-    
     try {
         $statusUrl = "$BaseUrl/api/debug/status"
         $response = Invoke-RestMethod -Uri $statusUrl -Method Get -TimeoutSec 30 -UseBasicParsing
-        
-        if ($response.status -eq "ok") {
-            Write-Log "[OK] DonWatcher connection successful" -Level Info
-            Write-Log "Database connected: $($response.database_connected)" -Level Debug
-            Write-Log "Reports count: $($response.reports_count)" -Level Debug
-            return $true
-        }
-        else {
-            Write-Log "[ERROR] DonWatcher returned unexpected status: $($response.status)" -Level Error
-            return $false
-        }
+        Write-Log "[OK] DonWatcher connection successful" -Level Info
+        return $response
     }
     catch {
         Write-Log "[ERROR] Failed to connect to DonWatcher: $($_.Exception.Message)" -Level Error
-        return $false
+        return $null
     }
 }
 
-function Get-DomainInformation {
-    Write-Log "Collecting domain information..." -Level Info
-    
+function Get-DomainInfoMinimal {
+    Write-Log "Collecting minimal domain info (SID)..." -Level Info
+    $domain = Get-ADDomain -ErrorAction Stop
+    if (-not $domain.DomainSID) { throw "Unable to retrieve DomainSID" }
+    return @{
+        domain     = $domain.DNSRoot
+        domain_sid = $domain.DomainSID.Value
+        netbios    = $domain.NetBIOSName
+    }
+}
+
+function Resolve-MemberEnabled {
+    param(
+        [string]$ObjectClass,
+        [string]$DistinguishedName
+    )
     try {
-        $domain = Get-ADDomain
-        $forest = Get-ADForest
-        $dcs = Get-ADDomainController -Filter *
-        
-        # Get user count with limit
-        Write-Log "Counting users (max: $($Config.MaxUsers))..." -Level Debug
-        $userCount = (Get-ADUser -Filter * -ResultSetSize $Config.MaxUsers | Measure-Object).Count
-        if ($userCount -eq $Config.MaxUsers) {
-            Write-Log "User count reached limit of $($Config.MaxUsers), actual count may be higher" -Level Warning
+        switch ($ObjectClass) {
+            'user'     { return (Get-ADUser -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled }
+            'computer' { return (Get-ADComputer -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled }
+            default    { return $null } # groups, contacts, etc. -> not applicable
         }
-        
-        # Get computer count with limit
-        Write-Log "Counting computers (max: $($Config.MaxComputers))..." -Level Debug
-        $computerCount = (Get-ADComputer -Filter * -ResultSetSize $Config.MaxComputers | Measure-Object).Count
-        if ($computerCount -eq $Config.MaxComputers) {
-            Write-Log "Computer count reached limit of $($Config.MaxComputers), actual count may be higher" -Level Warning
-        }
-        
-        $domainInfo = @{
-            domain = $domain.DNSRoot
-            domain_sid = $domain.DomainSID.Value
-            domain_functional_level = $domain.DomainMode.ToString()
-            forest_functional_level = $forest.ForestMode.ToString()
-            dc_count = $dcs.Count
-            user_count = $userCount
-            computer_count = $computerCount
-            netbios_name = $domain.NetBIOSName
-            forest_root = $forest.RootDomain
-        }
-        
-        Write-Log "Domain info collected successfully" -Level Debug
-        return $domainInfo
     }
     catch {
-        Write-Log "Failed to collect domain information: $($_.Exception.Message)" -Level Error
-        throw
+        Write-Log "Failed to resolve Enabled for $ObjectClass : $DistinguishedName : $($_.Exception.Message)" -Level Warning
+        return $null
     }
 }
 
-function Get-PrivilegedGroupMemberships {
-    Write-Log "Scanning privileged groups..." -Level Info
-    
-    $groupMemberships = @{}
-    
+function Get-ConfiguredGroupMemberships {
+    Write-Log "Collecting group memberships..." -Level Info
+    $result = @{}
+
     foreach ($groupName in $Config.PrivilegedGroups) {
-        Write-Log "Scanning group: $groupName" -Level Debug
-        
+        Write-Log "Group: $groupName" -Level Debug
+        $membersArray = @()
+
         try {
-            $members = @()
             $adGroup = Get-ADGroup -Identity $groupName -ErrorAction SilentlyContinue
-            
-            if ($adGroup) {
-                $groupMembers = Get-ADGroupMember -Identity $groupName -Recursive -ErrorAction SilentlyContinue
-                
-                foreach ($member in $groupMembers) {
-                    try {
-                        $memberDetails = Get-ADObject -Identity $member.DistinguishedName -Properties Name, ObjectClass, Enabled -ErrorAction SilentlyContinue
-                        
-                        $memberInfo = @{
-                            name = $memberDetails.Name
-                            sid = $memberDetails.SID.Value
-                            type = $memberDetails.ObjectClass
-                            enabled = if ($memberDetails.PSObject.Properties['Enabled']) { $memberDetails.Enabled } else { $true }
-                        }
-                        $members += $memberInfo
-                    }
-                    catch {
-                        Write-Log "Failed to get details for member $($member.Name) in $groupName : $($_.Exception.Message)" -Level Warning
+            if (-not $adGroup) {
+                Write-Log "Group '$groupName' not found" -Level Warning
+                $result[$groupName] = @()
+                continue
+            }
+
+            $groupMembers = Get-ADGroupMember -Identity $groupName -Recursive -ErrorAction SilentlyContinue
+            foreach ($m in $groupMembers) {
+                try {
+                    # Query a generic AD object + collect extra props if present
+                    $obj = Get-ADObject -Identity $m.DistinguishedName -Properties Name, sAMAccountName, ObjectClass, objectSID -ErrorAction SilentlyContinue
+                    if (-not $obj) { continue }
+
+                    $enabled = Resolve-MemberEnabled -ObjectClass $obj.ObjectClass -DistinguishedName $m.DistinguishedName
+
+                    $membersArray += @{
+                        name           = $obj.Name
+                        samaccountname = ($obj.PSObject.Properties['sAMAccountName']?.Value)
+                        sid            = ($obj.PSObject.Properties['objectSID']?.Value)
+                        type           = $obj.ObjectClass
+                        enabled        = $enabled
                     }
                 }
-                
-                $groupMemberships[$groupName] = $members
-                Write-Log "Group '$groupName': $($members.Count) members" -Level Debug
+                catch {
+                    Write-Log "Failed member detail for '$($m.Name)' in '$groupName': $($_.Exception.Message)" -Level Warning
+                }
             }
-            else {
-                Write-Log "Group '$groupName' not found" -Level Warning
-                $groupMemberships[$groupName] = @()
-            }
+            $result[$groupName] = $membersArray
+            Write-Log "Collected $($membersArray.Count) member(s) for '$groupName'" -Level Debug
         }
         catch {
-            Write-Log "Failed to scan group '$groupName': $($_.Exception.Message)" -Level Warning
-            $groupMemberships[$groupName] = @()
+            Write-Log "Error processing group '$groupName': $($_.Exception.Message)" -Level Warning
+            $result[$groupName] = @()
         }
     }
-    
-    $totalMembers = ($groupMemberships.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
-    Write-Log "Privileged group scan completed: $totalMembers total members across $($groupMemberships.Keys.Count) groups" -Level Info
-    
-    return $groupMemberships
+
+    return $result
 }
 
-function New-DomainAnalysisReport {
+function New-MinimalReportJson {
     param(
         [hashtable]$DomainInfo,
-        [hashtable]$GroupMemberships
+        [hashtable]$GroupsMap
     )
-    
-    Write-Log "Creating domain analysis report..." -Level Debug
-    
-    # Generate unique report ID
-    $reportId = [System.Guid]::NewGuid().ToString()
+
+    # Simple, compliance-focused JSON:
+    # {
+    #   "tool_type": "domain_group_members",
+    #   "domain": "corp.example.com",
+    #   "domain_sid": "S-1-5-21-...",
+    #   "report_date": "...",
+    #   "groups": { "Domain Admins": [ {member...}, ... ], ... },
+    #   "metadata": {...}
+    # }
     $currentTime = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
-    
-    # Create findings from group memberships
-    $findings = @()
-    
-    foreach ($groupName in $GroupMemberships.Keys) {
-        $members = $GroupMemberships[$groupName]
-        
-        if ($members.Count -gt 0) {
-            $score = Get-GroupRiskScore -GroupName $groupName -MemberCount $members.Count
-            $severity = Get-GroupSeverity -GroupName $groupName -MemberCount $members.Count
-            
-            $finding = @{
-                id = [System.Guid]::NewGuid().ToString()
-                report_id = $reportId
-                tool_type = "domain_analysis"
-                category = "DonScanner"
-                name = "Group_$($groupName.Replace(' ', '_'))_Members"
-                score = $score
-                severity = $severity
-                description = "Privileged group '$groupName' has $($members.Count) members"
-                recommendation = "Review membership of privileged group '$groupName' and ensure all members require administrative access"
-                metadata = @{
-                    group_name = $groupName
-                    member_count = $members.Count
-                    members = $members
-                }
-            }
-            $findings += $finding
-        }
-    }
-    
-    # Create the main report
-    $report = @{
-        id = $reportId
-        tool_type = "domain_analysis"
-        domain = $DomainInfo.domain
+    return @{
+        tool_type   = "domain_group_members"
+        domain      = $DomainInfo.domain
+        domain_sid  = $DomainInfo.domain_sid
         report_date = $currentTime
-        upload_date = $currentTime
-        domain_sid = $DomainInfo.domain_sid
-        domain_functional_level = $DomainInfo.domain_functional_level
-        forest_functional_level = $DomainInfo.forest_functional_level
-        dc_count = $DomainInfo.dc_count
-        user_count = $DomainInfo.user_count
-        computer_count = $DomainInfo.computer_count
-        findings = $findings
-        metadata = @{
-            scan_type = "domain_analysis"
-            agent_name = "powershell_domain_scanner"
+        groups      = $GroupsMap
+        metadata    = @{
+            agent_name        = "powershell_domain_scanner_minimal"
             collection_method = "powershell_ldap"
-            script_version = "1.0"
-            collected_by = "$env:USERDOMAIN\$env:USERNAME"
-            machine_name = $env:COMPUTERNAME
+            script_version    = "1.0"
+            collected_by      = "$env:USERDOMAIN\$env:USERNAME"
+            machine_name      = $env:COMPUTERNAME
         }
-    }
-    
-    Write-Log "Report created with $($findings.Count) findings" -Level Info
-    return $report
-}
-
-function Get-GroupRiskScore {
-    param(
-        [string]$GroupName,
-        [int]$MemberCount
-    )
-    
-    # Base scores for different group types
-    $groupScores = @{
-        "Domain Admins" = 30
-        "Enterprise Admins" = 35
-        "Schema Admins" = 25
-        "Administrators" = 20
-        "Account Operators" = 15
-        "Backup Operators" = 10
-        "Server Operators" = 10
-        "Print Operators" = 5
-    }
-    
-    $baseScore = if ($groupScores.ContainsKey($GroupName)) { $groupScores[$GroupName] } else { 10 }
-    
-    # Increase score based on member count
-    if ($MemberCount -gt 10) { $baseScore += 15 }
-    elseif ($MemberCount -gt 5) { $baseScore += 10 }
-    elseif ($MemberCount -gt 2) { $baseScore += 5 }
-    
-    return [Math]::Min($baseScore, 50)  # Cap at 50
-}
-
-function Get-GroupSeverity {
-    param(
-        [string]$GroupName,
-        [int]$MemberCount
-    )
-
-    $SchemaAdmins = "Schema Admins"
-    $highRiskGroups = @("Domain Admins", "Enterprise Admins")
-
-    if ($GroupName -in $SchemaAdmins) {
-        if ($MemberCount -gt 1) { return "high" }
-        else { return "low" }
-    }
-
-    if ($GroupName -in $highRiskGroups) {
-        if ($MemberCount -gt 5) { return "high" }
-        else { return "low" }
-    }
-    else {
-        if ($MemberCount -gt 10) { return "medium" }
-        else { return "low" }
     }
 }
 
@@ -410,27 +241,22 @@ function Send-ReportToDonWatcher {
         [hashtable]$Report,
         [string]$BaseUrl
     )
-    
-    Write-Log "Sending report to DonWatcher..." -Level Info
-    
-    # Create a temporary file for upload
+
+    Write-Log "Uploading JSON report to DonWatcher..." -Level Info
+
     $tempFile = [System.IO.Path]::GetTempFileName()
     $jsonFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
-    
+
     try {
-        # Convert report to JSON and save to file
         $Report | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonFile -Encoding UTF8
-        
-        # Send to DonWatcher upload endpoint using multipart form data
+
         $uploadUrl = "$BaseUrl/upload"
-        
-        # Create multipart form data
         $boundary = [System.Guid]::NewGuid().ToString()
         $LF = "`r`n"
-        
+
         $fileContent = Get-Content -Path $jsonFile -Raw
-        $fileName = "domain-scan-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-        
+        $fileName = "domain-groups-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+
         $bodyLines = @(
             "--$boundary",
             "Content-Disposition: form-data; name=`"file`"; filename=`"$fileName`"",
@@ -438,92 +264,91 @@ function Send-ReportToDonWatcher {
             $fileContent,
             "--$boundary--$LF"
         ) -join $LF
-        
-        # Send the request
-        $response = Invoke-RestMethod -Uri $uploadUrl -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $bodyLines -TimeoutSec $Config.TimeoutSeconds
 
-        Write-Log "[SUCCESS] Report uploaded successfully!" -Level Info
-        Write-Log "Report ID: $($response.report_id)" -Level Info
-        Write-Log "Tool Type: $($response.tool_type)" -Level Info
-        Write-Log "Message: $($response.message)" -Level Info
-
+        $null = Invoke-RestMethod -Uri $uploadUrl -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $bodyLines -TimeoutSec $Config.TimeoutSeconds
+        Write-Log "[SUCCESS] Report uploaded." -Level Info
         return $true
     }
     catch {
-        Write-Log "[ERROR] Failed to upload report: $($_.Exception.Message)" -Level Error
+        Write-Log "[ERROR] Upload failed: $($_.Exception.Message)" -Level Error
         return $false
     }
     finally {
-        # Clean up temporary files
-        if (Test-Path $tempFile) {
-            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
-        }
-        if (Test-Path $jsonFile) {
-            Remove-Item $jsonFile -Force -ErrorAction SilentlyContinue
-        }
+        if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $jsonFile) { Remove-Item $jsonFile -Force -ErrorAction SilentlyContinue }
     }
 }
 #endregion
 
-#region Main Execution
+#region Main
 function Main {
-    Write-Log "DonWatcher Domain Scanner Starting..." -Level Info
-    Write-Log "Version: 1.0" -Level Info
-    Write-Log "Machine: $env:COMPUTERNAME" -Level Info
-    Write-Log "User: $env:USERDOMAIN\$env:USERNAME" -Level Info
-    
+    Write-Log "DonWatcher Domain Scanner (Minimal) starting..." -Level Info
+
     try {
-        # Check prerequisites
         if (-not (Test-Prerequisites)) {
             Write-Log "[ERROR] Prerequisites check failed" -Level Error
             exit 1
         }
-        
-        # Test connection to DonWatcher
-        if (-not (Test-DonWatcherConnection -BaseUrl $Config.DonWatcherUrl)) {
+
+        $dwStatus = Test-DonWatcherConnection -BaseUrl $Config.DonWatcherUrl
+        if (-not $dwStatus -and -not $TestConnection) {
             Write-Log "[ERROR] Cannot connect to DonWatcher" -Level Error
             exit 1
         }
-        
-        # If only testing connection, exit here
+
         if ($TestConnection) {
-            Write-Log "[SUCCESS] Connection test completed successfully" -Level Info
+            Write-Log "[SUCCESS] Connection test completed" -Level Info
             exit 0
         }
-        
-        # Collect domain information
-        $domainInfo = Get-DomainInformation
-        
-        # Collect privileged group memberships
-        $groupMemberships = Get-PrivilegedGroupMemberships
-        
-        # Create report
-        $report = New-DomainAnalysisReport -DomainInfo $domainInfo -GroupMemberships $groupMemberships
-        
-        # Send report to DonWatcher
+
+        $domainInfo = Get-DomainInfoMinimal
+
+        # Enforce domain SID, if an expected value is available
+        $expectedSid = $null
+        if ($Config.PSObject.Properties.Name -contains 'ExpectedDomainSID' -and $Config.ExpectedDomainSID) {
+            $expectedSid = $Config.ExpectedDomainSID
+            Write-Log "Using ExpectedDomainSID from config." -Level Debug
+        } elseif ($dwStatus -and $dwStatus.domain_sid) {
+            $expectedSid = $dwStatus.domain_sid
+            Write-Log "Using domain_sid from DonWatcher status." -Level Debug
+        }
+
+        if ($expectedSid) {
+            if ($expectedSid -ne $domainInfo.domain_sid) {
+                Write-Log "[ERROR] Domain SID mismatch! AD: $($domainInfo.domain_sid) Expected: $expectedSid" -Level Error
+                throw "Domain SID does not match expected value. Aborting."
+            } else {
+                Write-Log "Domain SID matches expected value." -Level Info
+            }
+        } else {
+            Write-Log "No expected domain SID provided; skipping SID enforcement." -Level Warning
+        }
+
+        $groupsMap = Get-ConfiguredGroupMemberships
+
+        $report = New-MinimalReportJson -DomainInfo $domainInfo -GroupsMap $groupsMap
+
         if (Send-ReportToDonWatcher -Report $report -BaseUrl $Config.DonWatcherUrl) {
-            Write-Log "[SUCCESS] Domain scan completed successfully!" -Level Info
+            Write-Log "[SUCCESS] Minimal domain scan finished." -Level Info
             exit 0
-        }
-        else {
-            Write-Log "[ERROR] Failed to send report to DonWatcher" -Level Error
+        } else {
+            Write-Log "[ERROR] Upload failed." -Level Error
             exit 1
         }
     }
     catch {
-        Write-Log "[ERROR] Fatal error: $($_.Exception.Message)" -Level Error
+        Write-Log "[ERROR] Fatal: $($_.Exception.Message)" -Level Error
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Debug
         exit 1
     }
 }
 
-# Create default config file if it doesn't exist
+# Create a default config if missing (non-destructive if present)
 if (-not (Test-Path $ConfigFile)) {
     Write-Log "Creating default configuration file: $ConfigFile" -Level Info
     $DefaultConfig | ConvertTo-Json -Depth 3 | Out-File $ConfigFile -Encoding UTF8
-    Write-Log "Please review and customize the configuration file before running again" -Level Info
+    Write-Log "Review and customize the configuration file before running again." -Level Info
 }
 
-# Run main function
 Main
 #endregion

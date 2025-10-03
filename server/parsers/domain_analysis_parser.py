@@ -30,6 +30,11 @@ class DomainAnalysisParser(BaseSecurityParser):
             # Check for domain analysis specific structure
             # Support both raw format and DonWatcher report format
             if isinstance(data, dict):
+                # Check for new domain_group_members format (from PowerShell scanner)
+                if (data.get('tool_type') == 'domain_group_members' and 
+                    'domain' in data and 'groups' in data):
+                    return True
+                
                 # Check for DonWatcher report format (from PowerShell agent)
                 if (data.get('tool_type') == 'domain_analysis' and 
                     'domain' in data and 'findings' in data):
@@ -48,6 +53,10 @@ class DomainAnalysisParser(BaseSecurityParser):
         """Parse domain analysis JSON file."""
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        
+        # Check for new domain_group_members format (from PowerShell scanner)
+        if data.get('tool_type') == 'domain_group_members':
+            return self._parse_domain_group_members_format(data)
         
         # Check if this is already a DonWatcher report format
         if data.get('tool_type') == 'domain_analysis' and 'findings' in data:
@@ -168,6 +177,96 @@ class DomainAnalysisParser(BaseSecurityParser):
             original_file=str(file_path)
         )
     
+    def _parse_domain_group_members_format(self, data: Dict[str, Any]) -> Report:
+        """Parse new domain_group_members format from PowerShell scanner."""
+        from server.models import Report, Finding
+        
+        # Extract basic information
+        domain = data.get('domain', 'Unknown')
+        domain_sid = data.get('domain_sid', '')
+        report_date_str = data.get('report_date', datetime.utcnow().isoformat())
+        
+        # Parse report date
+        try:
+            if 'T' in report_date_str:
+                report_date = datetime.fromisoformat(report_date_str.replace('Z', '+00:00'))
+            else:
+                report_date = datetime.strptime(report_date_str, '%Y-%m-%d')
+        except (ValueError, TypeError):
+            report_date = datetime.utcnow()
+        
+        # Generate report ID
+        report_id = str(uuid4())
+        
+        findings = []
+        
+        # Process groups from the new format
+        groups_data = data.get('groups', {})
+        for group_name, members in groups_data.items():
+            if not isinstance(members, list):
+                continue
+                
+            # Create finding for group membership
+            if members:
+                # Enhanced member data processing
+                processed_members = []
+                for member in members:
+                    if isinstance(member, dict):
+                        processed_members.append({
+                            'name': member.get('name', ''),
+                            'samaccountname': member.get('samaccountname', ''),
+                            'sid': member.get('sid', ''),
+                            'type': member.get('type', 'user'),
+                            'enabled': member.get('enabled', None)
+                        })
+                    else:
+                        # Handle legacy string format
+                        processed_members.append({
+                            'name': str(member),
+                            'samaccountname': '',
+                            'sid': '',
+                            'type': 'user',
+                            'enabled': None
+                        })
+                
+                finding = Finding(
+                    id=str(uuid4()),
+                    report_id=report_id,
+                    tool_type=SecurityToolType.DOMAIN_ANALYSIS,
+                    category="DonScanner",
+                    name=f"Group_{group_name}_Members",
+                    score=self._calculate_group_risk_score(group_name, len(members)),
+                    severity=self._determine_group_severity(group_name, len(members)),
+                    description=f"Group '{group_name}' has {len(members)} members",
+                    recommendation=f"Review membership of privileged group '{group_name}'. Accept authorized members and investigate unaccepted ones.",
+                    metadata={
+                        'group_name': group_name,
+                        'member_count': len(members),
+                        'members': processed_members,
+                        'group_sid': '',  # Not provided in current scanner format
+                        'group_type': 'security',
+                        'scanner_version': data.get('metadata', {}).get('script_version', '1.0')
+                    }
+                )
+                findings.append(finding)
+        
+        return Report(
+            id=report_id,
+            tool_type=SecurityToolType.DOMAIN_ANALYSIS,
+            domain=domain,
+            domain_sid=domain_sid,
+            # Don't override domain metadata - preserve from PingCastle reports
+            report_date=report_date,
+            upload_date=datetime.utcnow(),
+            metadata={
+                'tool_type': 'domain_group_members',
+                'scanner_metadata': data.get('metadata', {}),
+                'processed_groups': list(groups_data.keys())
+            },
+            findings=findings,
+            original_file=str(file_path)
+        )
+    
     def _calculate_group_risk_score(self, group_name: str, member_count: int) -> int:
         """Calculate risk score based on group type and member count."""
         high_risk_groups = ['Domain Admins', 'Enterprise Admins', 'Schema Admins']
@@ -239,14 +338,38 @@ class DomainAnalysisParser(BaseSecurityParser):
                 
                 # Create memberships for this group
                 for member in members:
-                    membership = GroupMembership(
-                        report_id=report.id,
-                        group_id=group_id,
-                        member_name=member.get('name', '') if isinstance(member, dict) else str(member),
-                        member_sid=member.get('sid', '') if isinstance(member, dict) else '',
-                        member_type=MemberType.USER,  # Could be enhanced to detect type
-                        is_direct_member=True
-                    )
-                    memberships.append(membership)
+                    if isinstance(member, dict):
+                        # Enhanced member data from new scanner
+                        member_name = member.get('name', '')
+                        member_sid = member.get('sid', '')
+                        member_type_str = member.get('type', 'user').lower()
+                        is_enabled = member.get('enabled', None)
+                        
+                        # Map member type string to enum
+                        if member_type_str == 'computer':
+                            member_type = MemberType.COMPUTER
+                        elif member_type_str == 'group':
+                            member_type = MemberType.GROUP
+                        else:
+                            member_type = MemberType.USER
+                    else:
+                        # Legacy string format
+                        member_name = str(member)
+                        member_sid = ''
+                        member_type = MemberType.USER
+                        is_enabled = None
+                    
+                    if member_name:  # Only create membership if we have a name
+                        membership = GroupMembership(
+                            report_id=report.id,
+                            group_id=group_id,
+                            member_name=member_name,
+                            member_sid=member_sid,
+                            member_type=member_type,
+                            is_direct_member=True
+                        )
+                        # Note: is_enabled will be handled by the enhanced GroupMembership model
+                        # after database migration is applied
+                        memberships.append(membership)
         
         return memberships
