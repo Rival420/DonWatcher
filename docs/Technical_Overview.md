@@ -320,6 +320,30 @@ docker-compose down
 
 ## Debug and Troubleshooting
 - **Debug Dashboard**: Available at `/debug` with real-time system status
+- **Health Check API**: `/api/health` for quick checks, `/api/health/full` for comprehensive diagnostics
+- **Migration Status**: `/api/debug/migrations` shows applied and pending database migrations
+- **Cache Statistics**: `/api/debug/cache` shows risk calculation cache hit rates and performance
+
+## Automated Migration System
+DonWatcher includes an automated migration runner that:
+- Discovers migration files from the `migrations/` directory
+- Tracks applied migrations in a `schema_migrations` table
+- Automatically applies pending migrations on startup
+- Supports rollback and version tracking
+
+### Migration Endpoints
+- `GET /api/debug/migrations` - View migration status and history
+
+## Risk Calculation Caching
+The risk service includes an LRU cache with TTL support:
+- Caches expensive risk calculations for 5 minutes by default
+- Automatically invalidates on member acceptance changes
+- Reduces database load for frequently accessed risk scores
+- Thread-safe with statistics monitoring
+
+### Cache Endpoints
+- `GET /api/debug/cache` - View cache statistics and hit rates
+- `POST /api/debug/cache/clear` - Clear all cached risk calculations
 - **API Health Checks**: `/api/debug/status` endpoint for programmatic monitoring
 - **Console Logging**: Frontend captures and displays console logs for troubleshooting
 - **Error Reporting**: Enhanced error messages throughout the application

@@ -21,7 +21,10 @@ from server.storage_postgres import PostgresReportStorage, get_storage
 from server.parser import PingCastleParser
 from server.alerter import Alerter
 from server.routers import settings as settings_router
-from server.database import init_database
+from server.database import init_database, engine
+from server.migration_runner import run_migrations_on_startup, get_migration_status
+from server.health_check import get_database_health, get_quick_health
+from server.cache_service import get_cache_stats, get_risk_cache
 
 # Import parsers and agents with error handling
 try:
@@ -74,6 +77,17 @@ try:
         logging.error("Make sure PostgreSQL is running and DATABASE_URL is set correctly.")
         exit(1)
     logging.info("Database initialization successful")
+    
+    # Run pending migrations automatically
+    logging.info("Checking for pending database migrations...")
+    if not run_migrations_on_startup(engine):
+        logging.error("Database migration failed. Please check migration files and database state.")
+        logging.error("You may need to manually apply migrations from the migrations/ directory.")
+        # Don't exit - allow app to start but log warning
+        logging.warning("Application starting with potentially outdated schema")
+    else:
+        logging.info("Database migrations completed successfully")
+        
 except Exception as e:
     logging.error(f"Database initialization failed with exception: {e}")
     logging.error("Please check PostgreSQL connection and schema.")
@@ -816,6 +830,89 @@ async def recalculate_domain_risk(
     except Exception as e:
         logging.exception(f"Failed to recalculate risk for {domain}")
         raise HTTPException(status_code=500, detail=f"Failed to recalculate risk: {e}")
+
+# Migration status endpoint
+@app.get("/api/debug/migrations")
+def debug_migrations():
+    """Get database migration status."""
+    try:
+        status = get_migration_status(engine)
+        return {
+            "status": "ok",
+            **status
+        }
+    except Exception as e:
+        logging.exception("Migration status check failed")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+# Database health check endpoints
+@app.get("/api/health")
+def quick_health_check():
+    """Quick health check endpoint for load balancers and monitoring."""
+    health = get_quick_health(engine)
+    return health
+
+@app.get("/api/health/full")
+def full_health_check():
+    """Comprehensive database health check with detailed diagnostics."""
+    health = get_database_health(engine)
+    return health
+
+@app.get("/api/debug/health")
+def debug_health_check():
+    """Debug endpoint with full health report."""
+    try:
+        health = get_database_health(engine)
+        migration_status = get_migration_status(engine)
+        
+        return {
+            "status": "ok",
+            "database_health": health,
+            "migrations": migration_status
+        }
+    except Exception as e:
+        logging.exception("Debug health check failed")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+# Cache status endpoint
+@app.get("/api/debug/cache")
+def debug_cache_status():
+    """Get risk cache statistics."""
+    try:
+        stats = get_cache_stats()
+        return {
+            "status": "ok",
+            "cache_stats": stats
+        }
+    except Exception as e:
+        logging.exception("Cache status check failed")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@app.post("/api/debug/cache/clear")
+def clear_cache():
+    """Clear the risk calculation cache."""
+    try:
+        cache = get_risk_cache()
+        cleared = cache.clear()
+        return {
+            "status": "ok",
+            "entries_cleared": cleared
+        }
+    except Exception as e:
+        logging.exception("Cache clear failed")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 # Enhanced debug endpoint with risk information
 @app.get("/api/debug/risk_status")

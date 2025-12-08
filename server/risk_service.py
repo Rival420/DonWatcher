@@ -4,6 +4,8 @@ Phase 3 - Backend Service for Risk Score Management
 
 This service integrates domain group risks with existing PingCastle scores
 to provide comprehensive global risk assessment.
+
+Enhanced with caching layer for improved performance.
 """
 
 import logging
@@ -18,6 +20,11 @@ from server.risk_calculator import (
     DomainRiskAssessment, 
     GlobalRiskScore,
     GroupRiskLevel
+)
+from server.cache_service import (
+    get_risk_cache,
+    invalidate_risk_cache_for_domain,
+    invalidate_risk_cache_for_member_change
 )
 
 
@@ -78,6 +85,13 @@ class RiskIntegrationService:
             GlobalRiskScore object
         """
         try:
+            # Check cache first
+            cache = get_risk_cache()
+            cached_data = cache.get_global_risk(domain)
+            if cached_data:
+                self.logger.debug(f"Using cached global risk for {domain}")
+                return GlobalRiskScore(**cached_data)
+            
             # Get latest PingCastle score
             pingcastle_score = self._get_latest_pingcastle_score(domain)
             
@@ -100,6 +114,19 @@ class RiskIntegrationService:
             global_risk_id = self._store_global_risk_score(global_risk, domain_assessment)
             self.logger.info(f"Stored global risk score for {domain} with ID {global_risk_id}")
             
+            # Cache the result
+            cache.set_global_risk(domain, {
+                'domain': global_risk.domain,
+                'assessment_date': global_risk.assessment_date,
+                'pingcastle_score': global_risk.pingcastle_score,
+                'domain_group_score': global_risk.domain_group_score,
+                'global_score': global_risk.global_score,
+                'pingcastle_contribution': global_risk.pingcastle_contribution,
+                'domain_group_contribution': global_risk.domain_group_contribution,
+                'trend_direction': global_risk.trend_direction,
+                'trend_percentage': global_risk.trend_percentage
+            })
+            
             return global_risk
             
         except Exception as e:
@@ -116,6 +143,10 @@ class RiskIntegrationService:
         """
         try:
             self.logger.info(f"Updating risk scores for {group_name} in {domain}")
+            
+            # Invalidate cache for this domain/group
+            invalidated = invalidate_risk_cache_for_member_change(domain, group_name)
+            self.logger.debug(f"Invalidated {invalidated} cache entries for member change")
             
             # Force recalculation of domain risk
             await self.calculate_and_store_domain_risk(domain, force_recalculation=True)
@@ -275,7 +306,7 @@ class RiskIntegrationService:
                         trend_direction
                     FROM global_risk_scores
                     WHERE domain = :domain
-                      AND assessment_date >= NOW() - INTERVAL :days DAY
+                      AND assessment_date >= NOW() - make_interval(days => :days)
                     ORDER BY assessment_date ASC
                 """)
                 
@@ -309,7 +340,7 @@ class RiskIntegrationService:
                         domain_group_score, calculation_metadata
                     FROM domain_risk_assessments
                     WHERE domain = :domain
-                      AND assessment_date >= NOW() - INTERVAL :hours HOUR
+                      AND assessment_date >= NOW() - make_interval(hours => :hours)
                     ORDER BY assessment_date DESC
                     LIMIT 1
                 """)
@@ -347,7 +378,7 @@ class RiskIntegrationService:
                     SELECT *
                     FROM global_risk_scores
                     WHERE domain = :domain
-                      AND assessment_date >= NOW() - INTERVAL :hours HOUR
+                      AND assessment_date >= NOW() - make_interval(hours => :hours)
                     ORDER BY assessment_date DESC
                     LIMIT 1
                 """)
@@ -441,7 +472,7 @@ class RiskIntegrationService:
                     SELECT assessment_date, global_score
                     FROM global_risk_scores
                     WHERE domain = :domain
-                      AND assessment_date >= NOW() - INTERVAL :days DAY
+                      AND assessment_date >= NOW() - make_interval(days => :days)
                     ORDER BY assessment_date ASC
                 """)
                 

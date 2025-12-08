@@ -6,11 +6,13 @@ This directory contains all database schema migrations for the DonWatcher projec
 
 ```
 migrations/
-├── README.md                               # This file
-├── init_db.sql                            # Initial database schema
-├── migration_001_rename_global_score.sql  # Rename global score field
-├── migration_002_add_group_member_tables.sql # Add group membership tracking
-└── migration_003_add_member_status.sql    # Add member status tracking (Phase 1)
+├── README.md                                      # This file
+├── init_db.sql                                    # Initial database schema
+├── migration_001_rename_global_score.sql          # Rename global score field
+├── migration_002_add_group_member_tables.sql      # Add group membership tracking
+├── migration_003_add_member_status.sql            # Add member status tracking (Phase 1)
+├── migration_004_add_risk_integration.sql         # Add risk integration tables (Phase 3)
+└── migration_005_add_risk_dashboard_summary.sql   # Add dashboard view and history table
 ```
 
 ## Migration Order
@@ -21,6 +23,8 @@ Migrations must be applied in numerical order:
 2. **migration_001_rename_global_score.sql** - Updates score field naming
 3. **migration_002_add_group_member_tables.sql** - Adds group membership functionality
 4. **migration_003_add_member_status.sql** - Adds enhanced member tracking (Phase 1)
+5. **migration_004_add_risk_integration.sql** - Adds risk integration tables (Phase 3)
+6. **migration_005_add_risk_dashboard_summary.sql** - Adds dashboard summary view and calculation history
 
 ## Applying Migrations
 
@@ -92,7 +96,7 @@ COMMIT;
 
 ## Current Schema Version
 
-**Latest Version**: Migration 003 (Phase 1 - Member Status Tracking)
+**Latest Version**: Migration 005 (Risk Dashboard Summary & Calculation History)
 
 ### Key Features:
 - Multi-tool security report support
@@ -100,6 +104,9 @@ COMMIT;
 - Enhanced member data (type, enabled status, SID)
 - Performance optimizations with materialized views
 - Automatic refresh triggers for real-time updates
+- Risk integration tables (domain assessments, global scores)
+- Risk dashboard summary view for cross-domain comparison
+- Risk calculation history audit trail
 
 ## Rollback Instructions
 

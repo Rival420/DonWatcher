@@ -13,6 +13,9 @@ DonWatcher is a modern, containerized web-based dashboard for monitoring the hea
 - **Historical Analysis**: Trend charts and recurring findings analysis across all supported tools
 - **Enhanced Alerting**: Rich webhook notifications with tool context and detailed finding metadata
 - **Debug & Diagnostics**: Built-in debug dashboard for system monitoring and troubleshooting
+- **Automated Migrations**: Database migrations run automatically on startup with version tracking
+- **Health Checks**: Comprehensive database health monitoring with `/api/health` endpoints
+- **Risk Caching**: LRU cache with TTL for risk calculations reduces database load
 - **Containerized Deployment**: Production-ready Docker setup with PostgreSQL database
 - **Responsive Design**: Mobile-friendly interface with enhanced filtering and sorting capabilities
 - **Robust Error Handling**: Comprehensive error reporting and user-friendly error states

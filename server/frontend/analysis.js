@@ -882,8 +882,12 @@ window.toggleMemberAcceptance = async function(groupName, memberName, accept) {
     const confirmed = confirm(`${accept ? 'Accept' : 'Remove acceptance for'} ${memberName} in ${groupName}?`);
     
     if (confirmed) {
-      // Get current domain from latest reports or use fallback
-      const currentDomain = await getCurrentDomainFromReports() || 'onenet.be';
+      // Get current domain from latest reports
+      const currentDomain = await getCurrentDomainFromReports();
+      if (!currentDomain) {
+        alert('Unable to determine domain. Please ensure domain analysis reports have been uploaded.');
+        return;
+      }
       
       const memberData = {
         group_name: groupName,
