@@ -134,13 +134,13 @@ function setupGlobalSearch() {
 
 async function loadReports() {
   try {
-    const res = await fetch("/api/reports");
+    const res = await fetch("/api/reports?tool_type=pingcastle");
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
     const reports = await res.json();
-    console.log("Loaded reports:", reports); // Debug log
+    console.log("Loaded PingCastle reports:", reports); // Debug log
     
     const tbody = document.querySelector("#reports-table tbody");
     tbody.innerHTML = "";
@@ -164,15 +164,15 @@ async function loadReports() {
       toolTd.appendChild(toolBadge);
       tr.appendChild(toolTd);
       
-      // Other columns
+      // Other columns - PingCastle specific
       [
         r.domain || 'Unknown',
         new Date(r.report_date).toLocaleDateString(),
-        r.tool_type === 'pingcastle' ? (r.global_score || 0) : (r.total_findings || 0),
-        r.tool_type === 'pingcastle' ? (r.stale_objects_score || 0) : (r.high_severity_findings || 0),
-        r.tool_type === 'pingcastle' ? (r.privileged_accounts_score || 0) : (r.medium_severity_findings || 0),
-        r.tool_type === 'pingcastle' ? (r.trusts_score || 0) : (r.low_severity_findings || 0),
-        r.tool_type === 'pingcastle' ? (r.anomalies_score || 0) : '-',
+        r.global_score || 0,
+        r.stale_objects_score || 0,
+        r.privileged_accounts_score || 0,
+        r.trusts_score || 0,
+        r.anomalies_score || 0,
       ].forEach(text => {
         const td = document.createElement("td");
         td.textContent = text;

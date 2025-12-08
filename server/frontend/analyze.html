@@ -113,6 +113,52 @@
             </div>
           </section>
         </div>
+
+        <div id="domain-scanner" class="tab-content">
+          <section class="card">
+            <div class="card-header">
+              <h2>Domain Scanner Results</h2>
+              <p>Privileged group membership analysis from domain scanner agent</p>
+            </div>
+            
+            <div class="table-controls">
+              <div class="filter-controls">
+                <input type="text" id="domain-scanner-filter" placeholder="Filter groups or members..." />
+                <select id="scanner-group-filter">
+                  <option value="">All Groups</option>
+                </select>
+                <select id="scanner-severity-filter">
+                  <option value="">All Severities</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <select id="scanner-report-filter">
+                  <option value="latest">Latest Report</option>
+                  <option value="all">All Reports</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="table-wrap">
+              <table id="domain-scanner-table">
+                <thead>
+                  <tr>
+                    <th>Report Date</th>
+                    <th>Group Name</th>
+                    <th>Member Name</th>
+                    <th>Member Type</th>
+                    <th>Enabled</th>
+                    <th>Group Risk Score</th>
+                    <th>Risk Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   </div>

@@ -9,17 +9,19 @@ export async function showAnalysis() {
         if (!r.ok) throw new Error(`Scores API error: ${r.status}`);
         return r.json();
       }),
-      fetch("/analysis/frequency").then(r => {
+      fetch("/analysis/frequency?tool_type=pingcastle").then(r => {
         if (!r.ok) throw new Error(`Frequency API error: ${r.status}`);
         return r.json();
       }),
-      fetch("/api/accepted_risks").then(r => {
+      fetch("/api/accepted_risks?tool_type=pingcastle").then(r => {
         if (!r.ok) throw new Error(`Accepted risks API error: ${r.status}`);
         return r.json();
       }),
     ]);
     
     console.log("Analysis data loaded:", { scores, freq, accepted });
+    console.log("Frequency data details:", freq);
+    console.log("Number of findings:", freq ? freq.length : 0);
     
     renderChart(scores);
     renderRecurring(freq, accepted);
@@ -41,6 +43,9 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("Failed to load analysis data");
   });
 
+  // Setup tab switching
+  setupTabs();
+
   document.getElementById("findings-filter").addEventListener("input", renderFilteredFindings);
   document.getElementById("category-filter").addEventListener("change", renderFilteredFindings);
   document.getElementById("tool-filter").addEventListener("change", renderFilteredFindings);
@@ -48,7 +53,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const latestToggle = document.getElementById("latest-only-toggle");
   if (latestToggle) latestToggle.addEventListener("change", renderFilteredFindings);
   document.getElementById("sort-findings").addEventListener("change", renderFilteredFindings);
-  setupTabs();
 });
 
 function setupTabs() {
@@ -69,6 +73,11 @@ function switchTab(tabId) {
 
   document.getElementById(tabId).classList.add('active');
   document.querySelector(`.tab-link[data-tab="${tabId}"]`).classList.add('active');
+  
+  // Load domain scanner data when switching to that tab
+  if (tabId === 'domain-scanner') {
+    loadDomainScannerAnalysis();
+  }
 }
 
 const ORDER_STORAGE_KEY = 'recurringTableColumnOrder';
@@ -268,9 +277,11 @@ function renderFilteredFindings() {
   // Handle empty data
   if (!allFindings || allFindings.length === 0) {
     console.log("No findings data available");
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No recurring findings found. Upload some reports to see analysis.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No recurring findings found. Upload some PingCastle reports to see analysis.</td></tr>';
     return;
   }
+  
+  console.log("Total findings before filtering:", allFindings.length);
   
   console.log("Processing", allFindings.length, "findings");
   
@@ -283,11 +294,7 @@ function renderFilteredFindings() {
     const category = finding.category || '';
     const toolType = finding.toolType || '';
     
-    // Exclude DonScanner findings from PingCastle tab
-    if (category === 'DonScanner') {
-      console.log("Excluding DonScanner finding:", name);
-      return false;
-    }
+    // No need to exclude DonScanner findings since we're filtering at API level
     
     const matchesText = name.toLowerCase().includes(filterText) || 
                        description.toLowerCase().includes(filterText) ||
@@ -652,3 +659,272 @@ async function updateAcceptedRisk(toolType, category, name, isAccepted) {
         body: payload
     });
 }
+
+
+async function loadDomainScannerAnalysis() {
+  try {
+    console.log("Loading domain scanner analysis data...");
+    
+    // Get domain analysis reports and accepted members in parallel
+    const [reportsRes, acceptedMembersRes] = await Promise.all([
+      fetch('/api/reports?tool_type=domain_analysis'),
+      fetch('/api/accepted_group_members')
+    ]);
+    
+    const reports = await reportsRes.json();
+    const acceptedMembers = await acceptedMembersRes.json();
+    
+    if (!reports || reports.length === 0) {
+      renderDomainScannerTable([]);
+      return;
+    }
+    
+    // Create a set of accepted members for quick lookup
+    const acceptedSet = new Set(
+      acceptedMembers.map(m => `${m.group_name}|${m.member_name}`)
+    );
+    
+    // Get detailed data for all reports
+    const detailedReports = await Promise.all(
+      reports.map(async (report) => {
+        const detailRes = await fetch(`/api/reports/${report.id}`);
+        return detailRes.json();
+      })
+    );
+    
+    // Extract individual member data from all reports
+    const memberData = [];
+    detailedReports.forEach(report => {
+      if (report.findings) {
+        report.findings.forEach(finding => {
+          if (finding.category === 'DonScanner' && finding.name.startsWith('Group_')) {
+            const groupName = finding.metadata?.group_name || 'Unknown Group';
+            const groupScore = finding.score || 0;
+            const members = finding.metadata?.members || [];
+            
+            // Create one row per member
+            members.forEach(member => {
+              const memberName = typeof member === 'string' ? member : (member.name || 'Unknown');
+              const memberKey = `${groupName}|${memberName}`;
+              
+              memberData.push({
+                reportId: report.id,
+                reportDate: new Date(report.report_date),
+                groupName: groupName,
+                groupScore: groupScore,
+                memberName: memberName,
+                memberType: typeof member === 'string' ? 'user' : (member.type || 'user'),
+                memberEnabled: typeof member === 'string' ? true : (member.enabled !== false),
+                memberSid: typeof member === 'string' ? '' : (member.sid || ''),
+                isAccepted: acceptedSet.has(memberKey),
+                description: finding.description || '',
+                recommendation: finding.recommendation || ''
+              });
+            });
+          }
+        });
+      }
+    });
+    
+    renderDomainScannerTable(memberData);
+    setupDomainScannerFilters(memberData);
+    
+  } catch (error) {
+    console.error('Failed to load domain scanner analysis:', error);
+    renderDomainScannerTable([]);
+  }
+}
+
+function renderDomainScannerTable(memberData) {
+  const tbody = document.querySelector('#domain-scanner-table tbody');
+  if (!tbody) return;
+  
+  if (!memberData || memberData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #999;">No domain scanner data available</td></tr>';
+    return;
+  }
+  
+  // Sort by report date (newest first), then by group name, then by member name
+  memberData.sort((a, b) => {
+    if (b.reportDate.getTime() !== a.reportDate.getTime()) {
+      return b.reportDate - a.reportDate;
+    }
+    if (a.groupName !== b.groupName) {
+      return a.groupName.localeCompare(b.groupName);
+    }
+    return a.memberName.localeCompare(b.memberName);
+  });
+  
+  tbody.innerHTML = memberData.map(member => `
+    <tr class="member-row" data-group="${member.groupName}" data-member="${member.memberName}">
+      <td>${member.reportDate.toLocaleDateString()}</td>
+      <td>
+        <div class="group-name-cell">${member.groupName}</div>
+      </td>
+      <td>
+        <div class="member-name-cell">${member.memberName}</div>
+      </td>
+      <td>
+        <span class="member-type-badge ${member.memberType}">${member.memberType.toUpperCase()}</span>
+      </td>
+      <td>
+        <span class="enabled-badge ${member.memberEnabled ? 'enabled' : 'disabled'}">
+          ${member.memberEnabled ? 'Enabled' : 'Disabled'}
+        </span>
+      </td>
+      <td>
+        <span class="risk-score-badge">${member.groupScore}</span>
+      </td>
+      <td>
+        <span class="risk-status ${member.isAccepted ? 'accepted' : 'unaccepted'}">
+          ${member.isAccepted ? 'Accepted' : 'Unaccepted'}
+        </span>
+      </td>
+      <td>
+        <button class="accept-btn ${member.isAccepted ? 'accepted' : ''}" 
+                onclick="toggleMemberAcceptance('${member.groupName}', '${member.memberName}', ${!member.isAccepted})"
+                title="${member.isAccepted ? 'Remove acceptance' : 'Accept this member'}">
+          <i class="fas fa-${member.isAccepted ? 'times' : 'check'}"></i>
+          ${member.isAccepted ? 'Unaccept' : 'Accept'}
+        </button>
+        <button class="info-btn" onclick="showMemberInfo('${member.groupName}', '${member.memberName}', '${member.memberSid}', '${member.description}')">
+          <i class="fas fa-info-circle"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function setupDomainScannerFilters(memberData) {
+  // Populate group filter
+  const groupFilter = document.getElementById('scanner-group-filter');
+  if (groupFilter) {
+    const uniqueGroups = [...new Set(memberData.map(m => m.groupName))].sort();
+    groupFilter.innerHTML = '<option value="">All Groups</option>' +
+      uniqueGroups.map(group => `<option value="${group}">${group}</option>`).join('');
+  }
+  
+  // Add filter event listeners
+  const filterElements = [
+    'domain-scanner-filter',
+    'scanner-group-filter', 
+    'scanner-severity-filter',
+    'scanner-report-filter'
+  ];
+  
+  filterElements.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener('input', () => filterDomainScannerTable(memberData));
+      element.addEventListener('change', () => filterDomainScannerTable(memberData));
+    }
+  });
+}
+
+function filterDomainScannerTable(allData) {
+  const searchTerm = document.getElementById('domain-scanner-filter')?.value.toLowerCase() || '';
+  const groupFilter = document.getElementById('scanner-group-filter')?.value || '';
+  const reportFilter = document.getElementById('scanner-report-filter')?.value || 'latest';
+  
+  let filteredData = allData.filter(member => {
+    const matchesSearch = !searchTerm || 
+      member.groupName.toLowerCase().includes(searchTerm) ||
+      member.memberName.toLowerCase().includes(searchTerm);
+    
+    const matchesGroup = !groupFilter || member.groupName === groupFilter;
+    
+    return matchesSearch && matchesGroup;
+  });
+  
+  // Handle report filter
+  if (reportFilter === 'latest') {
+    const latestDate = Math.max(...filteredData.map(m => m.reportDate.getTime()));
+    filteredData = filteredData.filter(m => m.reportDate.getTime() === latestDate);
+  }
+  
+  renderDomainScannerTable(filteredData);
+}
+
+// Helper function to get current domain from reports
+async function getCurrentDomainFromReports() {
+  try {
+    const response = await fetch('/api/reports?tool_type=domain_analysis');
+    const reports = await response.json();
+    if (reports && reports.length > 0) {
+      // Get the most recent domain analysis report's domain
+      const latestReport = reports[reports.length - 1];
+      return latestReport.domain;
+    }
+  } catch (error) {
+    console.error('Failed to get current domain from reports:', error);
+  }
+  return null;
+}
+
+// Global functions for button clicks
+window.showGroupMembers = function(groupName, members) {
+  const memberList = members.map(m => 
+    typeof m === 'string' ? m : `${m.name || 'Unknown'} (${m.type || 'user'})`
+  ).join('\n');
+  
+  alert(`${groupName} Members:\n\n${memberList}`);
+};
+
+window.showGroupInfo = function(groupName, description, recommendation) {
+  alert(`${groupName}\n\nDescription: ${description}\n\nRecommendation: ${recommendation}`);
+};
+
+window.toggleMemberAcceptance = async function(groupName, memberName, accept) {
+  try {
+    const action = accept ? 'accept' : 'unaccept';
+    console.log(`${action}ing member ${memberName} in group ${groupName}`);
+    
+    const confirmed = confirm(`${accept ? 'Accept' : 'Remove acceptance for'} ${memberName} in ${groupName}?`);
+    
+    if (confirmed) {
+      // Get current domain from latest reports or use fallback
+      const currentDomain = await getCurrentDomainFromReports() || 'onenet.be';
+      
+      const memberData = {
+        group_name: groupName,
+        member_name: memberName,
+        domain: currentDomain,
+        reason: accept ? 'Accepted via domain scanner analysis' : null,
+        accepted_by: 'dashboard_user'
+      };
+      
+      const method = accept ? 'POST' : 'DELETE';
+      // FIXED: Use standardized domain groups API endpoint
+      const response = await fetch('/api/domain_groups/members/accept', {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(memberData)
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`Member ${memberName} ${accept ? 'accepted' : 'unaccepted'} successfully`);
+        
+        // Check for risk calculation status if available
+        if (result.risk_calculation_status === 'failed') {
+          console.warn('Risk scores may not have been updated');
+        }
+        
+        // Reload the table to reflect changes
+        loadDomainScannerAnalysis();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `API call failed: ${response.status}`);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to toggle member acceptance:', error);
+    alert(`Failed to update member acceptance: ${error.message}`);
+  }
+};
+
+window.showMemberInfo = function(groupName, memberName, memberSid, description) {
+  alert(`Member Information:\n\nName: ${memberName}\nGroup: ${groupName}\nSID: ${memberSid}\nDescription: ${description}`);
+};

@@ -19,24 +19,45 @@ DonWatcher is a modern, containerized web-based dashboard for monitoring the hea
 
 ## Repository Structure
 
-DonWatcher is organized into server and client components:
+DonWatcher is organized with a clean, modular structure for maintainability and scalability:
 
 ```
 DonWatcher/
-├── server/                    # Server components (Docker container)
-│   ├── main.py               # FastAPI application
-│   ├── models.py             # Data models
-│   ├── parsers/              # Security tool parsers
-│   ├── frontend/             # Web interface
-│   └── ...                   # Other server modules
-├── client/                    # Client components (remote machines)
-│   ├── agents/               # Python agent framework
-│   ├── DonWatcher-DomainScanner.ps1  # PowerShell script
-│   └── DonWatcher-Config.json # Configuration template
-├── docker-compose.yml        # Container orchestration
-├── Dockerfile               # Server container definition
-└── docs/                    # Documentation
+├── 📄 README.md                          # This file
+├── 📄 PROJECT_STRUCTURE.md               # Detailed project organization
+├── 📄 requirements.txt                   # Python dependencies
+├── 📄 docker-compose.yml                 # Container orchestration
+├── 📄 Dockerfile                         # Server container definition
+│
+├── 📁 client/                            # Client components (remote machines)
+│   ├── 📄 DonWatcher-DomainScanner.ps1   # PowerShell domain scanner
+│   ├── 📄 DonWatcher-Config.json         # Scanner configuration
+│   └── 📁 agents/                        # Legacy Python agents
+│
+├── 📁 server/                            # Backend server application
+│   ├── 📄 main.py                        # FastAPI application with Phase 1 enhancements
+│   ├── 📄 models.py                      # Enhanced data models
+│   ├── 📁 parsers/                       # Multi-format security tool parsers
+│   ├── 📁 frontend/                      # Web interface assets
+│   └── 📁 routers/                       # API route modules
+│
+├── 📁 migrations/                        # Database schema migrations
+│   ├── 📄 README.md                      # Migration documentation
+│   ├── 📄 init_db.sql                    # Initial schema
+│   └── 📄 migration_003_add_member_status.sql # Phase 1 enhancements
+│
+├── 📁 tests/                             # Unit tests and test data
+│   ├── 📄 README.md                      # Testing documentation
+│   ├── 📄 test_domain_group_parser.py    # Comprehensive parser tests
+│   └── 📄 test_domain_group_members.json # Sample test data
+│
+└── 📁 docs/                              # Project documentation
+    ├── 📄 Technical_Overview.md           # Technical documentation
+    ├── 📁 api/                           # API reference documentation
+    └── 📁 implementation/                # Phase implementation details
 ```
+
+For detailed information about the project structure, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
 
 ### Server Components
 - **FastAPI Backend**: REST API, file processing, database management
@@ -108,7 +129,10 @@ cd Donwatcher
 createdb donwatcher
 
 # Initialize schema
-psql -d donwatcher -f init_db.sql
+psql -d donwatcher -f migrations/init_db.sql
+
+# Apply Phase 1 enhancements (optional but recommended)
+psql -d donwatcher -f migrations/migration_003_add_member_status.sql
 ```
 
 3. **Python Environment**
@@ -153,10 +177,13 @@ uvicorn main:app --reload --port 8080 --host 0.0.0.0
 - **Features**: ADCS configuration analysis, certificate template security
 - **Use Case**: PKI and certificate authority security
 
-### Domain Analysis
-- **Format**: JSON reports
-- **Features**: Privileged group monitoring, membership tracking
-- **Use Case**: AD group management and access control
+### Domain Analysis (Enhanced in Phase 1-3)
+- **Format**: JSON reports (`domain_analysis` and new `domain_group_members`)
+- **Features**: Privileged group monitoring, membership tracking, member acceptance workflow, integrated risk assessment
+- **Phase 3 Capabilities**: Global risk integration with PingCastle, real-time risk updates, comprehensive risk visualization
+- **Phase 2 Capabilities**: Member management modal, bulk operations, mobile-responsive interface
+- **Phase 1 Capabilities**: Individual member accept/deny, enhanced member data (type, enabled status), risk scoring based on unaccepted members
+- **Use Case**: Comprehensive AD group management with enterprise risk assessment and compliance reporting
 
 ### Agent-Based Collection
 - **Domain Scanner Agent**: PowerShell-based AD group membership collection
@@ -245,9 +272,31 @@ Register-ScheduledTask -TaskName "DonWatcher Domain Scan" -Action $Action -Trigg
 - **API Documentation**: Available at `/docs` when running the application
 - **Contributing Guidelines**: See technical overview for coding conventions and extensibility
 
-## Recent Updates (v2.1)
+## Recent Updates (v2.1 + Phase 1)
 
-### 🚀 New Features
+### 🚀 New Features (Phase 1-3 Complete)
+
+**Phase 3 - Risk Score Integration**:
+- **Global Risk Framework**: Complementary integration of PingCastle + domain group risks
+- **Enhanced Risk Visualization**: Rich dashboard with component attribution and trending
+- **Real-time Risk Updates**: Automatic recalculation on membership changes
+- **Cross-Domain Comparison**: Enterprise-wide risk assessment and benchmarking
+- **Performance Optimized**: Sub-second risk calculations with intelligent caching
+
+**Phase 2 - Frontend Enhancement**:
+- **Member Management Modal**: Comprehensive interface with bulk operations
+- **Enhanced Group Tiles**: Rich visual indicators with acceptance status
+- **Mobile-First Design**: Full functionality across all devices
+- **Advanced Filtering**: Smart search and categorization tools
+
+**Phase 1 - Backend Foundation**:
+- **Domain Group Management**: Complete member acceptance workflow with individual accept/deny controls
+- **Enhanced Parser**: Dual format support for legacy and new domain scanner JSON formats
+- **New API Endpoints**: 11 new REST endpoints for group and risk management
+- **Risk Score Enhancement**: Risk calculations based only on unaccepted members
+- **Member Detail Tracking**: Enhanced member data including type, enabled status, and SID
+
+### 🚀 Previous Features (v2.1)
 - **Multi-File Upload**: Upload multiple security reports simultaneously with progress tracking
 - **Debug Dashboard**: Real-time system monitoring and API health checks at `/debug`
 - **Enhanced Error Handling**: Comprehensive error reporting and troubleshooting tools

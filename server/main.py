@@ -14,8 +14,9 @@ from typing import List, Optional
 
 from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
-    UploadResponse, SecurityToolType
+    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig
 )
+from server.risk_service import get_risk_service
 from server.storage_postgres import PostgresReportStorage, get_storage
 from server.parser import PingCastleParser
 from server.alerter import Alerter
@@ -204,9 +205,18 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
         if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
             from server.parsers.domain_analysis_parser import DomainAnalysisParser
             if isinstance(parser, DomainAnalysisParser):
-                memberships = parser.extract_group_memberships(report)
+                memberships = parser.extract_group_memberships(report, storage)
                 if memberships:
                     storage.save_group_memberships(report_id, memberships)
+                
+                # Trigger risk calculation for domain group changes
+                try:
+                    risk_service = get_risk_service(storage)
+                    await risk_service.calculate_and_store_global_risk(report.domain)
+                    logging.info(f"Updated risk scores for domain {report.domain} after group data upload")
+                except Exception as e:
+                    logging.warning(f"Failed to update risk scores after upload: {e}")
+                    # Don't fail the upload if risk calculation fails
 
         # Alert on unaccepted findings
         unaccepted = storage.get_unaccepted_findings(report.findings)
@@ -357,8 +367,14 @@ def get_accepted_risks(
 
 @app.post("/api/accepted_risks")
 def add_accepted_risks(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
-    storage.add_accepted_risk(risk.tool_type, risk.category, risk.name, risk.reason, risk.accepted_by)
-    return {"status": "ok"}
+    """Add an accepted risk with enhanced error handling."""
+    try:
+        storage.add_accepted_risk(risk.tool_type, risk.category, risk.name, risk.reason, risk.accepted_by)
+        logging.info(f"Successfully accepted risk: {risk.tool_type.value}/{risk.category}/{risk.name}")
+        return {"status": "ok"}
+    except Exception as e:
+        logging.exception(f"Failed to accept risk {risk.tool_type.value}/{risk.category}/{risk.name}")
+        raise HTTPException(status_code=500, detail=f"Failed to accept risk: {e}")
 
 @app.delete("/api/accepted_risks")
 def delete_accepted_risk(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
@@ -376,6 +392,474 @@ def add_monitored_group(group: MonitoredGroup, storage: PostgresReportStorage = 
     """Add a new monitored group."""
     group_id = storage.add_monitored_group(group)
     return {"status": "ok", "group_id": group_id}
+
+# Accepted Group Members Management
+@app.get("/api/accepted_group_members", response_model=List[AcceptedGroupMember])
+def get_accepted_group_members(
+    domain: Optional[str] = None,
+    group_name: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get accepted group members, optionally filtered by domain or group."""
+    return storage.get_accepted_group_members(domain, group_name)
+
+@app.post("/api/accepted_group_members")
+def add_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
+    """Accept a group member.
+    
+    DEPRECATED: Use /api/domain_groups/members/accept instead.
+    This endpoint is maintained for backward compatibility but will be removed in a future version.
+    """
+    logging.warning("DEPRECATED: /api/accepted_group_members endpoint used. Please migrate to /api/domain_groups/members/accept")
+    member_id = storage.add_accepted_group_member(member)
+    return {
+        "status": "ok", 
+        "member_id": member_id,
+        "warning": "This endpoint is deprecated. Use /api/domain_groups/members/accept instead."
+    }
+
+@app.delete("/api/accepted_group_members")
+def remove_accepted_group_member(member: AcceptedGroupMember, storage: PostgresReportStorage = Depends(get_storage)):
+    """Remove acceptance for a group member.
+    
+    DEPRECATED: Use /api/domain_groups/members/accept instead.
+    This endpoint is maintained for backward compatibility but will be removed in a future version.
+    """
+    logging.warning("DEPRECATED: /api/accepted_group_members endpoint used. Please migrate to /api/domain_groups/members/accept")
+    storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
+    return {
+        "status": "ok",
+        "warning": "This endpoint is deprecated. Use /api/domain_groups/members/accept instead."
+    }
+
+# Group Risk Configuration Management
+@app.get("/api/group_risk_configs", response_model=List[GroupRiskConfig])
+def get_group_risk_configs(
+    domain: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get group risk configurations."""
+    return storage.get_group_risk_configs(domain)
+
+@app.post("/api/group_risk_configs")
+def add_group_risk_config(config: GroupRiskConfig, storage: PostgresReportStorage = Depends(get_storage)):
+    """Add or update a group risk configuration."""
+    config_id = storage.save_group_risk_config(config)
+    return {"status": "ok", "config_id": config_id}
+
+# Domain Group Management - New endpoints for member acceptance workflow
+@app.get("/api/domain_groups/{domain}")
+async def get_domain_groups(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all groups for a domain with member counts and acceptance status."""
+    try:
+        # Get latest domain analysis report for this domain
+        reports = storage.get_all_reports_summary()
+        domain_reports = [r for r in reports if r.domain == domain and r.tool_type == SecurityToolType.DOMAIN_ANALYSIS]
+        
+        if not domain_reports:
+            return []
+        
+        # Get the latest report
+        latest_report = max(domain_reports, key=lambda r: r.report_date)
+        report_detail = storage.get_report(latest_report.id)
+        
+        # Process group findings
+        groups = []
+        for finding in report_detail.findings:
+            if finding.category == "DonScanner" and finding.name.startswith("Group_"):
+                group_name = finding.metadata.get('group_name', '')
+                total_members = finding.metadata.get('member_count', 0)
+                members = finding.metadata.get('members', [])
+                
+                # Get accepted members count
+                accepted_members = storage.get_accepted_group_members(domain, group_name)
+                accepted_count = len(accepted_members)
+                unaccepted_count = total_members - accepted_count
+                
+                # Calculate risk score (only for unaccepted members)
+                risk_score = 0
+                if unaccepted_count > 0:
+                    # Get group risk config
+                    risk_configs = storage.get_group_risk_configs(domain)
+                    group_config = next((c for c in risk_configs if c.group_name == group_name), None)
+                    if group_config:
+                        risk_score = min(group_config.base_risk_score * (unaccepted_count / max(group_config.max_acceptable_members, 1)), 100)
+                    else:
+                        risk_score = finding.score
+                
+                groups.append({
+                    'group_name': group_name,
+                    'total_members': total_members,
+                    'accepted_members': accepted_count,
+                    'unaccepted_members': unaccepted_count,
+                    'risk_score': int(risk_score),
+                    'severity': 'high' if risk_score > 50 else 'medium' if risk_score > 25 else 'low',
+                    'last_updated': latest_report.report_date.isoformat()
+                })
+        
+        return groups
+        
+    except Exception as e:
+        logging.exception(f"Failed to get domain groups for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get domain groups: {e}")
+
+@app.get("/api/domain_groups/{domain}/{group_name}/members")
+async def get_group_members(
+    domain: str,
+    group_name: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get detailed member list for a specific group with acceptance status."""
+    try:
+        # Get latest domain analysis report
+        reports = storage.get_all_reports_summary()
+        domain_reports = [r for r in reports if r.domain == domain and r.tool_type == SecurityToolType.DOMAIN_ANALYSIS]
+        
+        if not domain_reports:
+            raise HTTPException(status_code=404, detail="No domain analysis reports found")
+        
+        latest_report = max(domain_reports, key=lambda r: r.report_date)
+        report_detail = storage.get_report(latest_report.id)
+        
+        # Find the group finding
+        group_finding = None
+        for finding in report_detail.findings:
+            if (finding.category == "DonScanner" and 
+                finding.name.startswith("Group_") and 
+                finding.metadata.get('group_name') == group_name):
+                group_finding = finding
+                break
+        
+        if not group_finding:
+            raise HTTPException(status_code=404, detail=f"Group '{group_name}' not found")
+        
+        # Get accepted members
+        accepted_members = storage.get_accepted_group_members(domain, group_name)
+        accepted_names = {m.member_name for m in accepted_members}
+        
+        # Process members
+        members = []
+        for member in group_finding.metadata.get('members', []):
+            if isinstance(member, dict):
+                member_name = member.get('name', '')
+                member_data = {
+                    'name': member_name,
+                    'samaccountname': member.get('samaccountname', ''),
+                    'sid': member.get('sid', ''),
+                    'type': member.get('type', 'user'),
+                    'enabled': member.get('enabled', None),
+                    'is_accepted': member_name in accepted_names
+                }
+            else:
+                member_name = str(member)
+                member_data = {
+                    'name': member_name,
+                    'samaccountname': '',
+                    'sid': '',
+                    'type': 'user',
+                    'enabled': None,
+                    'is_accepted': member_name in accepted_names
+                }
+            members.append(member_data)
+        
+        return {
+            'group_name': group_name,
+            'domain': domain,
+            'total_members': len(members),
+            'accepted_members': len(accepted_names),
+            'members': members,
+            'last_updated': latest_report.report_date.isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to get members for group {group_name} in domain {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group members: {e}")
+
+@app.post("/api/domain_groups/members/accept")
+async def accept_group_member(
+    member: AcceptedGroupMember,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Accept a group member."""
+    try:
+        member_id = storage.add_accepted_group_member(member)
+        
+        # Trigger risk score update with enhanced error reporting
+        risk_update_success = True
+        risk_error_message = None
+        try:
+            risk_service = get_risk_service(storage)
+            await risk_service.update_risk_scores_for_member_change(member.domain, member.group_name)
+            logging.info(f"Successfully updated risk scores after accepting {member.member_name}")
+        except Exception as e:
+            risk_update_success = False
+            risk_error_message = str(e)
+            logging.warning(f"Failed to update risk scores after member acceptance: {e}")
+            # Don't fail the operation if risk calculation fails
+        
+        response = {
+            "status": "ok", 
+            "member_id": member_id,
+            "risk_calculation_status": "success" if risk_update_success else "failed"
+        }
+        
+        if not risk_update_success:
+            response["risk_error"] = risk_error_message
+            
+        return response
+    except Exception as e:
+        logging.exception(f"Failed to accept member {member.member_name} in group {member.group_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to accept member: {e}")
+
+@app.delete("/api/domain_groups/members/accept")
+async def remove_accepted_group_member(
+    member: AcceptedGroupMember,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Remove acceptance for a group member."""
+    try:
+        storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
+        
+        # Trigger risk score update with enhanced error reporting
+        risk_update_success = True
+        risk_error_message = None
+        try:
+            risk_service = get_risk_service(storage)
+            await risk_service.update_risk_scores_for_member_change(member.domain, member.group_name)
+            logging.info(f"Successfully updated risk scores after denying {member.member_name}")
+        except Exception as e:
+            risk_update_success = False
+            risk_error_message = str(e)
+            logging.warning(f"Failed to update risk scores after member denial: {e}")
+            # Don't fail the operation if risk calculation fails
+        
+        response = {
+            "status": "ok",
+            "risk_calculation_status": "success" if risk_update_success else "failed"
+        }
+        
+        if not risk_update_success:
+            response["risk_error"] = risk_error_message
+            
+        return response
+    except Exception as e:
+        logging.exception(f"Failed to remove acceptance for member {member.member_name} in group {member.group_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to remove member acceptance: {e}")
+
+@app.get("/api/domain_groups/unaccepted")
+async def get_unaccepted_members(
+    domain: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all unaccepted members across all groups, optionally filtered by domain."""
+    try:
+        # Get latest domain analysis reports
+        reports = storage.get_all_reports_summary()
+        domain_analysis_reports = [r for r in reports if r.tool_type == SecurityToolType.DOMAIN_ANALYSIS]
+        
+        if domain:
+            domain_analysis_reports = [r for r in domain_analysis_reports if r.domain == domain]
+        
+        unaccepted_members = []
+        
+        # Group reports by domain and get latest for each
+        domain_reports = {}
+        for report in domain_analysis_reports:
+            if report.domain not in domain_reports or report.report_date > domain_reports[report.domain].report_date:
+                domain_reports[report.domain] = report
+        
+        # Process each domain's latest report
+        for domain_name, report_summary in domain_reports.items():
+            report_detail = storage.get_report(report_summary.id)
+            accepted_members_cache = {}
+            
+            for finding in report_detail.findings:
+                if finding.category == "DonScanner" and finding.name.startswith("Group_"):
+                    group_name = finding.metadata.get('group_name', '')
+                    
+                    # Get accepted members for this group (with caching)
+                    if group_name not in accepted_members_cache:
+                        accepted_members_cache[group_name] = {
+                            m.member_name for m in storage.get_accepted_group_members(domain_name, group_name)
+                        }
+                    
+                    accepted_names = accepted_members_cache[group_name]
+                    
+                    # Find unaccepted members
+                    for member in finding.metadata.get('members', []):
+                        member_name = member.get('name', '') if isinstance(member, dict) else str(member)
+                        if member_name and member_name not in accepted_names:
+                            unaccepted_members.append({
+                                'domain': domain_name,
+                                'group_name': group_name,
+                                'member_name': member_name,
+                                'member_type': member.get('type', 'user') if isinstance(member, dict) else 'user',
+                                'enabled': member.get('enabled', None) if isinstance(member, dict) else None,
+                                'last_seen': report_summary.report_date.isoformat()
+                            })
+        
+        return {
+            'total_unaccepted': len(unaccepted_members),
+            'members': unaccepted_members
+        }
+        
+    except Exception as e:
+        logging.exception("Failed to get unaccepted members")
+        raise HTTPException(status_code=500, detail=f"Failed to get unaccepted members: {e}")
+
+# Risk Integration API - Phase 3 Endpoints
+@app.get("/api/risk/global/{domain}")
+async def get_global_risk_score(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get combined global risk score for domain (PingCastle + Domain Groups)."""
+    try:
+        risk_service = get_risk_service(storage)
+        global_risk = await risk_service.calculate_and_store_global_risk(domain)
+        
+        return {
+            'domain': global_risk.domain,
+            'global_score': float(global_risk.global_score),
+            'pingcastle_score': float(global_risk.pingcastle_score) if global_risk.pingcastle_score else None,
+            'domain_group_score': float(global_risk.domain_group_score),
+            'pingcastle_contribution': float(global_risk.pingcastle_contribution) if global_risk.pingcastle_contribution else None,
+            'domain_group_contribution': float(global_risk.domain_group_contribution),
+            'trend_direction': global_risk.trend_direction,
+            'trend_percentage': float(global_risk.trend_percentage),
+            'assessment_date': global_risk.assessment_date.isoformat()
+        }
+        
+    except Exception as e:
+        logging.exception(f"Failed to get global risk score for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get global risk score: {e}")
+
+@app.get("/api/risk/breakdown/{domain}")
+async def get_risk_breakdown(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get detailed risk category breakdown for domain."""
+    try:
+        risk_service = get_risk_service(storage)
+        breakdown = await risk_service.get_domain_risk_breakdown(domain)
+        return breakdown
+        
+    except Exception as e:
+        logging.exception(f"Failed to get risk breakdown for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get risk breakdown: {e}")
+
+@app.get("/api/risk/history/{domain}")
+async def get_risk_history(
+    domain: str,
+    days: int = 30,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get historical risk score trends for domain."""
+    try:
+        risk_service = get_risk_service(storage)
+        history = await risk_service.get_risk_history(domain, days)
+        return {
+            'domain': domain,
+            'days': days,
+            'history': history
+        }
+        
+    except Exception as e:
+        logging.exception(f"Failed to get risk history for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get risk history: {e}")
+
+@app.get("/api/risk/comparison")
+async def get_domain_risk_comparison(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Compare risk scores across all domains."""
+    try:
+        risk_service = get_risk_service(storage)
+        comparison = await risk_service.get_risk_comparison_across_domains()
+        return {
+            'domains': comparison,
+            'total_domains': len(comparison),
+            'comparison_date': datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logging.exception("Failed to get domain risk comparison")
+        raise HTTPException(status_code=500, detail=f"Failed to get risk comparison: {e}")
+
+@app.post("/api/risk/recalculate/{domain}")
+async def recalculate_domain_risk(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Force recalculation of risk scores for domain."""
+    try:
+        risk_service = get_risk_service(storage)
+        
+        # Force recalculation
+        domain_assessment = await risk_service.calculate_and_store_domain_risk(domain, force_recalculation=True)
+        global_risk = await risk_service.calculate_and_store_global_risk(domain)
+        
+        return {
+            'status': 'success',
+            'domain': domain,
+            'domain_group_score': float(domain_assessment.domain_group_score),
+            'global_score': float(global_risk.global_score),
+            'recalculation_date': datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logging.exception(f"Failed to recalculate risk for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate risk: {e}")
+
+# Enhanced debug endpoint with risk information
+@app.get("/api/debug/risk_status")
+def debug_risk_status(storage: PostgresReportStorage = Depends(get_storage)):
+    """Debug endpoint for risk calculation system status."""
+    try:
+        with storage.get_connection() as conn:
+            # Check risk tables
+            risk_assessments = conn.execute(text("SELECT COUNT(*) FROM domain_risk_assessments")).scalar()
+            global_scores = conn.execute(text("SELECT COUNT(*) FROM global_risk_scores")).scalar()
+            risk_configs = conn.execute(text("SELECT COUNT(*) FROM risk_configuration")).scalar()
+            
+            # Get latest calculations
+            latest_global = conn.execute(text("""
+                SELECT domain, global_score, assessment_date
+                FROM global_risk_scores
+                ORDER BY assessment_date DESC
+                LIMIT 5
+            """)).fetchall()
+            
+            return {
+                "status": "ok",
+                "risk_system_enabled": True,
+                "domain_assessments": risk_assessments,
+                "global_risk_scores": global_scores,
+                "risk_configurations": risk_configs,
+                "latest_calculations": [
+                    {
+                        "domain": row.domain,
+                        "global_score": float(row.global_score),
+                        "date": row.assessment_date.isoformat()
+                    }
+                    for row in latest_global
+                ],
+                "risk_dashboard_available": True
+            }
+            
+    except Exception as e:
+        logging.exception("Risk status check failed")
+        return {
+            "status": "error",
+            "error": str(e),
+            "risk_system_enabled": False
+        }
 
 # Note: Agent Management endpoints removed - agents now run on client machines and submit data via /upload
 
@@ -395,6 +879,10 @@ def reports_page():
 @app.get("/settings")
 def settings_page():
     return FileResponse(Path(__file__).parent / "frontend" / "settings.html")
+
+@app.get("/agents")
+def agents_page():
+    return FileResponse(Path(__file__).parent / "frontend" / "agents.html")
 
 @app.get("/debug")
 def debug_page():

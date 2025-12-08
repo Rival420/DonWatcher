@@ -28,36 +28,69 @@ class PostgresReportStorage:
     def _get_session(self) -> Session:
         """Get a new database session."""
         return self.db_session()
+    
+    def get_connection(self):
+        """Get database connection for raw SQL operations."""
+        from server.database import engine
+        return engine.connect()
 
     def save_report(self, report: Report) -> str:
         """Save a report and its findings to the database."""
         with self._get_session() as session:
             try:
-                # Insert or update report
-                session.execute(text("""
-                    INSERT INTO reports (
-                        id, tool_type, domain, report_date, upload_date,
-                        global_score, high_score, medium_score, low_score,
-                        stale_objects_score, privileged_accounts_score,
-                        trusts_score, anomalies_score, domain_sid,
-                        domain_functional_level, forest_functional_level,
-                        maturity_level, dc_count, user_count, computer_count,
-                        original_file, html_file, metadata
-                    ) VALUES (
-                        :id, :tool_type, :domain, :report_date, :upload_date,
-                        :global_score, :high_score, :medium_score, :low_score,
-                        :stale_objects_score, :privileged_accounts_score,
-                        :trusts_score, :anomalies_score, :domain_sid,
-                        :domain_functional_level, :forest_functional_level,
-                        :maturity_level, :dc_count, :user_count, :computer_count,
-                        :original_file, :html_file, :metadata
-                    )
-                    ON CONFLICT (id) DO UPDATE SET
-                        upload_date = EXCLUDED.upload_date,
-                        html_file = EXCLUDED.html_file,
-                        metadata = EXCLUDED.metadata,
-                        updated_at = NOW()
-                """), {
+                # Handle domain scanner reports differently - don't overwrite domain info
+                if report.tool_type == SecurityToolType.DOMAIN_ANALYSIS:
+                    # For domain scanner, only save basic report info and domain_sid for validation
+                    session.execute(text("""
+                        INSERT INTO reports (
+                            id, tool_type, domain, report_date, upload_date,
+                            domain_sid, original_file, metadata
+                        ) VALUES (
+                            :id, :tool_type, :domain, :report_date, :upload_date,
+                            :domain_sid, :original_file, :metadata
+                        )
+                        ON CONFLICT (id) DO UPDATE SET
+                            upload_date = EXCLUDED.upload_date,
+                            metadata = EXCLUDED.metadata,
+                            updated_at = NOW()
+                    """), {
+                        'id': report.id,
+                        'tool_type': report.tool_type.value,
+                        'domain': report.domain,
+                        'report_date': report.report_date,
+                        'upload_date': report.upload_date,
+                        'domain_sid': report.domain_sid,
+                        'original_file': report.original_file,
+                        'metadata': json.dumps(report.metadata)
+                    })
+                else:
+                    # For PingCastle and other tools, save full report data
+                    # Try with new column name first, fallback to old if migration not run
+                    try:
+                        session.execute(text("""
+                        INSERT INTO reports (
+                            id, tool_type, domain, report_date, upload_date,
+                            global_score, high_score, medium_score, low_score,
+                                stale_objects_score, privileged_accounts_score,
+                                trusts_score, anomalies_score, domain_sid,
+                                domain_functional_level, forest_functional_level,
+                                maturity_level, dc_count, user_count, computer_count,
+                                original_file, html_file, metadata
+                            ) VALUES (
+                                :id, :tool_type, :domain, :report_date, :upload_date,
+                                :global_score, :high_score, :medium_score, :low_score,
+                                :stale_objects_score, :privileged_accounts_score,
+                                :trusts_score, :anomalies_score, :domain_sid,
+                                :domain_functional_level, :forest_functional_level,
+                                :maturity_level, :dc_count, :user_count, :computer_count,
+                                :original_file, :html_file, :metadata
+                            )
+                            ON CONFLICT (id) DO UPDATE SET
+                                upload_date = EXCLUDED.upload_date,
+                                html_file = EXCLUDED.html_file,
+                                metadata = EXCLUDED.metadata,
+                                updated_at = NOW()
+                        """), {
                     'id': report.id,
                     'tool_type': report.tool_type.value,
                     'domain': report.domain,
@@ -82,6 +115,59 @@ class PostgresReportStorage:
                     'html_file': report.html_file,
                     'metadata': json.dumps(report.metadata)
                 })
+                    except Exception as e:
+                        if "pingcastle_global_score" in str(e):
+                            # Fallback to old column name if migration not run
+                            session.execute(text("""
+                                INSERT INTO reports (
+                                    id, tool_type, domain, report_date, upload_date,
+                                    global_score, high_score, medium_score, low_score,
+                                    stale_objects_score, privileged_accounts_score,
+                                    trusts_score, anomalies_score, domain_sid,
+                                    domain_functional_level, forest_functional_level,
+                                    maturity_level, dc_count, user_count, computer_count,
+                                    original_file, html_file, metadata
+                                ) VALUES (
+                                    :id, :tool_type, :domain, :report_date, :upload_date,
+                                    :global_score, :high_score, :medium_score, :low_score,
+                                    :stale_objects_score, :privileged_accounts_score,
+                                    :trusts_score, :anomalies_score, :domain_sid,
+                                    :domain_functional_level, :forest_functional_level,
+                                    :maturity_level, :dc_count, :user_count, :computer_count,
+                                    :original_file, :html_file, :metadata
+                                )
+                                ON CONFLICT (id) DO UPDATE SET
+                                    upload_date = EXCLUDED.upload_date,
+                                    html_file = EXCLUDED.html_file,
+                                    metadata = EXCLUDED.metadata,
+                                    updated_at = NOW()
+                            """), {
+                                'id': report.id,
+                                'tool_type': report.tool_type.value,
+                                'domain': report.domain,
+                                'report_date': report.report_date,
+                                'upload_date': report.upload_date,
+                                'global_score': report.global_score or 0,
+                                'high_score': report.high_score or 0,
+                                'medium_score': report.medium_score or 0,
+                                'low_score': report.low_score or 0,
+                                'stale_objects_score': report.stale_objects_score or 0,
+                                'privileged_accounts_score': report.privileged_accounts_score or 0,
+                                'trusts_score': report.trusts_score or 0,
+                                'anomalies_score': report.anomalies_score or 0,
+                                'domain_sid': report.domain_sid,
+                                'domain_functional_level': report.domain_functional_level,
+                                'forest_functional_level': report.forest_functional_level,
+                                'maturity_level': report.maturity_level,
+                                'dc_count': report.dc_count or 0,
+                                'user_count': report.user_count or 0,
+                                'computer_count': report.computer_count or 0,
+                                'original_file': report.original_file,
+                                'html_file': report.html_file,
+                                'metadata': json.dumps(report.metadata)
+                            })
+                        else:
+                            raise
 
                 # Save findings
                 for finding in report.findings:
@@ -148,6 +234,34 @@ class PostgresReportStorage:
             'severity': finding.severity
         })
 
+    def _ensure_risk_in_catalog(self, session: Session, tool_type: SecurityToolType, category: str, name: str):
+        """Ensure a risk exists in the catalog, creating it if necessary."""
+        # Check if risk exists
+        result = session.execute(text("""
+            SELECT id FROM risks 
+            WHERE tool_type = :tool_type AND category = :category AND name = :name
+        """), {
+            'tool_type': tool_type.value,
+            'category': category,
+            'name': name
+        }).fetchone()
+        
+        if not result:
+            # Risk doesn't exist, create a basic entry
+            logging.warning(f"Risk not found in catalog, creating basic entry: {tool_type.value}/{category}/{name}")
+            session.execute(text("""
+                INSERT INTO risks (tool_type, category, name, description, recommendation, severity)
+                VALUES (:tool_type, :category, :name, :description, :recommendation, :severity)
+            """), {
+                'tool_type': tool_type.value,
+                'category': category,
+                'name': name,
+                'description': f'Auto-generated risk entry for {name}',
+                'recommendation': 'Review this finding and determine appropriate action',
+                'severity': 'medium'
+            })
+            logging.info(f"Created missing risk in catalog: {tool_type.value}/{category}/{name}")
+
     def update_report_html(self, report_id: str, html_file: str):
         """Update the HTML file path for a report."""
         with self._get_session() as session:
@@ -160,10 +274,11 @@ class PostgresReportStorage:
     def get_report(self, report_id: str) -> Report:
         """Get a single report with all its findings."""
         with self._get_session() as session:
-            # Get report
-            result = session.execute(text("""
-                SELECT id, tool_type, domain, report_date, upload_date,
-                       global_score, high_score, medium_score, low_score,
+            # Get report - try with new column name first, fallback to old
+            try:
+                result = session.execute(text("""
+                    SELECT id, tool_type, domain, report_date, upload_date,
+                           global_score, high_score, medium_score, low_score,
                        stale_objects_score, privileged_accounts_score,
                        trusts_score, anomalies_score, domain_sid,
                        domain_functional_level, forest_functional_level,
@@ -171,6 +286,21 @@ class PostgresReportStorage:
                        original_file, html_file, metadata
                 FROM reports WHERE id = :report_id
             """), {'report_id': report_id}).fetchone()
+            except Exception as e:
+                if "pingcastle_global_score" in str(e):
+                    # Fallback to old column name
+                    result = session.execute(text("""
+                        SELECT id, tool_type, domain, report_date, upload_date,
+                               global_score, high_score, medium_score, low_score,
+                               stale_objects_score, privileged_accounts_score,
+                               trusts_score, anomalies_score, domain_sid,
+                               domain_functional_level, forest_functional_level,
+                               maturity_level, dc_count, user_count, computer_count,
+                               original_file, html_file, metadata
+                        FROM reports WHERE id = :report_id
+                    """), {'report_id': report_id}).fetchone()
+                else:
+                    raise
 
             if not result:
                 raise ValueError(f"Report {report_id} not found")
@@ -223,14 +353,16 @@ class PostgresReportStorage:
             computer_count=result.computer_count,
             original_file=result.original_file,
             html_file=result.html_file,
-            metadata=json.loads(result.metadata) if result.metadata else {},
+            metadata=result.metadata if result.metadata else {},
             findings=findings
         )
 
     def get_all_reports_summary(self) -> List[ReportSummary]:
         """Get summary of all reports."""
         with self._get_session() as session:
-            results = session.execute(text("""
+            # Try with new column name first, fallback to old if migration not run
+            try:
+                results = session.execute(text("""
                 SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
                        r.global_score, r.high_score, r.medium_score, r.low_score,
                        r.stale_objects_score, r.privileged_accounts_score,
@@ -253,6 +385,34 @@ class PostgresReportStorage:
                          r.original_file, r.html_file
                 ORDER BY r.report_date DESC
             """)).fetchall()
+            except Exception as e:
+                if "pingcastle_global_score" in str(e):
+                    # Fallback to old column name if migration not run
+                    results = session.execute(text("""
+                        SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                               r.global_score, r.high_score, r.medium_score, r.low_score,
+                               r.stale_objects_score, r.privileged_accounts_score,
+                               r.trusts_score, r.anomalies_score, r.domain_sid,
+                               r.domain_functional_level, r.forest_functional_level,
+                               r.maturity_level, r.dc_count, r.user_count, r.computer_count,
+                               r.original_file, r.html_file,
+                               COUNT(f.id) as total_findings,
+                               COUNT(CASE WHEN f.severity = 'high' THEN 1 END) as high_severity_findings,
+                               COUNT(CASE WHEN f.severity = 'medium' THEN 1 END) as medium_severity_findings,
+                               COUNT(CASE WHEN f.severity = 'low' THEN 1 END) as low_severity_findings
+                        FROM reports r
+                        LEFT JOIN findings f ON r.id = f.report_id
+                        GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                                 r.global_score, r.high_score, r.medium_score, r.low_score,
+                                 r.stale_objects_score, r.privileged_accounts_score,
+                                 r.trusts_score, r.anomalies_score, r.domain_sid,
+                                 r.domain_functional_level, r.forest_functional_level,
+                                 r.maturity_level, r.dc_count, r.user_count, r.computer_count,
+                                 r.original_file, r.html_file
+                        ORDER BY r.report_date DESC
+                    """)).fetchall()
+                else:
+                    raise
 
             return [
                 ReportSummary(
@@ -314,7 +474,7 @@ class PostgresReportStorage:
         with self._get_session() as session:
             results = session.execute(text("""
                 WITH latest_report AS (
-                    SELECT id FROM reports ORDER BY report_date DESC LIMIT 1
+                    SELECT id FROM reports WHERE tool_type = 'pingcastle' ORDER BY report_date DESC LIMIT 1
                 )
                 SELECT 
                     f.tool_type,
@@ -359,21 +519,31 @@ class PostgresReportStorage:
                          reason: str = None, accepted_by: str = None):
         """Add an accepted risk."""
         with self._get_session() as session:
-            session.execute(text("""
-                INSERT INTO accepted_risks (tool_type, category, name, reason, accepted_by)
-                VALUES (:tool_type, :category, :name, :reason, :accepted_by)
-                ON CONFLICT (tool_type, category, name) DO UPDATE SET
-                    reason = EXCLUDED.reason,
-                    accepted_by = EXCLUDED.accepted_by,
-                    accepted_at = NOW()
-            """), {
-                'tool_type': tool_type.value,
-                'category': category,
-                'name': name,
-                'reason': reason,
-                'accepted_by': accepted_by
-            })
-            session.commit()
+            try:
+                # First, ensure the risk exists in the catalog
+                self._ensure_risk_in_catalog(session, tool_type, category, name)
+                
+                # Then add to accepted risks
+                session.execute(text("""
+                    INSERT INTO accepted_risks (tool_type, category, name, reason, accepted_by)
+                    VALUES (:tool_type, :category, :name, :reason, :accepted_by)
+                    ON CONFLICT (tool_type, category, name) DO UPDATE SET
+                        reason = EXCLUDED.reason,
+                        accepted_by = EXCLUDED.accepted_by,
+                        accepted_at = NOW()
+                """), {
+                    'tool_type': tool_type.value,
+                    'category': category,
+                    'name': name,
+                    'reason': reason,
+                    'accepted_by': accepted_by
+                })
+                session.commit()
+                logging.info(f"Successfully added accepted risk: {tool_type.value}/{category}/{name}")
+            except Exception as e:
+                session.rollback()
+                logging.error(f"Failed to add accepted risk {tool_type.value}/{category}/{name}: {e}")
+                raise
 
     def remove_accepted_risk(self, tool_type: SecurityToolType, category: str, name: str):
         """Remove an accepted risk."""
@@ -573,3 +743,164 @@ class PostgresReportStorage:
     def log_alert(self, message: str):
         """Log an alert message."""
         logging.info(f"Alert: {message}")
+
+    # Accepted Group Members Management
+    def get_accepted_group_members(self, domain: str = None, group_name: str = None) -> List:
+        """Get accepted group members with optional filtering."""
+        with self._get_session() as session:
+            try:
+                query = "SELECT id, group_name, member_name, member_sid, domain, reason, accepted_by, accepted_at, expires_at FROM accepted_group_members WHERE 1=1"
+                params = {}
+                
+                if domain:
+                    query += " AND domain = :domain"
+                    params['domain'] = domain
+                if group_name:
+                    query += " AND group_name = :group_name"
+                    params['group_name'] = group_name
+                    
+                query += " ORDER BY accepted_at DESC"
+                
+                results = session.execute(text(query), params).fetchall()
+                
+                from server.models import AcceptedGroupMember
+                return [
+                    AcceptedGroupMember(
+                        id=str(r.id),
+                        group_name=r.group_name,
+                        member_name=r.member_name,
+                        member_sid=r.member_sid,
+                        domain=r.domain,
+                        reason=r.reason,
+                        accepted_by=r.accepted_by,
+                        accepted_at=r.accepted_at,
+                        expires_at=r.expires_at
+                    )
+                    for r in results
+                ]
+            except Exception as e:
+                if "accepted_group_members" in str(e) and "does not exist" in str(e):
+                    logging.warning("accepted_group_members table does not exist - returning empty list. Run migration_002_add_group_member_tables.sql")
+                    return []
+                raise
+
+    def add_accepted_group_member(self, member) -> str:
+        """Add an accepted group member."""
+        with self._get_session() as session:
+            try:
+                member_id = str(uuid4())
+                session.execute(text("""
+                    INSERT INTO accepted_group_members (
+                        id, group_name, member_name, member_sid, domain, reason, accepted_by
+                    ) VALUES (
+                        :id, :group_name, :member_name, :member_sid, :domain, :reason, :accepted_by
+                    )
+                    ON CONFLICT (domain, group_name, member_name) DO UPDATE SET
+                        reason = EXCLUDED.reason,
+                        accepted_by = EXCLUDED.accepted_by,
+                        accepted_at = NOW(),
+                        updated_at = NOW()
+                """), {
+                    'id': member_id,
+                    'group_name': member.group_name,
+                    'member_name': member.member_name,
+                    'member_sid': member.member_sid,
+                    'domain': member.domain,
+                    'reason': member.reason,
+                    'accepted_by': member.accepted_by
+                })
+                session.commit()
+                return member_id
+            except Exception as e:
+                if "accepted_group_members" in str(e) and "does not exist" in str(e):
+                    logging.warning("accepted_group_members table does not exist - cannot add member. Run migration_002_add_group_member_tables.sql")
+                    return ""
+                raise
+
+    def remove_accepted_group_member(self, domain: str, group_name: str, member_name: str):
+        """Remove an accepted group member."""
+        with self._get_session() as session:
+            try:
+                session.execute(text("""
+                    DELETE FROM accepted_group_members 
+                    WHERE domain = :domain AND group_name = :group_name AND member_name = :member_name
+                """), {
+                    'domain': domain,
+                    'group_name': group_name,
+                    'member_name': member_name
+                })
+                session.commit()
+            except Exception as e:
+                if "accepted_group_members" in str(e) and "does not exist" in str(e):
+                    logging.warning("accepted_group_members table does not exist - cannot remove member. Run migration_002_add_group_member_tables.sql")
+                    return
+                raise
+
+    # Group Risk Configuration Management
+    def get_group_risk_configs(self, domain: str = None) -> List:
+        """Get group risk configurations."""
+        with self._get_session() as session:
+            try:
+                query = "SELECT id, group_name, domain, base_risk_score, max_acceptable_members, alert_threshold, description FROM group_risk_configs WHERE 1=1"
+                params = {}
+                
+                if domain:
+                    query += " AND domain = :domain"
+                    params['domain'] = domain
+                    
+                query += " ORDER BY group_name"
+                
+                results = session.execute(text(query), params).fetchall()
+                
+                from server.models import GroupRiskConfig
+                return [
+                    GroupRiskConfig(
+                        id=str(r.id),
+                        group_name=r.group_name,
+                        domain=r.domain,
+                        base_risk_score=r.base_risk_score,
+                        max_acceptable_members=r.max_acceptable_members,
+                        alert_threshold=r.alert_threshold,
+                        description=r.description
+                    )
+                    for r in results
+                ]
+            except Exception as e:
+                if "group_risk_configs" in str(e) and "does not exist" in str(e):
+                    logging.warning("group_risk_configs table does not exist - returning empty list. Run migration_002_add_group_member_tables.sql")
+                    return []
+                raise
+
+    def save_group_risk_config(self, config) -> str:
+        """Save a group risk configuration."""
+        with self._get_session() as session:
+            try:
+                config_id = str(uuid4())
+                session.execute(text("""
+                    INSERT INTO group_risk_configs (
+                        id, group_name, domain, base_risk_score, max_acceptable_members, alert_threshold, description
+                    ) VALUES (
+                        :id, :group_name, :domain, :base_risk_score, :max_acceptable_members, :alert_threshold, :description
+                    )
+                    ON CONFLICT (domain, group_name) DO UPDATE SET
+                        base_risk_score = EXCLUDED.base_risk_score,
+                        max_acceptable_members = EXCLUDED.max_acceptable_members,
+                        alert_threshold = EXCLUDED.alert_threshold,
+                        description = EXCLUDED.description,
+                        updated_at = NOW()
+                """), {
+                    'id': config_id,
+                    'group_name': config.group_name,
+                    'domain': config.domain,
+                    'base_risk_score': config.base_risk_score,
+                    'max_acceptable_members': config.max_acceptable_members,
+                    'alert_threshold': config.alert_threshold,
+                    'description': config.description
+                })
+                session.commit()
+                return config_id
+            except Exception as e:
+                if "group_risk_configs" in str(e) and "does not exist" in str(e):
+                    logging.warning("group_risk_configs table does not exist - cannot save config. Run migration_002_add_group_member_tables.sql")
+                    return ""
+                raise

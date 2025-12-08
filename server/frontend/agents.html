@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Agent Downloads</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <div id="sidebar"></div>
+    <div class="main">
+      <header class="topbar">
+        <h1>Agent Downloads</h1>
+      </header>
+      <div class="content">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-download"></i>
+            <h2>Download Agent Scripts</h2>
+          </div>
+          <div class="form-group">
+            <p>Download the latest agent scripts for deployment on your domain-joined machines.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-code"></i>
+            <h2>Domain Scanner Agent</h2>
+          </div>
+          <div class="form-group">
+            <p><strong>DonWatcher-DomainScanner.ps1</strong> - PowerShell script for scanning Active Directory domain information and privileged group memberships.</p>
+            <div class="agent-info">
+              <div class="agent-detail">
+                <i class="fas fa-info-circle"></i>
+                <span><strong>Requirements:</strong> PowerShell 5.1+, ActiveDirectory Module, Domain-joined machine</span>
+              </div>
+              <div class="agent-detail">
+                <i class="fas fa-list"></i>
+                <span><strong>Features:</strong> Domain info, privileged group scanning, JSON output</span>
+              </div>
+              <div class="agent-detail">
+                <i class="fas fa-clock"></i>
+                <span><strong>Last Updated:</strong> <span id="script-timestamp">Loading...</span></span>
+              </div>
+            </div>
+            <button class="download-btn" id="download-domain-scanner">
+              <i class="fas fa-download"></i>
+              Download PowerShell Script
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-file-alt"></i>
+            <h2>Configuration Template</h2>
+          </div>
+          <div class="form-group">
+            <p><strong>DonWatcher-Config.json</strong> - JSON configuration template for customizing agent behavior.</p>
+            <div class="agent-info">
+              <div class="agent-detail">
+                <i class="fas fa-cog"></i>
+                <span><strong>Settings:</strong> DonWatcher URL, privileged groups, timeouts, logging</span>
+              </div>
+            </div>
+            <button class="download-btn secondary" id="download-config-template">
+              <i class="fas fa-download"></i>
+              Download Config Template
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-book"></i>
+            <h2>Deployment Instructions</h2>
+          </div>
+          <div class="deployment-instructions">
+            <h3>PowerShell Domain Scanner Deployment</h3>
+            <ol>
+              <li><strong>Copy Files:</strong> Copy both <code>DonWatcher-DomainScanner.ps1</code> and <code>DonWatcher-Config.json</code> to target machines</li>
+              <li><strong>Install Prerequisites:</strong> Ensure Active Directory PowerShell module is installed (<code>Install-WindowsFeature RSAT-AD-PowerShell</code>)</li>
+              <li><strong>Configure:</strong> Edit <code>DonWatcher-Config.json</code> with your DonWatcher server URL and settings</li>
+              <li><strong>Test Connection:</strong> Run <code>.\DonWatcher-DomainScanner.ps1 -TestConnection</code> to verify connectivity</li>
+              <li><strong>Schedule:</strong> Set up as scheduled task for automated execution</li>
+            </ol>
+
+            <h3>Configuration Example</h3>
+            <pre class="config-example">{
+  "DonWatcherUrl": "http://your-donwatcher-server:8080",
+  "PrivilegedGroups": [
+    "Domain Admins",
+    "Enterprise Admins",
+    "Schema Admins",
+    "Administrators"
+  ],
+  "MaxUsers": 5000,
+  "MaxComputers": 5000,
+  "TimeoutSeconds": 300,
+  "LogLevel": "Info"
+}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="nav.js"></script>
+  <script type="module" src="agents.js"></script>
+</body>
+</html>

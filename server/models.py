@@ -7,6 +7,7 @@ class SecurityToolType(str, Enum):
     PINGCASTLE = "pingcastle"
     LOCKSMITH = "locksmith"
     DOMAIN_ANALYSIS = "domain_analysis"
+    DOMAIN_GROUP_MEMBERS = "domain_group_members"
     CUSTOM = "custom"
 
 class FindingStatus(str, Enum):
@@ -173,3 +174,23 @@ class GroupMembershipChange(BaseModel):
     change_type: str  # "added", "removed"
     previous_members: List[str] = Field(default_factory=list)
     current_members: List[str] = Field(default_factory=list)
+
+class AcceptedGroupMember(BaseModel):
+    id: Optional[str] = None
+    group_name: str
+    member_name: str
+    member_sid: Optional[str] = None
+    domain: str
+    reason: Optional[str] = None
+    accepted_by: Optional[str] = None
+    accepted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+class GroupRiskConfig(BaseModel):
+    id: Optional[str] = None
+    group_name: str
+    domain: str
+    base_risk_score: int = 10
+    max_acceptable_members: int = 5
+    alert_threshold: int = 10
+    description: Optional[str] = None
