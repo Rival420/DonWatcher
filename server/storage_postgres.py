@@ -863,6 +863,118 @@ class PostgresReportStorage:
             session.commit()
             logging.info("Reports and findings cleared successfully")
 
+    def clear_domain_data(self, domain: str) -> Dict:
+        """Clear all data for a specific domain."""
+        with self._get_session() as session:
+            # Get counts before deletion for reporting
+            report_count = session.execute(
+                text("SELECT COUNT(*) FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            ).scalar() or 0
+            
+            # Get report IDs for this domain
+            report_ids = [r[0] for r in session.execute(
+                text("SELECT id FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            ).fetchall()]
+            
+            findings_count = 0
+            memberships_count = 0
+            
+            if report_ids:
+                # Delete findings for these reports
+                findings_count = session.execute(
+                    text("DELETE FROM findings WHERE report_id = ANY(:report_ids)"),
+                    {'report_ids': report_ids}
+                ).rowcount or 0
+                
+                # Delete group memberships for these reports
+                memberships_count = session.execute(
+                    text("DELETE FROM group_memberships WHERE report_id = ANY(:report_ids)"),
+                    {'report_ids': report_ids}
+                ).rowcount or 0
+            
+            # Delete accepted group members for this domain
+            accepted_members_count = session.execute(
+                text("DELETE FROM accepted_group_members WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete monitored groups for this domain (except defaults)
+            monitored_groups_count = session.execute(
+                text("""
+                    DELETE FROM monitored_groups 
+                    WHERE domain = :domain 
+                    AND group_name NOT IN ('Domain Admins', 'Enterprise Admins', 'Schema Admins', 
+                                          'Administrators', 'Account Operators', 'Backup Operators', 
+                                          'Server Operators', 'Print Operators')
+                """),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete risk data for this domain
+            risk_assessments_count = session.execute(
+                text("DELETE FROM domain_risk_assessments WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            global_risk_count = session.execute(
+                text("DELETE FROM global_risk_scores WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete reports for this domain
+            session.execute(
+                text("DELETE FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            )
+            
+            session.commit()
+            
+            result = {
+                'domain': domain,
+                'reports_deleted': report_count,
+                'findings_deleted': findings_count,
+                'memberships_deleted': memberships_count,
+                'accepted_members_deleted': accepted_members_count,
+                'monitored_groups_deleted': monitored_groups_count,
+                'risk_assessments_deleted': risk_assessments_count,
+                'global_risk_deleted': global_risk_count
+            }
+            
+            logging.info(f"Domain data cleared for {domain}: {result}")
+            return result
+
+    def get_data_summary(self) -> List[Dict]:
+        """Get data summary per domain for management UI."""
+        with self._get_session() as session:
+            results = session.execute(text("""
+                SELECT 
+                    r.domain,
+                    COUNT(DISTINCT r.id) as report_count,
+                    COUNT(DISTINCT f.id) as finding_count,
+                    COUNT(DISTINCT gm.id) as membership_count,
+                    MAX(r.report_date) as latest_report,
+                    MIN(r.report_date) as oldest_report
+                FROM reports r
+                LEFT JOIN findings f ON r.id = f.report_id
+                LEFT JOIN group_memberships gm ON r.id = gm.report_id
+                GROUP BY r.domain
+                ORDER BY r.domain
+            """)).fetchall()
+            
+            return [
+                {
+                    'domain': r.domain,
+                    'report_count': r.report_count,
+                    'finding_count': r.finding_count,
+                    'membership_count': r.membership_count,
+                    'latest_report': r.latest_report.isoformat() if r.latest_report else None,
+                    'oldest_report': r.oldest_report.isoformat() if r.oldest_report else None
+                }
+                for r in results
+            ]
+
     def log_alert(self, message: str):
         """Log an alert message."""
         logging.info(f"Alert: {message}")

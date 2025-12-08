@@ -106,7 +106,7 @@ export function Upload() {
         <input
           type="file"
           multiple
-          accept=".xml,.json,.csv"
+          accept=".xml,.html,.htm,.json,.csv"
           onChange={handleFileSelect}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
@@ -128,7 +128,7 @@ export function Upload() {
             {isDragging ? 'Drop files here' : 'Upload Security Reports'}
           </h3>
           <p className="text-cyber-text-muted">
-            Drag and drop your PingCastle XML, Domain Scanner JSON, or Locksmith files
+            Drag and drop your PingCastle XML/HTML, Domain Scanner JSON, or Locksmith files
           </p>
           <p className="text-sm text-cyber-text-muted mt-2">
             or <span className="text-cyber-accent-cyan">browse</span> to select files
@@ -236,11 +236,15 @@ export function Upload() {
       {/* Supported Formats */}
       <div className="text-center text-sm text-cyber-text-muted">
         <p>Supported formats:</p>
-        <div className="flex items-center justify-center gap-4 mt-2">
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
           <span className="px-3 py-1 rounded-lg bg-cyber-bg-secondary">🏰 PingCastle (.xml)</span>
+          <span className="px-3 py-1 rounded-lg bg-cyber-bg-secondary">📊 PingCastle Report (.html)</span>
           <span className="px-3 py-1 rounded-lg bg-cyber-bg-secondary">🔍 Domain Scanner (.json)</span>
           <span className="px-3 py-1 rounded-lg bg-cyber-bg-secondary">🔐 Locksmith (.json/.csv)</span>
         </div>
+        <p className="mt-3 text-xs text-cyber-text-muted/70">
+          💡 Tip: Upload both XML and HTML files from PingCastle to enable full report viewing
+        </p>
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Users, 
@@ -7,7 +8,9 @@ import {
   FileText,
   Activity,
   Zap,
-  Lock
+  Lock,
+  Copy,
+  Check
 } from 'lucide-react'
 import { 
   LineChart, 
@@ -31,11 +34,18 @@ import { StatsCard } from '../components/StatsCard'
 import { clsx } from 'clsx'
 
 export function Dashboard() {
+  const [sidCopied, setSidCopied] = useState(false)
   const { data: reports, isLoading: reportsLoading } = useReports()
   const { data: domains } = useDomains()
   const latestDomain = domains?.[0]
   const { data: latestReport } = useLatestReport(latestDomain)
   const { data: domainGroups } = useDomainGroups(latestDomain || '')
+  
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setSidCopied(true)
+    setTimeout(() => setSidCopied(false), 2000)
+  }
   
   // Calculate stats
   const totalFindings = reports?.reduce((sum, r) => sum + (r.total_findings || 0), 0) || 0
@@ -78,7 +88,7 @@ export function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         className="cyber-card"
       >
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-lg font-display font-semibold text-cyber-text-primary">
               Domain Overview
@@ -87,11 +97,24 @@ export function Dashboard() {
               {latestReport?.domain || 'No domain data available'}
             </p>
           </div>
-          <div className="px-4 py-2 rounded-lg bg-cyber-accent-cyan/10 border border-cyber-accent-cyan/30">
-            <span className="text-sm font-medium text-cyber-accent-cyan">
-              SID: {latestReport?.domain_sid?.slice(0, 20)}...
-            </span>
-          </div>
+          {latestReport?.domain_sid && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent-cyan/10 border border-cyber-accent-cyan/30 group">
+              <span className="text-sm font-mono text-cyber-accent-cyan break-all">
+                SID: {latestReport.domain_sid}
+              </span>
+              <button
+                onClick={() => copyToClipboard(latestReport.domain_sid || '')}
+                className="p-1 rounded hover:bg-cyber-accent-cyan/20 transition-colors flex-shrink-0"
+                title="Copy SID to clipboard"
+              >
+                {sidCopied ? (
+                  <Check className="w-4 h-4 text-cyber-accent-green" />
+                ) : (
+                  <Copy className="w-4 h-4 text-cyber-accent-cyan opacity-60 group-hover:opacity-100" />
+                )}
+              </button>
+            </div>
+          )}
         </div>
         
         {/* Stats Grid */}

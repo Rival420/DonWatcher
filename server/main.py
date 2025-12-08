@@ -1016,6 +1016,73 @@ def clear_cache():
             "error": str(e)
         }
 
+
+# Data Management Endpoints
+@app.get("/api/data/summary")
+def get_data_summary(storage: PostgresReportStorage = Depends(get_storage)):
+    """Get data summary per domain for management UI."""
+    try:
+        summary = storage.get_data_summary()
+        return {
+            "status": "ok",
+            "domains": summary,
+            "total_domains": len(summary)
+        }
+    except Exception as e:
+        logging.exception("Failed to get data summary")
+        raise HTTPException(status_code=500, detail=f"Failed to get data summary: {e}")
+
+
+@app.delete("/api/data/domain/{domain}")
+def delete_domain_data(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Delete all data for a specific domain."""
+    try:
+        logging.warning(f"Deleting all data for domain: {domain}")
+        result = storage.clear_domain_data(domain)
+        
+        # Clear cache after deletion
+        try:
+            cache = get_risk_cache()
+            cache.clear()
+        except Exception:
+            pass  # Cache clear is optional
+        
+        return {
+            "status": "ok",
+            "message": f"Successfully deleted all data for domain: {domain}",
+            "details": result
+        }
+    except Exception as e:
+        logging.exception(f"Failed to delete domain data for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete domain data: {e}")
+
+
+@app.delete("/api/data/all")
+def delete_all_data(storage: PostgresReportStorage = Depends(get_storage)):
+    """Delete all data from the database (nuclear option)."""
+    try:
+        logging.warning("DELETING ALL DATA - Nuclear option triggered")
+        storage.clear_all_data()
+        
+        # Clear cache after deletion
+        try:
+            cache = get_risk_cache()
+            cache.clear()
+        except Exception:
+            pass  # Cache clear is optional
+        
+        return {
+            "status": "ok",
+            "message": "Successfully deleted all data from database"
+        }
+    except Exception as e:
+        logging.exception("Failed to delete all data")
+        raise HTTPException(status_code=500, detail=f"Failed to delete all data: {e}")
+
+
 # Enhanced debug endpoint with risk information
 @app.get("/api/debug/risk_status")
 def debug_risk_status(storage: PostgresReportStorage = Depends(get_storage)):
