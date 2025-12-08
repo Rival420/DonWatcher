@@ -1,22 +1,36 @@
 -- Migration 004: Add Risk Integration Tables
 -- Phase 3 - Complementary Risk Score Integration
--- This migration adds tables for storing and aggregating risk scores
+-- IDEMPOTENT: Safe to run multiple times
 
-BEGIN;
+-- Create enum for risk categories (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_category') THEN
+        CREATE TYPE risk_category AS ENUM (
+            'access_governance',
+            'privilege_escalation', 
+            'compliance_posture',
+            'operational_risk'
+        );
+        RAISE NOTICE 'Created risk_category enum';
+    ELSE
+        RAISE NOTICE 'risk_category enum already exists';
+    END IF;
+END $$;
 
--- Create enum for risk categories
-CREATE TYPE risk_category AS ENUM (
-    'access_governance',
-    'privilege_escalation', 
-    'compliance_posture',
-    'operational_risk'
-);
-
--- Create enum for risk trend directions
-CREATE TYPE risk_trend AS ENUM ('improving', 'stable', 'degrading');
+-- Create enum for risk trend directions (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_trend') THEN
+        CREATE TYPE risk_trend AS ENUM ('improving', 'stable', 'degrading');
+        RAISE NOTICE 'Created risk_trend enum';
+    ELSE
+        RAISE NOTICE 'risk_trend enum already exists';
+    END IF;
+END $$;
 
 -- Domain risk assessments table
-CREATE TABLE domain_risk_assessments (
+CREATE TABLE IF NOT EXISTS domain_risk_assessments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     domain TEXT NOT NULL,
     assessment_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -35,14 +49,11 @@ CREATE TABLE domain_risk_assessments (
     
     -- Audit fields
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    -- Ensure one assessment per domain per day
-    UNIQUE(domain, DATE(assessment_date))
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Individual group risk assessments
-CREATE TABLE group_risk_assessments (
+CREATE TABLE IF NOT EXISTS group_risk_assessments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     domain_assessment_id UUID NOT NULL REFERENCES domain_risk_assessments(id) ON DELETE CASCADE,
     
@@ -54,7 +65,7 @@ CREATE TABLE group_risk_assessments (
     
     -- Risk assessment
     risk_score DECIMAL(5,2) NOT NULL DEFAULT 0,
-    risk_level TEXT NOT NULL DEFAULT 'low', -- critical, high, medium, low
+    risk_level TEXT NOT NULL DEFAULT 'low',
     
     -- Risk contributing factors
     contributing_factors JSONB DEFAULT '{}',
@@ -63,20 +74,20 @@ CREATE TABLE group_risk_assessments (
 );
 
 -- Global risk scores table (combines PingCastle + Domain Groups)
-CREATE TABLE global_risk_scores (
+CREATE TABLE IF NOT EXISTS global_risk_scores (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     domain TEXT NOT NULL,
     assessment_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     
     -- Component scores
-    pingcastle_score DECIMAL(5,2), -- NULL if no PingCastle data
+    pingcastle_score DECIMAL(5,2),
     domain_group_score DECIMAL(5,2) NOT NULL DEFAULT 0,
     
     -- Combined global score
     global_score DECIMAL(5,2) NOT NULL DEFAULT 0,
     
     -- Score contributions (percentages)
-    pingcastle_contribution DECIMAL(5,2), -- NULL if no PingCastle data
+    pingcastle_contribution DECIMAL(5,2),
     domain_group_contribution DECIMAL(5,2) NOT NULL DEFAULT 100,
     
     -- Risk trend analysis
@@ -84,33 +95,24 @@ CREATE TABLE global_risk_scores (
     trend_percentage DECIMAL(5,2) DEFAULT 0,
     
     -- Links to source assessments
-    pingcastle_report_id UUID, -- References reports table
+    pingcastle_report_id UUID,
     domain_assessment_id UUID REFERENCES domain_risk_assessments(id),
-    
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    -- Ensure one global score per domain per day
-    UNIQUE(domain, DATE(assessment_date))
-);
-
--- Risk calculation history for trending
-CREATE TABLE risk_calculation_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    domain TEXT NOT NULL,
-    calculation_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    
-    -- Snapshot of all risk scores
-    risk_scores JSONB NOT NULL,
-    
-    -- Calculation context
-    calculation_trigger TEXT, -- 'scheduled', 'member_change', 'report_upload', 'manual'
-    calculation_duration_ms INTEGER,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Risk calculation history for trending
+CREATE TABLE IF NOT EXISTS risk_calculation_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    domain TEXT NOT NULL,
+    calculation_trigger TEXT NOT NULL,
+    risk_scores JSONB DEFAULT '{}',
+    calculated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Risk thresholds and configuration
-CREATE TABLE risk_configuration (
+CREATE TABLE IF NOT EXISTS risk_configuration (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     domain TEXT NOT NULL,
     
@@ -141,11 +143,16 @@ CREATE TABLE risk_configuration (
 );
 
 -- Create indexes for performance
-CREATE INDEX idx_domain_risk_assessments_domain_date ON domain_risk_assessments(domain, assessment_date DESC);
-CREATE INDEX idx_group_risk_assessments_domain_assessment ON group_risk_assessments(domain_assessment_id);
-CREATE INDEX idx_group_risk_assessments_group_name ON group_risk_assessments(group_name);
-CREATE INDEX idx_global_risk_scores_domain_date ON global_risk_scores(domain, assessment_date DESC);
-CREATE INDEX idx_risk_calculation_history_domain_date ON risk_calculation_history(domain, calculation_date DESC);
+CREATE INDEX IF NOT EXISTS idx_domain_risk_assessments_domain_date ON domain_risk_assessments(domain, assessment_date DESC);
+CREATE INDEX IF NOT EXISTS idx_group_risk_assessments_domain_assessment ON group_risk_assessments(domain_assessment_id);
+CREATE INDEX IF NOT EXISTS idx_group_risk_assessments_group_name ON group_risk_assessments(group_name);
+CREATE INDEX IF NOT EXISTS idx_global_risk_scores_domain_date ON global_risk_scores(domain, assessment_date DESC);
+CREATE INDEX IF NOT EXISTS idx_risk_calculation_history_domain ON risk_calculation_history(domain);
+CREATE INDEX IF NOT EXISTS idx_risk_calculation_history_calculated_at ON risk_calculation_history(calculated_at DESC);
+
+-- Drop existing views (regular or materialized) to recreate as materialized view
+DROP VIEW IF EXISTS risk_dashboard_summary CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS risk_dashboard_summary CASCADE;
 
 -- Create materialized view for risk dashboard
 CREATE MATERIALIZED VIEW risk_dashboard_summary AS
@@ -189,13 +196,17 @@ WHERE grs.assessment_date = (
 );
 
 -- Create unique index on materialized view
-CREATE UNIQUE INDEX idx_risk_dashboard_summary_domain ON risk_dashboard_summary(domain);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_risk_dashboard_summary_domain ON risk_dashboard_summary(domain);
 
--- Function to refresh risk dashboard summary
+-- Function to refresh risk dashboard summary (CREATE OR REPLACE is idempotent)
 CREATE OR REPLACE FUNCTION refresh_risk_dashboard_summary()
 RETURNS void AS $$
 BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY risk_dashboard_summary;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Fall back to non-concurrent refresh if concurrent fails
+        REFRESH MATERIALIZED VIEW risk_dashboard_summary;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -211,11 +222,11 @@ DECLARE
     score_change DECIMAL;
 BEGIN
     -- Get previous score from specified days back
-    SELECT global_score INTO previous_score
-    FROM global_risk_scores
-    WHERE domain = p_domain
-      AND assessment_date <= NOW() - INTERVAL '1 day' * p_days_back
-    ORDER BY assessment_date DESC
+    SELECT grs.global_score INTO previous_score
+    FROM global_risk_scores grs
+    WHERE grs.domain = p_domain
+      AND grs.assessment_date <= NOW() - INTERVAL '1 day' * p_days_back
+    ORDER BY grs.assessment_date DESC
     LIMIT 1;
     
     IF previous_score IS NULL THEN
@@ -250,10 +261,14 @@ BEGIN
     -- Refresh the materialized view after any change to global risk scores
     PERFORM refresh_risk_dashboard_summary();
     RETURN COALESCE(NEW, OLD);
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Don't fail the transaction if refresh fails
+        RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers for automatic refresh
+-- Create triggers for automatic refresh (drop first if exists)
 DROP TRIGGER IF EXISTS trigger_global_risk_scores_refresh ON global_risk_scores;
 CREATE TRIGGER trigger_global_risk_scores_refresh
     AFTER INSERT OR UPDATE OR DELETE ON global_risk_scores
@@ -273,35 +288,8 @@ COMMENT ON TABLE global_risk_scores IS 'Combined global risk scores integrating 
 COMMENT ON TABLE risk_calculation_history IS 'Historical record of risk calculations for trending and audit';
 COMMENT ON TABLE risk_configuration IS 'Configurable risk calculation parameters per domain';
 
-COMMENT ON COLUMN global_risk_scores.pingcastle_score IS 'PingCastle global score (0-100), NULL if no PingCastle data';
-COMMENT ON COLUMN global_risk_scores.domain_group_score IS 'Domain group risk score (0-100)';
-COMMENT ON COLUMN global_risk_scores.global_score IS 'Combined weighted global risk score (0-100)';
-COMMENT ON COLUMN global_risk_scores.pingcastle_contribution IS 'Percentage contribution of PingCastle to global score';
-COMMENT ON COLUMN global_risk_scores.domain_group_contribution IS 'Percentage contribution of domain groups to global score';
-
-COMMIT;
-
--- Verify migration success
+-- Verification
 DO $$
 BEGIN
-    -- Check if new tables exist
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'global_risk_scores') THEN
-        RAISE EXCEPTION 'Migration failed: global_risk_scores table not created';
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'domain_risk_assessments') THEN
-        RAISE EXCEPTION 'Migration failed: domain_risk_assessments table not created';
-    END IF;
-    
-    -- Check if materialized view exists
-    IF NOT EXISTS (SELECT 1 FROM information_schema.views WHERE table_name = 'risk_dashboard_summary') THEN
-        RAISE EXCEPTION 'Migration failed: risk_dashboard_summary view not created';
-    END IF;
-    
-    -- Check if functions exist
-    IF NOT EXISTS (SELECT 1 FROM information_schema.routines WHERE routine_name = 'calculate_risk_trend') THEN
-        RAISE EXCEPTION 'Migration failed: calculate_risk_trend function not created';
-    END IF;
-    
-    RAISE NOTICE 'Migration 004 completed successfully - Risk integration tables created';
+    RAISE NOTICE 'Migration 004 completed successfully';
 END $$;

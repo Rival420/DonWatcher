@@ -70,7 +70,7 @@ class PostgresReportStorage:
                         session.execute(text("""
                         INSERT INTO reports (
                             id, tool_type, domain, report_date, upload_date,
-                            global_score, high_score, medium_score, low_score,
+                            pingcastle_global_score, high_score, medium_score, low_score,
                                 stale_objects_score, privileged_accounts_score,
                                 trusts_score, anomalies_score, domain_sid,
                                 domain_functional_level, forest_functional_level,
@@ -78,7 +78,7 @@ class PostgresReportStorage:
                                 original_file, html_file, metadata
                             ) VALUES (
                                 :id, :tool_type, :domain, :report_date, :upload_date,
-                                :global_score, :high_score, :medium_score, :low_score,
+                                :pingcastle_global_score, :high_score, :medium_score, :low_score,
                                 :stale_objects_score, :privileged_accounts_score,
                                 :trusts_score, :anomalies_score, :domain_sid,
                                 :domain_functional_level, :forest_functional_level,
@@ -96,7 +96,7 @@ class PostgresReportStorage:
                     'domain': report.domain,
                     'report_date': report.report_date,
                     'upload_date': report.upload_date,
-                    'global_score': report.global_score or 0,
+                    'pingcastle_global_score': report.global_score or 0,
                     'high_score': report.high_score or 0,
                     'medium_score': report.medium_score or 0,
                     'low_score': report.low_score or 0,
@@ -121,7 +121,7 @@ class PostgresReportStorage:
                             session.execute(text("""
                                 INSERT INTO reports (
                                     id, tool_type, domain, report_date, upload_date,
-                                    global_score, high_score, medium_score, low_score,
+                                    pingcastle_global_score, high_score, medium_score, low_score,
                                     stale_objects_score, privileged_accounts_score,
                                     trusts_score, anomalies_score, domain_sid,
                                     domain_functional_level, forest_functional_level,
@@ -129,7 +129,7 @@ class PostgresReportStorage:
                                     original_file, html_file, metadata
                                 ) VALUES (
                                     :id, :tool_type, :domain, :report_date, :upload_date,
-                                    :global_score, :high_score, :medium_score, :low_score,
+                                    :pingcastle_global_score, :high_score, :medium_score, :low_score,
                                     :stale_objects_score, :privileged_accounts_score,
                                     :trusts_score, :anomalies_score, :domain_sid,
                                     :domain_functional_level, :forest_functional_level,
@@ -147,7 +147,7 @@ class PostgresReportStorage:
                                 'domain': report.domain,
                                 'report_date': report.report_date,
                                 'upload_date': report.upload_date,
-                                'global_score': report.global_score or 0,
+                                'pingcastle_global_score': report.global_score or 0,
                                 'high_score': report.high_score or 0,
                                 'medium_score': report.medium_score or 0,
                                 'low_score': report.low_score or 0,
@@ -278,7 +278,7 @@ class PostgresReportStorage:
             try:
                 result = session.execute(text("""
                     SELECT id, tool_type, domain, report_date, upload_date,
-                           global_score, high_score, medium_score, low_score,
+                           pingcastle_global_score, high_score, medium_score, low_score,
                        stale_objects_score, privileged_accounts_score,
                        trusts_score, anomalies_score, domain_sid,
                        domain_functional_level, forest_functional_level,
@@ -291,7 +291,7 @@ class PostgresReportStorage:
                     # Fallback to old column name
                     result = session.execute(text("""
                         SELECT id, tool_type, domain, report_date, upload_date,
-                               global_score, high_score, medium_score, low_score,
+                               pingcastle_global_score, high_score, medium_score, low_score,
                                stale_objects_score, privileged_accounts_score,
                                trusts_score, anomalies_score, domain_sid,
                                domain_functional_level, forest_functional_level,
@@ -336,7 +336,7 @@ class PostgresReportStorage:
             domain=result.domain,
             report_date=result.report_date,
             upload_date=result.upload_date,
-            global_score=result.global_score,
+            global_score=result.pingcastle_global_score,
             high_score=result.high_score,
             medium_score=result.medium_score,
             low_score=result.low_score,
@@ -364,7 +364,7 @@ class PostgresReportStorage:
             try:
                 results = session.execute(text("""
                 SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                       r.global_score, r.high_score, r.medium_score, r.low_score,
+                       r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                        r.stale_objects_score, r.privileged_accounts_score,
                        r.trusts_score, r.anomalies_score, r.domain_sid,
                        r.domain_functional_level, r.forest_functional_level,
@@ -377,7 +377,7 @@ class PostgresReportStorage:
                 FROM reports r
                 LEFT JOIN findings f ON r.id = f.report_id
                 GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                         r.global_score, r.high_score, r.medium_score, r.low_score,
+                         r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                          r.stale_objects_score, r.privileged_accounts_score,
                          r.trusts_score, r.anomalies_score, r.domain_sid,
                          r.domain_functional_level, r.forest_functional_level,
@@ -390,7 +390,7 @@ class PostgresReportStorage:
                     # Fallback to old column name if migration not run
                     results = session.execute(text("""
                         SELECT r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                               r.global_score, r.high_score, r.medium_score, r.low_score,
+                               r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                                r.stale_objects_score, r.privileged_accounts_score,
                                r.trusts_score, r.anomalies_score, r.domain_sid,
                                r.domain_functional_level, r.forest_functional_level,
@@ -403,7 +403,7 @@ class PostgresReportStorage:
                         FROM reports r
                         LEFT JOIN findings f ON r.id = f.report_id
                         GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
-                                 r.global_score, r.high_score, r.medium_score, r.low_score,
+                                 r.pingcastle_global_score, r.high_score, r.medium_score, r.low_score,
                                  r.stale_objects_score, r.privileged_accounts_score,
                                  r.trusts_score, r.anomalies_score, r.domain_sid,
                                  r.domain_functional_level, r.forest_functional_level,
@@ -421,7 +421,7 @@ class PostgresReportStorage:
                     domain=r.domain,
                     report_date=r.report_date,
                     upload_date=r.upload_date,
-                    global_score=r.global_score,
+                    global_score=r.pingcastle_global_score,
                     high_score=r.high_score,
                     medium_score=r.medium_score,
                     low_score=r.low_score,
@@ -665,7 +665,7 @@ class PostgresReportStorage:
 
             return [
                 MonitoredGroup(
-                    id=r.id,
+                    id=str(r.id),
                     group_name=r.group_name,
                     group_sid=r.group_sid,
                     domain=r.domain,

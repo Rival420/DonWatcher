@@ -159,6 +159,55 @@ class MigrationRunner:
         import hashlib
         return hashlib.md5(content.encode()).hexdigest()
     
+    def _check_schema_exists(self) -> bool:
+        """
+        Check if the core database schema already exists.
+        This handles the case where Docker's entrypoint already initialized the database.
+        """
+        try:
+            with self.engine.connect() as conn:
+                # Check for a core table that would exist if init_db.sql was already run
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'reports'
+                    )
+                """))
+                return result.scalar()
+        except SQLAlchemyError:
+            return False
+    
+    def _mark_migration_as_applied(self, migration: Migration, note: str = "Auto-detected") -> bool:
+        """
+        Mark a migration as applied without executing it.
+        Used when schema already exists from Docker initialization.
+        """
+        try:
+            content = migration.path.read_text(encoding='utf-8')
+            checksum = self._calculate_checksum(content)
+            
+            with self.engine.connect() as conn:
+                conn.execute(text(f"""
+                    INSERT INTO {self.MIGRATIONS_TABLE} 
+                    (version, filename, description, checksum, execution_time_ms)
+                    VALUES (:version, :filename, :description, :checksum, :execution_time_ms)
+                    ON CONFLICT (version) DO NOTHING
+                """), {
+                    'version': migration.version,
+                    'filename': migration.filename,
+                    'description': f"{migration.description} ({note})",
+                    'checksum': checksum,
+                    'execution_time_ms': 0
+                })
+                conn.commit()
+            
+            logger.info(f"✓ Marked {migration.filename} as applied ({note})")
+            return True
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to mark migration as applied: {e}")
+            return False
+
     def apply_migration(self, migration: Migration, dry_run: bool = False) -> Tuple[bool, str]:
         """
         Apply a single migration.
@@ -171,6 +220,16 @@ class MigrationRunner:
             Tuple of (success, message)
         """
         logger.info(f"{'[DRY RUN] ' if dry_run else ''}Applying migration {migration.filename}...")
+        
+        # Special handling for init_db.sql - check if schema already exists
+        # This handles the Docker entrypoint initialization case
+        if migration.filename == 'init_db.sql' and self._check_schema_exists():
+            logger.info(f"Schema already exists (Docker init), marking {migration.filename} as applied")
+            if dry_run:
+                return True, f"Would mark as applied (schema exists): {migration.filename}"
+            if self._mark_migration_as_applied(migration, "Docker entrypoint"):
+                return True, f"Marked as applied (schema already existed from Docker init)"
+            return False, f"Failed to mark {migration.filename} as applied"
         
         try:
             # Read migration SQL

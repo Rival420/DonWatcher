@@ -18,7 +18,8 @@ CREATE TABLE reports (
     upload_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     
     -- PingCastle specific fields
-    global_score INTEGER DEFAULT 0,
+    pingcastle_global_score INTEGER DEFAULT 0,
+    aggregate_global_score INTEGER DEFAULT 0,
     high_score INTEGER DEFAULT 0,
     medium_score INTEGER DEFAULT 0,
     low_score INTEGER DEFAULT 0,
@@ -258,9 +259,10 @@ CREATE TABLE IF NOT EXISTS domain_risk_assessments (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Ensure one assessment per domain per day (using expression index)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_risk_assessments_domain_day 
-    ON domain_risk_assessments(domain, DATE(assessment_date));
+-- Index for domain/assessment_date queries 
+-- Note: Date-based uniqueness is enforced at application layer
+CREATE INDEX IF NOT EXISTS idx_domain_risk_assessments_domain_assessment 
+    ON domain_risk_assessments(domain, assessment_date DESC);
 
 -- Individual group risk assessments
 CREATE TABLE IF NOT EXISTS group_risk_assessments (
@@ -311,9 +313,10 @@ CREATE TABLE IF NOT EXISTS global_risk_scores (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Ensure one global score per domain per day (using expression index)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_global_risk_scores_domain_day 
-    ON global_risk_scores(domain, DATE(assessment_date));
+-- Index for domain/assessment_date queries
+-- Note: Date-based uniqueness is enforced at application layer  
+CREATE INDEX IF NOT EXISTS idx_global_risk_scores_domain_assessment
+    ON global_risk_scores(domain, assessment_date DESC);
 
 -- Risk configuration table
 CREATE TABLE IF NOT EXISTS risk_configuration (

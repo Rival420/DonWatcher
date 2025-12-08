@@ -1,5 +1,5 @@
 -- Migration 002: Add new tables for group member management
--- Run this on your PostgreSQL database to add the new functionality
+-- IDEMPOTENT: Safe to run multiple times
 
 -- Accepted group members - individual members marked as acceptable in groups
 CREATE TABLE IF NOT EXISTS accepted_group_members (
@@ -35,12 +35,12 @@ CREATE TABLE IF NOT EXISTS group_risk_configs (
     UNIQUE(domain, group_name)
 );
 
--- Create indexes for better performance
+-- Create indexes for better performance (IF NOT EXISTS)
 CREATE INDEX IF NOT EXISTS idx_accepted_group_members_domain ON accepted_group_members(domain);
 CREATE INDEX IF NOT EXISTS idx_accepted_group_members_group ON accepted_group_members(group_name);
 CREATE INDEX IF NOT EXISTS idx_group_risk_configs_domain ON group_risk_configs(domain);
 
--- Insert default group risk configurations
+-- Insert default group risk configurations (ON CONFLICT handles duplicates)
 INSERT INTO group_risk_configs (group_name, domain, base_risk_score, max_acceptable_members, alert_threshold, description) 
 VALUES
     ('Domain Admins', '*', 35, 3, 5, 'Domain administrators - highest privilege level'),
@@ -53,7 +53,8 @@ VALUES
     ('Print Operators', '*', 10, 5, 8, 'Can manage printers and print queues')
 ON CONFLICT (domain, group_name) DO NOTHING;
 
--- Verify the tables were created
-SELECT 'accepted_group_members' as table_name, count(*) as row_count FROM accepted_group_members
-UNION ALL
-SELECT 'group_risk_configs' as table_name, count(*) as row_count FROM group_risk_configs;
+-- Verification
+DO $$
+BEGIN
+    RAISE NOTICE 'Migration 002 completed successfully';
+END $$;

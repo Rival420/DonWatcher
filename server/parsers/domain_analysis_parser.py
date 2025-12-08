@@ -56,7 +56,7 @@ class DomainAnalysisParser(BaseSecurityParser):
         
         # Check for new domain_group_members format (from PowerShell scanner)
         if data.get('tool_type') == 'domain_group_members':
-            return self._parse_domain_group_members_format(data)
+            return self._parse_domain_group_members_format(data, file_path)
         
         # Check if this is already a DonWatcher report format
         if data.get('tool_type') == 'domain_analysis' and 'findings' in data:
@@ -177,7 +177,7 @@ class DomainAnalysisParser(BaseSecurityParser):
             original_file=str(file_path)
         )
     
-    def _parse_domain_group_members_format(self, data: Dict[str, Any]) -> Report:
+    def _parse_domain_group_members_format(self, data: Dict[str, Any], file_path: Path) -> Report:
         """Parse new domain_group_members format from PowerShell scanner."""
         from server.models import Report, Finding
         
