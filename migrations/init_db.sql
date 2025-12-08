@@ -255,11 +255,12 @@ CREATE TABLE IF NOT EXISTS domain_risk_assessments (
     
     -- Audit fields
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    -- Ensure one assessment per domain per day
-    UNIQUE(domain, DATE(assessment_date))
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure one assessment per domain per day (using expression index)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_risk_assessments_domain_day 
+    ON domain_risk_assessments(domain, DATE(assessment_date));
 
 -- Individual group risk assessments
 CREATE TABLE IF NOT EXISTS group_risk_assessments (
@@ -307,11 +308,12 @@ CREATE TABLE IF NOT EXISTS global_risk_scores (
     pingcastle_report_id UUID, -- References reports table
     domain_assessment_id UUID REFERENCES domain_risk_assessments(id),
     
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    -- Ensure one global score per domain per day
-    UNIQUE(domain, DATE(assessment_date))
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure one global score per domain per day (using expression index)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_global_risk_scores_domain_day 
+    ON global_risk_scores(domain, DATE(assessment_date));
 
 -- Risk configuration table
 CREATE TABLE IF NOT EXISTS risk_configuration (

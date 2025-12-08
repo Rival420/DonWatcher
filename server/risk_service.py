@@ -487,39 +487,63 @@ class RiskIntegrationService:
         """Store domain risk assessment in database"""
         try:
             with self.storage.get_connection() as conn:
-                # Insert domain assessment
-                assessment_query = text("""
-                    INSERT INTO domain_risk_assessments (
-                        domain, assessment_date, access_governance_score,
-                        privilege_escalation_score, compliance_posture_score,
-                        operational_risk_score, domain_group_score, calculation_metadata
-                    ) VALUES (
-                        :domain, :assessment_date, :access_governance_score,
-                        :privilege_escalation_score, :compliance_posture_score,
-                        :operational_risk_score, :domain_group_score, :calculation_metadata
-                    )
-                    ON CONFLICT (domain, DATE(assessment_date))
-                    DO UPDATE SET
-                        access_governance_score = EXCLUDED.access_governance_score,
-                        privilege_escalation_score = EXCLUDED.privilege_escalation_score,
-                        compliance_posture_score = EXCLUDED.compliance_posture_score,
-                        operational_risk_score = EXCLUDED.operational_risk_score,
-                        domain_group_score = EXCLUDED.domain_group_score,
-                        calculation_metadata = EXCLUDED.calculation_metadata,
-                        updated_at = NOW()
-                    RETURNING id
+                # Check if assessment exists for this domain today
+                check_query = text("""
+                    SELECT id FROM domain_risk_assessments 
+                    WHERE domain = :domain AND DATE(assessment_date) = DATE(:assessment_date)
                 """)
-                
-                result = conn.execute(assessment_query, {
+                existing = conn.execute(check_query, {
                     "domain": assessment.domain,
-                    "assessment_date": assessment.assessment_date,
-                    "access_governance_score": assessment.access_governance_score,
-                    "privilege_escalation_score": assessment.privilege_escalation_score,
-                    "compliance_posture_score": assessment.compliance_posture_score,
-                    "operational_risk_score": assessment.operational_risk_score,
-                    "domain_group_score": assessment.domain_group_score,
-                    "calculation_metadata": assessment.calculation_metadata
-                })
+                    "assessment_date": assessment.assessment_date
+                }).fetchone()
+                
+                if existing:
+                    # Update existing assessment
+                    assessment_query = text("""
+                        UPDATE domain_risk_assessments SET
+                            access_governance_score = :access_governance_score,
+                            privilege_escalation_score = :privilege_escalation_score,
+                            compliance_posture_score = :compliance_posture_score,
+                            operational_risk_score = :operational_risk_score,
+                            domain_group_score = :domain_group_score,
+                            calculation_metadata = :calculation_metadata,
+                            updated_at = NOW()
+                        WHERE id = :id
+                        RETURNING id
+                    """)
+                    result = conn.execute(assessment_query, {
+                        "id": existing.id,
+                        "access_governance_score": assessment.access_governance_score,
+                        "privilege_escalation_score": assessment.privilege_escalation_score,
+                        "compliance_posture_score": assessment.compliance_posture_score,
+                        "operational_risk_score": assessment.operational_risk_score,
+                        "domain_group_score": assessment.domain_group_score,
+                        "calculation_metadata": assessment.calculation_metadata
+                    })
+                else:
+                    # Insert new assessment
+                    assessment_query = text("""
+                        INSERT INTO domain_risk_assessments (
+                            domain, assessment_date, access_governance_score,
+                            privilege_escalation_score, compliance_posture_score,
+                            operational_risk_score, domain_group_score, calculation_metadata
+                        ) VALUES (
+                            :domain, :assessment_date, :access_governance_score,
+                            :privilege_escalation_score, :compliance_posture_score,
+                            :operational_risk_score, :domain_group_score, :calculation_metadata
+                        )
+                        RETURNING id
+                    """)
+                    result = conn.execute(assessment_query, {
+                        "domain": assessment.domain,
+                        "assessment_date": assessment.assessment_date,
+                        "access_governance_score": assessment.access_governance_score,
+                        "privilege_escalation_score": assessment.privilege_escalation_score,
+                        "compliance_posture_score": assessment.compliance_posture_score,
+                        "operational_risk_score": assessment.operational_risk_score,
+                        "domain_group_score": assessment.domain_group_score,
+                        "calculation_metadata": assessment.calculation_metadata
+                    })
                 
                 assessment_id = result.scalar()
                 
@@ -573,44 +597,71 @@ class RiskIntegrationService:
         """Store global risk score in database"""
         try:
             with self.storage.get_connection() as conn:
-                query = text("""
-                    INSERT INTO global_risk_scores (
-                        domain, assessment_date, pingcastle_score, domain_group_score,
-                        global_score, pingcastle_contribution, domain_group_contribution,
-                        trend_direction, trend_percentage, domain_assessment_id
-                    ) VALUES (
-                        :domain, :assessment_date, :pingcastle_score, :domain_group_score,
-                        :global_score, :pingcastle_contribution, :domain_group_contribution,
-                        :trend_direction, :trend_percentage, :domain_assessment_id
-                    )
-                    ON CONFLICT (domain, DATE(assessment_date))
-                    DO UPDATE SET
-                        pingcastle_score = EXCLUDED.pingcastle_score,
-                        domain_group_score = EXCLUDED.domain_group_score,
-                        global_score = EXCLUDED.global_score,
-                        pingcastle_contribution = EXCLUDED.pingcastle_contribution,
-                        domain_group_contribution = EXCLUDED.domain_group_contribution,
-                        trend_direction = EXCLUDED.trend_direction,
-                        trend_percentage = EXCLUDED.trend_percentage,
-                        domain_assessment_id = EXCLUDED.domain_assessment_id
-                    RETURNING id
-                """)
-                
                 # Get domain assessment ID
                 domain_assessment_id = self._get_domain_assessment_id(domain_assessment.domain, domain_assessment.assessment_date)
                 
-                result = conn.execute(query, {
+                # Check if global risk score exists for this domain today
+                check_query = text("""
+                    SELECT id FROM global_risk_scores 
+                    WHERE domain = :domain AND DATE(assessment_date) = DATE(:assessment_date)
+                """)
+                existing = conn.execute(check_query, {
                     "domain": global_risk.domain,
-                    "assessment_date": global_risk.assessment_date,
-                    "pingcastle_score": global_risk.pingcastle_score,
-                    "domain_group_score": global_risk.domain_group_score,
-                    "global_score": global_risk.global_score,
-                    "pingcastle_contribution": global_risk.pingcastle_contribution,
-                    "domain_group_contribution": global_risk.domain_group_contribution,
-                    "trend_direction": global_risk.trend_direction,
-                    "trend_percentage": global_risk.trend_percentage,
-                    "domain_assessment_id": domain_assessment_id
-                })
+                    "assessment_date": global_risk.assessment_date
+                }).fetchone()
+                
+                if existing:
+                    # Update existing global risk score
+                    query = text("""
+                        UPDATE global_risk_scores SET
+                            pingcastle_score = :pingcastle_score,
+                            domain_group_score = :domain_group_score,
+                            global_score = :global_score,
+                            pingcastle_contribution = :pingcastle_contribution,
+                            domain_group_contribution = :domain_group_contribution,
+                            trend_direction = :trend_direction,
+                            trend_percentage = :trend_percentage,
+                            domain_assessment_id = :domain_assessment_id
+                        WHERE id = :id
+                        RETURNING id
+                    """)
+                    result = conn.execute(query, {
+                        "id": existing.id,
+                        "pingcastle_score": global_risk.pingcastle_score,
+                        "domain_group_score": global_risk.domain_group_score,
+                        "global_score": global_risk.global_score,
+                        "pingcastle_contribution": global_risk.pingcastle_contribution,
+                        "domain_group_contribution": global_risk.domain_group_contribution,
+                        "trend_direction": global_risk.trend_direction,
+                        "trend_percentage": global_risk.trend_percentage,
+                        "domain_assessment_id": domain_assessment_id
+                    })
+                else:
+                    # Insert new global risk score
+                    query = text("""
+                        INSERT INTO global_risk_scores (
+                            domain, assessment_date, pingcastle_score, domain_group_score,
+                            global_score, pingcastle_contribution, domain_group_contribution,
+                            trend_direction, trend_percentage, domain_assessment_id
+                        ) VALUES (
+                            :domain, :assessment_date, :pingcastle_score, :domain_group_score,
+                            :global_score, :pingcastle_contribution, :domain_group_contribution,
+                            :trend_direction, :trend_percentage, :domain_assessment_id
+                        )
+                        RETURNING id
+                    """)
+                    result = conn.execute(query, {
+                        "domain": global_risk.domain,
+                        "assessment_date": global_risk.assessment_date,
+                        "pingcastle_score": global_risk.pingcastle_score,
+                        "domain_group_score": global_risk.domain_group_score,
+                        "global_score": global_risk.global_score,
+                        "pingcastle_contribution": global_risk.pingcastle_contribution,
+                        "domain_group_contribution": global_risk.domain_group_contribution,
+                        "trend_direction": global_risk.trend_direction,
+                        "trend_percentage": global_risk.trend_percentage,
+                        "domain_assessment_id": domain_assessment_id
+                    })
                 
                 conn.commit()
                 return str(result.scalar())

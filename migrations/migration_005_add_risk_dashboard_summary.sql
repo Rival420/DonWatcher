@@ -16,6 +16,13 @@ CREATE TABLE IF NOT EXISTS risk_calculation_history (
 CREATE INDEX IF NOT EXISTS idx_risk_calculation_history_domain ON risk_calculation_history(domain);
 CREATE INDEX IF NOT EXISTS idx_risk_calculation_history_calculated_at ON risk_calculation_history(calculated_at DESC);
 
+-- Create unique expression indexes for domain/day uniqueness (if not exists)
+-- These replace the invalid UNIQUE constraints that used DATE() function
+CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_risk_assessments_domain_day 
+    ON domain_risk_assessments(domain, DATE(assessment_date));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_global_risk_scores_domain_day 
+    ON global_risk_scores(domain, DATE(assessment_date));
+
 -- Create the risk_dashboard_summary view for cross-domain comparison
 CREATE OR REPLACE VIEW risk_dashboard_summary AS
 SELECT 
