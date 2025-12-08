@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0e17;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e3a5f;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2d4a6f;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-cyber-bg-primary text-cyber-text-primary font-sans;
+  background-image: 
+    linear-gradient(rgba(0, 212, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.02) 1px, transparent 1px);
+  background-size: 50px 50px;
+  min-height: 100vh;
+}
+
+/* Cyber glow effect */
+.cyber-glow {
+  @apply relative;
+}
+
+.cyber-glow::before {
+  content: '';
+  @apply absolute inset-0 rounded-lg opacity-0 transition-opacity duration-300;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(139, 92, 246, 0.1));
+  filter: blur(20px);
+  z-index: -1;
+}
+
+.cyber-glow:hover::before {
+  @apply opacity-100;
+}
+
+/* Card styles */
+.cyber-card {
+  @apply bg-cyber-bg-card border border-cyber-border rounded-xl p-6;
+  @apply shadow-cyber backdrop-blur-sm;
+  @apply transition-all duration-300;
+}
+
+.cyber-card:hover {
+  @apply border-cyber-border-light shadow-cyber-lg;
+}
+
+/* Button styles */
+.cyber-button {
+  @apply px-4 py-2 rounded-lg font-medium;
+  @apply bg-gradient-to-r from-cyber-accent-cyan to-cyber-accent-blue;
+  @apply text-white shadow-glow-cyan;
+  @apply transition-all duration-300;
+  @apply hover:shadow-lg hover:scale-105;
+  @apply active:scale-95;
+}
+
+.cyber-button-secondary {
+  @apply px-4 py-2 rounded-lg font-medium;
+  @apply bg-cyber-bg-tertiary border border-cyber-border;
+  @apply text-cyber-text-primary;
+  @apply transition-all duration-300;
+  @apply hover:border-cyber-accent-cyan hover:text-cyber-accent-cyan;
+}
+
+/* Input styles */
+.cyber-input {
+  @apply w-full px-4 py-3 rounded-lg;
+  @apply bg-cyber-bg-secondary border border-cyber-border;
+  @apply text-cyber-text-primary placeholder-cyber-text-muted;
+  @apply focus:outline-none focus:border-cyber-accent-cyan focus:ring-1 focus:ring-cyber-accent-cyan;
+  @apply transition-all duration-300;
+}
+
+/* Status badges */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-critical {
+  @apply bg-red-500/20 text-red-400 border border-red-500/30;
+}
+
+.badge-high {
+  @apply bg-orange-500/20 text-orange-400 border border-orange-500/30;
+}
+
+.badge-medium {
+  @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30;
+}
+
+.badge-low {
+  @apply bg-green-500/20 text-green-400 border border-green-500/30;
+}
+
+/* Animations */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Pulse ring animation */
+.pulse-ring {
+  @apply absolute inset-0 rounded-full;
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* Scan line effect */
+.scan-line {
+  @apply absolute left-0 right-0 h-px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.5), transparent);
+  animation: scan-line 3s linear infinite;
+}
+
+@keyframes scan-line {
+  0% { top: -10%; }
+  100% { top: 110%; }
+}
+
+/* Chart container */
+.chart-container {
+  @apply relative p-4 rounded-lg;
+  @apply bg-cyber-bg-secondary/50 border border-cyber-border/50;
+}
+
+/* Table styles */
+.cyber-table {
+  @apply w-full text-sm;
+}
+
+.cyber-table th {
+  @apply px-4 py-3 text-left text-cyber-text-secondary font-medium uppercase tracking-wider;
+  @apply bg-cyber-bg-secondary border-b border-cyber-border;
+}
+
+.cyber-table td {
+  @apply px-4 py-3 border-b border-cyber-border/50;
+}
+
+.cyber-table tr:hover td {
+  @apply bg-cyber-bg-hover;
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply animate-pulse bg-cyber-bg-tertiary rounded;
+}
+

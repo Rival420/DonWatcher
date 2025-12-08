@@ -22,56 +22,78 @@ DonWatcher is a modern, containerized web-based dashboard for monitoring the hea
 
 ## Repository Structure
 
-DonWatcher is organized with a clean, modular structure for maintainability and scalability:
+DonWatcher uses a modern three-container architecture with a React frontend:
 
 ```
 DonWatcher/
 ├── 📄 README.md                          # This file
 ├── 📄 PROJECT_STRUCTURE.md               # Detailed project organization
-├── 📄 requirements.txt                   # Python dependencies
-├── 📄 docker-compose.yml                 # Container orchestration
-├── 📄 Dockerfile                         # Server container definition
+├── 📄 requirements.txt                   # Python dependencies (backend)
+├── 📄 docker-compose.yml                 # Multi-container orchestration
 │
-├── 📁 client/                            # Client components (remote machines)
+├── 📁 frontend/                          # React Frontend Application
+│   ├── 📄 Dockerfile                     # Frontend container definition
+│   ├── 📄 package.json                   # Node.js dependencies
+│   └── 📁 src/                           # React source code
+│       ├── 📁 components/                # Reusable UI components
+│       ├── 📁 pages/                     # Page components
+│       └── 📁 services/                  # API client
+│
+├── 📁 backend/                           # Backend Docker configuration
+│   └── 📄 Dockerfile                     # Backend container definition
+│
+├── 📁 server/                            # FastAPI Backend Application
+│   ├── 📄 main.py                        # FastAPI application entry point
+│   ├── 📄 models.py                      # Pydantic data models
+│   ├── 📁 parsers/                       # Multi-format security tool parsers
+│   └── 📁 routers/                       # API route modules
+│
+├── 📁 client/                            # Client Components (remote machines)
 │   ├── 📄 DonWatcher-DomainScanner.ps1   # PowerShell domain scanner
 │   ├── 📄 DonWatcher-Config.json         # Scanner configuration
 │   └── 📁 agents/                        # Legacy Python agents
 │
-├── 📁 server/                            # Backend server application
-│   ├── 📄 main.py                        # FastAPI application with Phase 1 enhancements
-│   ├── 📄 models.py                      # Enhanced data models
-│   ├── 📁 parsers/                       # Multi-format security tool parsers
-│   ├── 📁 frontend/                      # Web interface assets
-│   └── 📁 routers/                       # API route modules
-│
-├── 📁 migrations/                        # Database schema migrations
-│   ├── 📄 README.md                      # Migration documentation
+├── 📁 migrations/                        # Database Schema Migrations
 │   ├── 📄 init_db.sql                    # Initial schema
-│   └── 📄 migration_003_add_member_status.sql # Phase 1 enhancements
+│   └── 📄 migration_*.sql                # Incremental migrations
 │
 ├── 📁 tests/                             # Unit tests and test data
-│   ├── 📄 README.md                      # Testing documentation
-│   ├── 📄 test_domain_group_parser.py    # Comprehensive parser tests
-│   └── 📄 test_domain_group_members.json # Sample test data
 │
 └── 📁 docs/                              # Project documentation
-    ├── 📄 Technical_Overview.md           # Technical documentation
+    ├── 📄 Technical_Overview.md          # Technical documentation
     ├── 📁 api/                           # API reference documentation
     └── 📁 implementation/                # Phase implementation details
 ```
 
 For detailed information about the project structure, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
 
-### Server Components
-- **FastAPI Backend**: REST API, file processing, database management
-- **Web Frontend**: Modern responsive dashboard with multi-tool support
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Network                           │
+├─────────────────┬─────────────────┬─────────────────────────┤
+│  🌐 Frontend    │  🐍 Backend     │  🐘 PostgreSQL          │
+│  React + Vite   │  FastAPI        │  Database               │
+│  Port: 3000     │  Port: 8080     │  Port: 5432             │
+└─────────────────┴─────────────────┴─────────────────────────┘
+```
+
+### Frontend (React)
+- **React 18** with TypeScript
+- **Vite** for fast development with hot-reload
+- **Tailwind CSS** with custom dark cyber theme
+- **React Query** for server state management
+- **Recharts** for beautiful data visualizations
+
+### Backend (FastAPI)
+- **FastAPI**: REST API with automatic documentation
+- **PostgreSQL**: Robust data persistence
 - **Parser Framework**: Extensible system for multiple security tools
-- **PostgreSQL Storage**: Robust data persistence with tool-type awareness
 
 ### Client Components  
 - **PowerShell Script**: Standalone domain scanner for Windows machines
 - **Python Agents**: Extensible agent framework for custom integrations
-- **Configuration**: Flexible JSON-based configuration system
 
 ## Installation
 
@@ -82,91 +104,52 @@ For detailed information about the project structure, see [PROJECT_STRUCTURE.md]
 git clone https://github.com/rival420/Donwatcher.git
 cd Donwatcher
 
-# Start the full stack (PostgreSQL + DonWatcher)
-docker-compose up -d
+# Start the full stack (Frontend + Backend + PostgreSQL)
+docker compose up -d
 
 # Wait for services to start (about 30-60 seconds)
-# Check that both services are running
-docker-compose ps
+# Check that all services are running
+docker compose ps
 
 # View logs to ensure everything started correctly
-docker-compose logs -f donwatcher
+docker compose logs -f
 
 # Access the dashboard
-# Open your browser and go to: http://localhost:8080
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8080
 ```
 
 #### First Time Setup
-1. **Access the Dashboard**: Navigate to [http://localhost:8080](http://localhost:8080)
-2. **Upload Your First Report**: Go to "Reports" and drag a security report file (XML, JSON, CSV, or HTML)
-3. **Configure Alerts**: Visit "Settings" > "Alerting" to set up webhook notifications
+1. **Access the Dashboard**: Navigate to [http://localhost:3000](http://localhost:3000)
+2. **Upload Your First Report**: Go to "Upload" and drag a security report file (XML, JSON, or CSV)
+3. **Configure Alerts**: Visit "Settings" to set up webhook notifications
 4. **Review Results**: Check the main dashboard for visualizations and trends
 
 #### Stopping the Application
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove all data (including database)
-docker-compose down -v
+docker compose down -v
 ```
 
-### Manual Installation
+#### Development with Hot-Reload
+Both frontend and backend support hot-reload during development. Changes to source files are automatically detected and applied without restarting containers:
 
-#### Prerequisites
-- Python 3.11+
-- PostgreSQL 15+
-- Node.js (for development)
-
-#### Steps
-
-1. **Clone and Setup**
 ```bash
-git clone https://github.com/rival420/Donwatcher.git
-cd Donwatcher
+# Start with logs visible
+docker compose up
+
+# Or run in background and watch logs
+docker compose up -d && docker compose logs -f
 ```
 
-2. **Database Setup**
-```bash
-# Create PostgreSQL database
-createdb donwatcher
-
-# Initialize schema
-psql -d donwatcher -f migrations/init_db.sql
-
-# Apply Phase 1 enhancements (optional but recommended)
-psql -d donwatcher -f migrations/migration_003_add_member_status.sql
-```
-
-3. **Python Environment**
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# or
-.venv\Scripts\Activate.ps1  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-4. **Configure Environment**
-```bash
-export DATABASE_URL="postgresql://username:password@localhost:5432/donwatcher"
-export PORT=8080
-```
-
-5. **Run Application**
-```bash
-uvicorn main:app --reload --port 8080 --host 0.0.0.0
-```
-
-6. **Access Dashboard**
-- **Main Dashboard**: [http://localhost:8080](http://localhost:8080)
-- **Analysis Page**: [http://localhost:8080/analyze](http://localhost:8080/analyze)
-- **Reports**: [http://localhost:8080/reports](http://localhost:8080/reports)
-- **Settings**: [http://localhost:8080/settings](http://localhost:8080/settings)
-- **Debug Dashboard**: [http://localhost:8080/debug](http://localhost:8080/debug) ⭐ **NEW**
+### Access Points
+- **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Backend API**: [http://localhost:8080/api](http://localhost:8080/api)
+- **API Documentation**: [http://localhost:8080/docs](http://localhost:8080/docs)
+- **Health Check**: [http://localhost:8080/api/health](http://localhost:8080/api/health)
 
 ## Supported Security Tools
 
@@ -342,59 +325,72 @@ This project is licensed under the terms specified in the LICENSE file.
 If you encounter issues, follow these steps:
 
 ### Quick Diagnostics
-1. **Check System Status**: Visit [http://localhost:8080/debug](http://localhost:8080/debug) for real-time system status
-2. **Verify Services**: Run `docker-compose ps` to ensure both containers are running
-3. **Check Logs**: View container logs with `docker-compose logs -f donwatcher`
+1. **Check System Status**: Visit [http://localhost:3000/settings](http://localhost:3000/settings) for system status
+2. **Verify Services**: Run `docker compose ps` to ensure all containers are running
+3. **Check Logs**: View container logs with `docker compose logs -f`
 
 ### Common Issues and Solutions
 
 #### Container Won't Start
 ```bash
-# Check if port 8080 is already in use
-docker-compose logs donwatcher
+# Check container logs for errors
+docker compose logs frontend
+docker compose logs backend
+docker compose logs postgres
 
 # If port conflict, modify docker-compose.yml:
-# ports: "8081:8080"  # Use port 8081 instead
+# frontend ports: "3001:3000"  # Use port 3001 instead
+# backend ports: "8081:8080"   # Use port 8081 instead
 ```
 
 #### Database Connection Issues
 ```bash
 # Restart the database container
-docker-compose restart postgres
+docker compose restart postgres
 
 # Check database logs
-docker-compose logs postgres
+docker compose logs postgres
 
 # If persistent issues, reset the database
-docker-compose down -v && docker-compose up -d
+docker compose down -v && docker compose up -d
+```
+
+#### Frontend Not Loading
+```bash
+# Check frontend container logs
+docker compose logs frontend
+
+# Rebuild frontend container
+docker compose up --build frontend
 ```
 
 #### Upload Failures
 - **File Size**: Default limit is 10MB. Check file size and adjust `MAX_UPLOAD_SIZE` if needed
-- **File Format**: Supported formats are XML, JSON, CSV, and HTML
+- **File Format**: Supported formats are XML, JSON, and CSV
 - **Browser Errors**: Check browser console (F12) for detailed error messages
+- **CORS Issues**: Ensure backend CORS_ORIGINS includes the frontend URL
 
 #### Report Processing Issues
 - **No Findings**: Check that your report format matches supported tools (PingCastle, Locksmith, Domain Analysis)
-- **Parsing Errors**: View the debug dashboard for parser registration status
+- **Parsing Errors**: Check backend logs for parser errors
 - **Missing Data**: Ensure uploaded files contain valid security data
 
 #### Frontend Display Issues
 - **Empty Pages**: Hard refresh the browser (Ctrl+F5) to clear cache
-- **JavaScript Errors**: Check browser console and ensure all assets are loaded
-- **Missing Charts**: Verify that reports have been successfully uploaded and parsed
+- **JavaScript Errors**: Check browser console and ensure API is accessible
+- **Missing Charts**: Verify that reports have been successfully uploaded
 
 ### Getting Help
-1. **Debug Dashboard**: Most issues can be diagnosed at `/debug`
-2. **Log Files**: Download backend logs from Settings > General > Download Logs
+1. **Settings Page**: System status is shown on the Settings page
+2. **Backend API Health**: Check [http://localhost:8080/api/health](http://localhost:8080/api/health)
 3. **Browser Console**: Press F12 and check the Console tab for frontend errors
-4. **Docker Logs**: Use `docker-compose logs` to view detailed container logs
+4. **Docker Logs**: Use `docker compose logs` to view detailed container logs
 
 ### Performance Tips
-- **Large Files**: For files >5MB, upload individually rather than using multi-file upload
-- **Frequent Uploads**: Consider using the agent framework for automated data collection
-- **Database Size**: Use "Settings > Data Management > Clear Reports" to remove old data while preserving configuration
+- **Large Files**: For files >5MB, upload individually
+- **Frequent Uploads**: Consider using the PowerShell agent for automated data collection
+- **Database Size**: Manage data retention in Settings
 
 ---
 
-**DonWatcher v2.1** - Now with multi-file upload, enhanced debugging, robust error handling, and improved reliability!
+**DonWatcher v3.0** - Now with modern React frontend, Docker-based development, and dark cyber theme!

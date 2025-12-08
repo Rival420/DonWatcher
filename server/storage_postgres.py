@@ -514,6 +514,129 @@ class PostgresReportStorage:
                 for r in results
             ]
 
+    def get_all_findings(
+        self, 
+        domain: Optional[str] = None, 
+        category: Optional[str] = None,
+        tool_type: Optional[str] = None,
+        include_accepted: bool = True
+    ) -> List[Dict]:
+        """Get all findings with optional filtering and acceptance status."""
+        with self._get_session() as session:
+            # Build the query dynamically
+            query = """
+                SELECT 
+                    f.id,
+                    f.report_id,
+                    f.tool_type,
+                    f.category,
+                    f.name,
+                    f.score,
+                    f.description,
+                    f.severity,
+                    r.domain,
+                    r.report_date,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM findings f
+                JOIN reports r ON f.report_id = r.id
+                LEFT JOIN accepted_risks ar ON 
+                    f.tool_type = ar.tool_type AND 
+                    f.category = ar.category AND 
+                    f.name = ar.name
+                WHERE 1=1
+            """
+            params = {}
+            
+            if domain:
+                query += " AND r.domain = :domain"
+                params['domain'] = domain
+            
+            if category:
+                query += " AND f.category = :category"
+                params['category'] = category
+            
+            if tool_type:
+                query += " AND f.tool_type = :tool_type"
+                params['tool_type'] = tool_type
+            
+            if not include_accepted:
+                query += " AND ar.id IS NULL"
+            
+            query += " ORDER BY f.score DESC, r.report_date DESC"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            return [
+                {
+                    "id": str(row.id),
+                    "report_id": str(row.report_id),
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "score": row.score,
+                    "description": row.description or "",
+                    "severity": row.severity,
+                    "domain": row.domain,
+                    "report_date": row.report_date.isoformat() if row.report_date else None,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+    
+    def get_findings_by_report(self, report_id: str) -> List[Dict]:
+        """Get all findings for a specific report with acceptance status."""
+        with self._get_session() as session:
+            results = session.execute(text("""
+                SELECT 
+                    f.id,
+                    f.report_id,
+                    f.tool_type,
+                    f.category,
+                    f.name,
+                    f.score,
+                    f.description,
+                    f.severity,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM findings f
+                LEFT JOIN accepted_risks ar ON 
+                    f.tool_type = ar.tool_type AND 
+                    f.category = ar.category AND 
+                    f.name = ar.name
+                WHERE f.report_id = :report_id
+                ORDER BY f.score DESC
+            """), {'report_id': report_id}).fetchall()
+            
+            return [
+                {
+                    "id": str(row.id),
+                    "report_id": str(row.report_id),
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "score": row.score,
+                    "description": row.description or "",
+                    "severity": row.severity,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+
     # Accepted Risks Management
     def add_accepted_risk(self, tool_type: SecurityToolType, category: str, name: str, 
                          reason: str = None, accepted_by: str = None):

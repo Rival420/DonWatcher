@@ -1,20 +1,52 @@
-
 services:
-  donwatcher:
-    build: .
+  # React Frontend - Vite dev server with hot-reload
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src:delegated
+      - ./frontend/public:/app/public:delegated
+      - ./frontend/index.html:/app/index.html:delegated
+      - ./frontend/vite.config.ts:/app/vite.config.ts:delegated
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js:delegated
+      - ./frontend/postcss.config.js:/app/postcss.config.js:delegated
+      - ./frontend/tsconfig.json:/app/tsconfig.json:delegated
+      # Don't mount node_modules - use container's
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      - donwatcher-network
+
+  # FastAPI Backend - API server with hot-reload
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8080:8080"
+    volumes:
+      - ./server:/app/server:delegated
+      - ./migrations:/app/migrations:delegated
+      - ./uploaded_reports:/app/uploaded_reports
+      - ./logs:/app/logs
     environment:
       - DATABASE_URL=postgresql://donwatcher:donwatcher_pass@postgres:5432/donwatcher
       - MAX_UPLOAD_SIZE=10485760
-    volumes:
-      - ./uploaded_reports:/app/uploaded_reports
-      - ./logs:/app/logs
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    networks:
+      - donwatcher-network
 
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     environment:
@@ -31,7 +63,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
+    networks:
+      - donwatcher-network
 
 volumes:
   postgres_data:
+
+networks:
+  donwatcher-network:
+    driver: bridge
