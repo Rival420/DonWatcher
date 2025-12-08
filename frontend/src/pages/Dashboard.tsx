@@ -26,7 +26,8 @@ import {
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  Radar
+  Radar,
+  Legend
 } from 'recharts'
 import { useLatestReport, useReports, useDomains, useDomainGroups } from '../hooks/useApi'
 import { RiskGauge } from '../components/RiskGauge'
@@ -202,56 +203,129 @@ export function Dashboard() {
         </motion.section>
       </div>
       
-      {/* Charts Section */}
+      {/* Category Trend Chart - Full Width */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="cyber-card"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-cyber-text-secondary">Risk Score Trend by Category</h3>
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#00d4ff]" />
+              <span className="text-cyber-text-muted">Global</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#f97316]" />
+              <span className="text-cyber-text-muted">Stale</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#ef4444]" />
+              <span className="text-cyber-text-muted">Privileged</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#a855f7]" />
+              <span className="text-cyber-text-muted">Trusts</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#eab308]" />
+              <span className="text-cyber-text-muted">Anomalies</span>
+            </div>
+          </div>
+        </div>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={historicalData}>
+              <defs>
+                <linearGradient id="globalGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#00d4ff" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
+              <XAxis 
+                dataKey="date" 
+                stroke="#64748b" 
+                fontSize={12}
+                tickLine={false}
+              />
+              <YAxis 
+                stroke="#64748b" 
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#151d2b', 
+                  border: '1px solid #1e3a5f',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                }}
+                labelStyle={{ color: '#e2e8f0', marginBottom: '8px', fontWeight: 'bold' }}
+                itemStyle={{ padding: '2px 0' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="score" 
+                name="Global Score"
+                stroke="#00d4ff" 
+                strokeWidth={3}
+                dot={{ fill: '#00d4ff', strokeWidth: 0, r: 4 }}
+                activeDot={{ r: 6, stroke: '#00d4ff', strokeWidth: 2, fill: '#151d2b' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="stale" 
+                name="Stale Objects"
+                stroke="#f97316" 
+                strokeWidth={2}
+                dot={{ fill: '#f97316', strokeWidth: 0, r: 3 }}
+                activeDot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#151d2b' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="privileged" 
+                name="Privileged Accounts"
+                stroke="#ef4444" 
+                strokeWidth={2}
+                dot={{ fill: '#ef4444', strokeWidth: 0, r: 3 }}
+                activeDot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#151d2b' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="trusts" 
+                name="Trusts"
+                stroke="#a855f7" 
+                strokeWidth={2}
+                dot={{ fill: '#a855f7', strokeWidth: 0, r: 3 }}
+                activeDot={{ r: 5, stroke: '#a855f7', strokeWidth: 2, fill: '#151d2b' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="anomalies" 
+                name="Anomalies"
+                stroke="#eab308" 
+                strokeWidth={2}
+                dot={{ fill: '#eab308', strokeWidth: 0, r: 3 }}
+                activeDot={{ r: 5, stroke: '#eab308', strokeWidth: 2, fill: '#151d2b' }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.section>
+      
+      {/* Radar Chart - Smaller */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Historical Trend */}
         <motion.section
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.35 }}
           className="cyber-card"
         >
-          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Risk Score Trend</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={historicalData}>
-                <defs>
-                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#00d4ff" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#151d2b', 
-                    border: '1px solid #1e3a5f',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="score" 
-                  stroke="#00d4ff" 
-                  fill="url(#scoreGradient)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.section>
-        
-        {/* Radar Chart */}
-        <motion.section
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
-          className="cyber-card"
-        >
-          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Risk Distribution</h3>
+          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Current Risk Distribution</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData}>
@@ -270,6 +344,35 @@ export function Dashboard() {
             </ResponsiveContainer>
           </div>
         </motion.section>
+        
+        {/* Quick Stats Card */}
+        <motion.section
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.35 }}
+          className="cyber-card"
+        >
+          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Category Breakdown</h3>
+          <div className="space-y-4">
+            {[
+              { name: 'Stale Objects', score: latestReport?.stale_objects_score || 0, color: 'bg-orange-500' },
+              { name: 'Privileged Accounts', score: latestReport?.privileged_accounts_score || 0, color: 'bg-red-500' },
+              { name: 'Trusts', score: latestReport?.trusts_score || 0, color: 'bg-purple-500' },
+              { name: 'Anomalies', score: latestReport?.anomalies_score || 0, color: 'bg-yellow-500' },
+            ].map((cat) => (
+              <div key={cat.name} className="flex items-center gap-4">
+                <div className="w-32 text-sm text-cyber-text-muted">{cat.name}</div>
+                <div className="flex-1 h-2 bg-cyber-bg-tertiary rounded-full overflow-hidden">
+                  <div 
+                    className={clsx('h-full rounded-full transition-all duration-500', cat.color)}
+                    style={{ width: `${Math.min((cat.score / 400) * 100, 100)}%` }}
+                  />
+                </div>
+                <div className="w-12 text-right text-sm font-mono text-cyber-text-primary">{cat.score}</div>
+              </div>
+            ))}
+          </div>
+        </motion.section>
       </div>
       
       {/* Domain Groups Preview */}
@@ -282,8 +385,8 @@ export function Dashboard() {
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-cyber-text-secondary">Privileged Groups</h3>
-            <a href="/groups" className="text-sm text-cyber-accent-cyan hover:underline">
-              View all →
+            <a href="/risk-catalog" className="text-sm text-cyber-accent-cyan hover:underline">
+              View in Risk Catalog →
             </a>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

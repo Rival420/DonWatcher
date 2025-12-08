@@ -10,12 +10,19 @@ import {
   XCircle,
   Trash2,
   AlertTriangle,
-  FileText,
-  Users,
-  ChevronDown
+  ChevronDown,
+  Send,
+  Loader2
 } from 'lucide-react'
 import { useHealth, useDomains } from '../hooks/useApi'
 import { clsx } from 'clsx'
+
+interface Settings {
+  webhook_url: string
+  alert_message: string
+  retention_days: number
+  auto_accept_low_severity: boolean
+}
 
 interface DataSummary {
   domain: string
@@ -123,12 +130,25 @@ function DeleteConfirmationModal({
 
 export function Settings() {
   const { data: health, refetch: refetchHealth } = useHealth()
-  const { data: domains, refetch: refetchDomains } = useDomains()
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [alertEnabled, setAlertEnabled] = useState(true)
-  const [retentionDays, setRetentionDays] = useState('365')
+  const { refetch: refetchDomains } = useDomains()
+  
+  // Settings state
+  const [settings, setSettings] = useState<Settings>({
+    webhook_url: '',
+    alert_message: '',
+    retention_days: 365,
+    auto_accept_low_severity: false
+  })
+  const [loadingSettings, setLoadingSettings] = useState(true)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [saveResult, setSaveResult] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  
+  // Test notification state
+  const [testingNotification, setTestingNotification] = useState(false)
+  const [testResult, setTestResult] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  
+  // Connection test state
   const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
   
   // Data management state
   const [dataSummary, setDataSummary] = useState<DataSummary[]>([])
@@ -144,10 +164,26 @@ export function Settings() {
     message: string
   } | null>(null)
   
-  // Load data summary on mount
+  // Load settings on mount
   useEffect(() => {
+    loadSettings()
     loadDataSummary()
   }, [])
+  
+  const loadSettings = async () => {
+    setLoadingSettings(true)
+    try {
+      const response = await fetch('/api/settings')
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data)
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+    } finally {
+      setLoadingSettings(false)
+    }
+  }
   
   const loadDataSummary = async () => {
     setLoadingSummary(true)
@@ -166,15 +202,74 @@ export function Settings() {
   
   const handleTestConnection = async () => {
     setIsTesting(true)
+    try {
+      await refetchHealth()
+    } finally {
+      setIsTesting(false)
+    }
+  }
+  
+  const handleSaveSettings = async () => {
+    setSavingSettings(true)
+    setSaveResult(null)
+    
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      })
+      
+      if (response.ok) {
+        setSaveResult({ type: 'success', message: 'Settings saved successfully!' })
+      } else {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to save settings')
+      }
+    } catch (error) {
+      setSaveResult({ 
+        type: 'error', 
+        message: error instanceof Error ? error.message : 'Failed to save settings' 
+      })
+    } finally {
+      setSavingSettings(false)
+      // Auto-clear success message after 3 seconds
+      setTimeout(() => setSaveResult(null), 5000)
+    }
+  }
+  
+  const handleTestNotification = async () => {
+    if (!settings.webhook_url) {
+      setTestResult({ type: 'error', message: 'Please enter a webhook URL first' })
+      return
+    }
+    
+    setTestingNotification(true)
     setTestResult(null)
     
     try {
-      await refetchHealth()
-      setTestResult('success')
-    } catch {
-      setTestResult('error')
+      const response = await fetch('/api/settings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setTestResult({ type: 'success', message: data.detail || 'Test notification sent successfully!' })
+      } else {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to send test notification')
+      }
+    } catch (error) {
+      setTestResult({ 
+        type: 'error', 
+        message: error instanceof Error ? error.message : 'Failed to send test notification' 
+      })
     } finally {
-      setIsTesting(false)
+      setTestingNotification(false)
+      // Auto-clear after 5 seconds
+      setTimeout(() => setTestResult(null), 5000)
     }
   }
   
@@ -240,37 +335,32 @@ export function Settings() {
     }
   }
   
-  const handleSave = () => {
-    // TODO: Implement settings save
-    console.log('Saving settings:', { webhookUrl, alertEnabled, retentionDays })
-  }
-  
   const totalReports = dataSummary.reduce((sum, d) => sum + d.report_count, 0)
   const totalFindings = dataSummary.reduce((sum, d) => sum + d.finding_count, 0)
   
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Delete Result Alert */}
+      {/* Save/Delete Result Alerts */}
       <AnimatePresence>
-        {deleteResult && (
+        {(saveResult || deleteResult) && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className={clsx(
               'p-4 rounded-lg border flex items-center gap-3',
-              deleteResult.type === 'success' 
+              (saveResult?.type || deleteResult?.type) === 'success' 
                 ? 'bg-green-500/10 border-green-500/30 text-green-400'
                 : 'bg-red-500/10 border-red-500/30 text-red-400'
             )}
           >
-            {deleteResult.type === 'success' 
+            {(saveResult?.type || deleteResult?.type) === 'success' 
               ? <CheckCircle className="w-5 h-5 flex-shrink-0" />
               : <XCircle className="w-5 h-5 flex-shrink-0" />
             }
-            <p className="flex-1">{deleteResult.message}</p>
+            <p className="flex-1">{saveResult?.message || deleteResult?.message}</p>
             <button
-              onClick={() => setDeleteResult(null)}
+              onClick={() => { setSaveResult(null); setDeleteResult(null) }}
               className="p-1 hover:bg-white/10 rounded"
             >
               <XCircle className="w-4 h-4" />
@@ -335,11 +425,121 @@ export function Settings() {
         </div>
       </motion.section>
       
-      {/* Data Management */}
+      {/* Notifications */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
+        className="cyber-card"
+      >
+        <h2 className="text-lg font-semibold text-cyber-text-primary flex items-center gap-2 mb-4">
+          <Bell className="w-5 h-5 text-cyber-accent-cyan" />
+          Notifications
+        </h2>
+        
+        {/* Test Result Alert */}
+        <AnimatePresence>
+          {testResult && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className={clsx(
+                'mb-4 p-3 rounded-lg border flex items-center gap-2',
+                testResult.type === 'success' 
+                  ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
+              )}
+            >
+              {testResult.type === 'success' 
+                ? <CheckCircle className="w-4 h-4" />
+                : <XCircle className="w-4 h-4" />
+              }
+              <span className="text-sm">{testResult.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-cyber-text-primary">Enable Alerts</p>
+              <p className="text-sm text-cyber-text-muted">
+                Send notifications when new findings are detected
+              </p>
+            </div>
+            <button
+              onClick={() => setSettings(s => ({ ...s, auto_accept_low_severity: !s.auto_accept_low_severity }))}
+              className={clsx(
+                'w-12 h-6 rounded-full transition-all duration-200 relative',
+                !settings.auto_accept_low_severity ? 'bg-cyber-accent-cyan' : 'bg-cyber-bg-tertiary'
+              )}
+            >
+              <div className={clsx(
+                'absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-200',
+                !settings.auto_accept_low_severity ? 'left-7' : 'left-1'
+              )} />
+            </button>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-cyber-text-secondary mb-2">
+              Webhook URL
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={settings.webhook_url}
+                onChange={(e) => setSettings(s => ({ ...s, webhook_url: e.target.value }))}
+                placeholder="https://ntfy.sh/your-topic or https://hooks.slack.com/..."
+                className="cyber-input flex-1"
+              />
+              <button
+                onClick={handleTestNotification}
+                disabled={testingNotification || !settings.webhook_url}
+                className={clsx(
+                  "px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                  settings.webhook_url
+                    ? "bg-cyber-accent-cyan/20 hover:bg-cyber-accent-cyan/30 text-cyber-accent-cyan border border-cyber-accent-cyan/30"
+                    : "bg-cyber-bg-tertiary text-cyber-text-muted cursor-not-allowed"
+                )}
+              >
+                {testingNotification ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Test
+              </button>
+            </div>
+            <p className="text-xs text-cyber-text-muted mt-1">
+              Compatible with ntfy, Slack, Discord, Microsoft Teams, and generic JSON webhooks
+            </p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-cyber-text-secondary mb-2">
+              Alert Message Template
+            </label>
+            <textarea
+              value={settings.alert_message}
+              onChange={(e) => setSettings(s => ({ ...s, alert_message: e.target.value }))}
+              placeholder="New unaccepted findings detected in {domain}! {findings_count} finding(s) found."
+              className="cyber-input min-h-[80px] resize-y"
+              rows={3}
+            />
+            <p className="text-xs text-cyber-text-muted mt-1">
+              Available variables: {'{domain}'}, {'{findings_count}'}, {'{tool_type}'}, {'{report_id}'}, {'{findings}'}
+            </p>
+          </div>
+        </div>
+      </motion.section>
+      
+      {/* Data Management */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
         className="cyber-card"
       >
         <div className="flex items-center justify-between mb-4">
@@ -477,63 +677,11 @@ export function Settings() {
         </div>
       </motion.section>
       
-      {/* Notifications */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="cyber-card"
-      >
-        <h2 className="text-lg font-semibold text-cyber-text-primary flex items-center gap-2 mb-4">
-          <Bell className="w-5 h-5 text-cyber-accent-cyan" />
-          Notifications
-        </h2>
-        
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-cyber-text-primary">Enable Alerts</p>
-              <p className="text-sm text-cyber-text-muted">
-                Send notifications when new findings are detected
-              </p>
-            </div>
-            <button
-              onClick={() => setAlertEnabled(!alertEnabled)}
-              className={clsx(
-                'w-12 h-6 rounded-full transition-all duration-200 relative',
-                alertEnabled ? 'bg-cyber-accent-cyan' : 'bg-cyber-bg-tertiary'
-              )}
-            >
-              <div className={clsx(
-                'absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-200',
-                alertEnabled ? 'left-7' : 'left-1'
-              )} />
-            </button>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-cyber-text-secondary mb-2">
-              Webhook URL
-            </label>
-            <input
-              type="url"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://your-webhook.example.com/notify"
-              className="cyber-input"
-            />
-            <p className="text-xs text-cyber-text-muted mt-1">
-              Compatible with ntfy, Slack, Discord, and generic JSON webhooks
-            </p>
-          </div>
-        </div>
-      </motion.section>
-      
       {/* Data Retention */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.2 }}
         className="cyber-card"
       >
         <h2 className="text-lg font-semibold text-cyber-text-primary flex items-center gap-2 mb-4">
@@ -546,8 +694,8 @@ export function Settings() {
             Keep reports for
           </label>
           <select
-            value={retentionDays}
-            onChange={(e) => setRetentionDays(e.target.value)}
+            value={settings.retention_days}
+            onChange={(e) => setSettings(s => ({ ...s, retention_days: parseInt(e.target.value) }))}
             className="cyber-input w-auto"
           >
             <option value="30">30 days</option>
@@ -567,12 +715,20 @@ export function Settings() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
+        transition={{ delay: 0.3 }}
         className="flex justify-end"
       >
-        <button onClick={handleSave} className="cyber-button flex items-center gap-2">
-          <Save className="w-4 h-4" />
-          Save Settings
+        <button 
+          onClick={handleSaveSettings} 
+          disabled={savingSettings || loadingSettings}
+          className="cyber-button flex items-center gap-2"
+        >
+          {savingSettings ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {savingSettings ? 'Saving...' : 'Save Settings'}
         </button>
       </motion.div>
       

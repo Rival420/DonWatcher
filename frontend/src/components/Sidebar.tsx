@@ -15,8 +15,7 @@ import { useHealth } from '../hooks/useApi'
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/reports', label: 'Reports', icon: FileText },
-  { path: '/risk-catalog', label: 'Risk Catalog', icon: AlertTriangle },
-  { path: '/groups', label: 'Domain Groups', icon: Users },
+  { path: '/risk-catalog', label: 'Risk Catalog', icon: Shield },
   { path: '/upload', label: 'Upload', icon: Upload },
   { path: '/settings', label: 'Settings', icon: Settings },
 ]

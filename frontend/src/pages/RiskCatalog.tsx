@@ -11,17 +11,34 @@ import {
   ExternalLink,
   Filter,
   ChevronDown,
+  ChevronRight,
   Users,
   FileWarning,
-  Network,
-  Bug
+  Bug,
+  Lock,
+  UserCheck,
+  UserX,
+  CheckCircle,
+  XCircle,
+  Castle,
+  Network
 } from 'lucide-react'
-import { useFindings, useFindingsSummary, useDomains, useAcceptRisk, useRemoveAcceptedRisk } from '../hooks/useApi'
+import { 
+  useFindings, 
+  useFindingsSummary, 
+  useDomains, 
+  useAcceptRisk, 
+  useRemoveAcceptedRisk,
+  useDomainGroups,
+  useGroupMembers,
+  useAcceptMember,
+  useDenyMember
+} from '../hooks/useApi'
 import { clsx } from 'clsx'
-import type { Finding, AcceptRiskRequest } from '../types'
+import type { Finding } from '../types'
 
-// Category configuration
-const CATEGORIES = {
+// Category configuration for PingCastle
+const PINGCASTLE_CATEGORIES = {
   all: { label: 'All Findings', icon: Shield, color: 'cyan' },
   PrivilegedAccounts: { label: 'Privileged Accounts', icon: Users, color: 'red' },
   StaleObjects: { label: 'Stale Objects', icon: Clock, color: 'orange' },
@@ -29,7 +46,7 @@ const CATEGORIES = {
   Anomalies: { label: 'Anomalies', icon: Bug, color: 'yellow' }
 } as const
 
-type CategoryKey = keyof typeof CATEGORIES
+type CategoryKey = keyof typeof PINGCASTLE_CATEGORIES
 
 function getSeverityColor(score: number): string {
   if (score >= 50) return 'text-red-400 bg-red-500/20 border-red-500/30'
@@ -148,7 +165,7 @@ function FindingCard({
   onRemove: (finding: Finding) => void
   onViewReport: (reportId: string) => void
 }) {
-  const CategoryIcon = CATEGORIES[finding.category as CategoryKey]?.icon || AlertTriangle
+  const CategoryIcon = PINGCASTLE_CATEGORIES[finding.category as CategoryKey]?.icon || AlertTriangle
   
   return (
     <motion.div
@@ -259,15 +276,275 @@ function FindingCard({
   )
 }
 
-export function RiskCatalog() {
-  const { data: domains } = useDomains()
-  const [selectedDomain, setSelectedDomain] = useState<string>('')
+// Domain Groups Section Component
+function DomainGroupsSection({ domain }: { domain: string }) {
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  
+  const { data: groups, isLoading } = useDomainGroups(domain)
+  const { data: members, isLoading: membersLoading } = useGroupMembers(domain, selectedGroup || '')
+  
+  const acceptMember = useAcceptMember()
+  const denyMember = useDenyMember()
+  
+  const filteredGroups = groups?.filter(g => 
+    g.group_name.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+  
+  const handleAccept = async (memberName: string) => {
+    if (!selectedGroup) return
+    await acceptMember.mutateAsync({
+      domain,
+      groupName: selectedGroup,
+      memberName,
+      reason: 'Accepted via dashboard'
+    })
+  }
+  
+  const handleDeny = async (memberName: string) => {
+    if (!selectedGroup) return
+    await denyMember.mutateAsync({
+      domain,
+      groupName: selectedGroup,
+      memberName,
+    })
+  }
+  
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'border-red-500/50 bg-red-500/5'
+      case 'high': return 'border-orange-500/50 bg-orange-500/5'
+      case 'medium': return 'border-yellow-500/50 bg-yellow-500/5'
+      default: return 'border-slate-700'
+    }
+  }
+  
+  // Summary stats
+  const totalGroups = groups?.length || 0
+  const totalMembers = groups?.reduce((sum, g) => sum + g.total_members, 0) || 0
+  const unacceptedCount = groups?.reduce((sum, g) => sum + g.unaccepted_members, 0) || 0
+  const acceptedCount = totalMembers - unacceptedCount
+  
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+          <div className="text-3xl font-bold text-white mb-1">{totalGroups}</div>
+          <div className="text-sm text-slate-400">Privileged Groups</div>
+        </div>
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+          <div className="text-3xl font-bold text-cyan-400 mb-1">{totalMembers}</div>
+          <div className="text-sm text-slate-400">Total Members</div>
+        </div>
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+          <div className="text-3xl font-bold text-green-400 mb-1">{acceptedCount}</div>
+          <div className="text-sm text-slate-400">Accepted</div>
+        </div>
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+          <div className="text-3xl font-bold text-red-400 mb-1">{unacceptedCount}</div>
+          <div className="text-sm text-slate-400">Unaccepted</div>
+        </div>
+      </div>
+      
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search privileged groups..."
+          className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+        />
+      </div>
+      
+      {/* Groups and Members */}
+      <div className="flex gap-6 min-h-[500px]">
+        {/* Groups List */}
+        <div className="w-80 flex-shrink-0 space-y-2 overflow-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full" />
+            </div>
+          ) : filteredGroups?.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <Network size={48} className="mx-auto mb-4 opacity-50" />
+              <p>No groups found</p>
+            </div>
+          ) : (
+            filteredGroups?.map((group) => (
+              <motion.button
+                key={group.group_name}
+                onClick={() => setSelectedGroup(group.group_name)}
+                className={clsx(
+                  'w-full p-4 rounded-lg border text-left transition-all duration-200',
+                  selectedGroup === group.group_name
+                    ? 'bg-cyan-500/10 border-cyan-500'
+                    : getSeverityColor(group.severity),
+                  'hover:border-cyan-500/50'
+                )}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={clsx(
+                      'p-2 rounded-lg',
+                      group.severity === 'critical' && 'bg-red-500/20 text-red-400',
+                      group.severity === 'high' && 'bg-orange-500/20 text-orange-400',
+                      group.severity === 'medium' && 'bg-yellow-500/20 text-yellow-400',
+                      group.severity === 'low' && 'bg-green-500/20 text-green-400',
+                    )}>
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-white">{group.group_name}</h4>
+                      <p className="text-xs text-slate-400">
+                        {group.total_members} members
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {group.unaccepted_members > 0 && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                        {group.unaccepted_members}
+                      </span>
+                    )}
+                    <ChevronRight className={clsx(
+                      'w-4 h-4 text-slate-400 transition-transform',
+                      selectedGroup === group.group_name && 'rotate-90'
+                    )} />
+                  </div>
+                </div>
+              </motion.button>
+            ))
+          )}
+        </div>
+        
+        {/* Members Panel */}
+        <div className="flex-1 bg-slate-800/30 rounded-xl border border-slate-700 p-4 overflow-auto">
+          {selectedGroup ? (
+            <>
+              <div className="flex items-center justify-between pb-4 border-b border-slate-700">
+                <div>
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Lock className="w-5 h-5 text-cyan-400" />
+                    {selectedGroup}
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    {members?.length || 0} members in this group
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="flex items-center gap-1 text-green-400">
+                    <CheckCircle className="w-4 h-4" />
+                    {members?.filter(m => m.is_accepted).length || 0} accepted
+                  </span>
+                  <span className="flex items-center gap-1 text-red-400">
+                    <XCircle className="w-4 h-4" />
+                    {members?.filter(m => !m.is_accepted).length || 0} unaccepted
+                  </span>
+                </div>
+              </div>
+              
+              <div className="mt-4 space-y-2">
+                {membersLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full" />
+                  </div>
+                ) : (
+                  <AnimatePresence>
+                    {members?.map((member, index) => (
+                      <motion.div
+                        key={member.sid || member.name}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        transition={{ delay: index * 0.03 }}
+                        className={clsx(
+                          'p-4 rounded-lg border flex items-center justify-between',
+                          member.is_accepted
+                            ? 'bg-green-500/5 border-green-500/30'
+                            : 'bg-red-500/5 border-red-500/30'
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={clsx(
+                            'w-10 h-10 rounded-full flex items-center justify-center',
+                            member.type === 'user' && 'bg-cyan-500/20',
+                            member.type === 'computer' && 'bg-purple-500/20',
+                            member.type === 'group' && 'bg-yellow-500/20',
+                          )}>
+                            {member.type === 'user' && <Users className="w-5 h-5 text-cyan-400" />}
+                            {member.type === 'computer' && <Shield className="w-5 h-5 text-purple-400" />}
+                            {member.type === 'group' && <Lock className="w-5 h-5 text-yellow-400" />}
+                          </div>
+                          
+                          <div>
+                            <h4 className="font-medium text-white">{member.name}</h4>
+                            <p className="text-xs text-slate-400">
+                              {member.samaccountname || member.sid?.slice(0, 30)}
+                            </p>
+                          </div>
+                          
+                          {member.enabled === false && (
+                            <span className="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-400">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {member.is_accepted ? (
+                            <button
+                              onClick={() => handleDeny(member.name)}
+                              disabled={denyMember.isPending}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-sm"
+                            >
+                              <UserX className="w-4 h-4" />
+                              Revoke
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleAccept(member.name)}
+                              disabled={acceptMember.isPending}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors text-sm"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              Accept
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center h-full">
+              <div className="text-center">
+                <Users className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-white">Select a group</h3>
+                <p className="text-slate-400 mt-1">Choose a group from the list to view its members</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// PingCastle Section Component
+function PingCastleSection({ domain }: { domain: string }) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showAccepted, setShowAccepted] = useState(true)
   const [findingToAccept, setFindingToAccept] = useState<Finding | null>(null)
-  
-  const domain = selectedDomain || domains?.[0] || ''
   
   const { data: findings, isLoading } = useFindings({
     domain: domain || undefined,
@@ -295,7 +572,7 @@ export function RiskCatalog() {
       category: findingToAccept.category,
       name: findingToAccept.name,
       reason: reason || undefined,
-      accepted_by: 'admin', // TODO: Get from auth
+      accepted_by: 'admin',
       expires_at: expiresAt
     })
     setFindingToAccept(null)
@@ -316,7 +593,6 @@ export function RiskCatalog() {
         const data = await response.json()
         window.open(data.html_url, '_blank')
       } else {
-        // Fallback to reports page
         window.location.href = `/reports`
       }
     } catch {
@@ -326,14 +602,6 @@ export function RiskCatalog() {
   
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-orbitron text-white mb-2">Risk Catalog</h1>
-        <p className="text-slate-400">
-          Security findings from PingCastle scans • Accept findings to manage alerts
-        </p>
-      </div>
-      
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -360,20 +628,6 @@ export function RiskCatalog() {
       
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4">
-        {/* Domain Select */}
-        <div className="relative">
-          <select
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-            className="appearance-none bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 pr-10 text-white focus:border-cyan-500 focus:outline-none min-w-[200px]"
-          >
-            {domains?.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-        </div>
-        
         {/* Search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -403,7 +657,7 @@ export function RiskCatalog() {
       
       {/* Category Tabs */}
       <div className="flex flex-wrap gap-2">
-        {Object.entries(CATEGORIES).map(([key, config]) => {
+        {Object.entries(PINGCASTLE_CATEGORIES).map(([key, config]) => {
           const Icon = config.icon
           const count = key === 'all' 
             ? summary?.total_findings || 0
@@ -477,3 +731,82 @@ export function RiskCatalog() {
   )
 }
 
+// Tab configuration
+const TABS = [
+  { id: 'pingcastle', label: 'PingCastle Findings', icon: Castle },
+  { id: 'domaingroups', label: 'Domain Group Analysis', icon: Users }
+] as const
+
+type TabId = typeof TABS[number]['id']
+
+export function RiskCatalog() {
+  const { data: domains } = useDomains()
+  const [selectedDomain, setSelectedDomain] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<TabId>('pingcastle')
+  
+  const domain = selectedDomain || domains?.[0] || ''
+  
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-orbitron text-white mb-2">Risk Catalog</h1>
+          <p className="text-slate-400">
+            Unified security findings from all tools • Accept findings to manage alerts
+          </p>
+        </div>
+        
+        {/* Domain Selector */}
+        <div className="relative">
+          <select
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value)}
+            className="appearance-none bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 pr-10 text-white focus:border-cyan-500 focus:outline-none min-w-[200px]"
+          >
+            {domains?.map(d => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        </div>
+      </div>
+      
+      {/* Tool Tabs */}
+      <div className="flex gap-2 border-b border-slate-700 pb-px">
+        {TABS.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={clsx(
+                "px-6 py-3 rounded-t-lg transition-all flex items-center gap-2 relative",
+                activeTab === tab.id
+                  ? "bg-slate-800/80 text-cyan-400 border border-slate-700 border-b-transparent -mb-px"
+                  : "bg-transparent text-slate-400 hover:text-white hover:bg-slate-800/50"
+              )}
+            >
+              <Icon size={20} />
+              <span className="font-medium">{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
+      
+      {/* Tab Content */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          {activeTab === 'pingcastle' && <PingCastleSection domain={domain} />}
+          {activeTab === 'domaingroups' && <DomainGroupsSection domain={domain} />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
