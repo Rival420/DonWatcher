@@ -2,12 +2,10 @@ import { NavLink } from 'react-router-dom'
 import { 
   LayoutDashboard, 
   FileText, 
-  Users, 
   Upload, 
   Settings,
   Shield,
-  Activity,
-  AlertTriangle
+  Activity
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useHealth } from '../hooks/useApi'

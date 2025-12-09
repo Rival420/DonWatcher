@@ -3,10 +3,7 @@ import { motion } from 'framer-motion'
 import { 
   Users, 
   Server, 
-  Shield, 
   AlertTriangle,
-  FileText,
-  Activity,
   Zap,
   Lock,
   Copy,
@@ -20,14 +17,11 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  AreaChart,
-  Area,
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  Radar,
-  Legend
+  Radar
 } from 'recharts'
 import { useLatestReport, useReports, useDomains, useDomainGroups } from '../hooks/useApi'
 import { RiskGauge } from '../components/RiskGauge'
