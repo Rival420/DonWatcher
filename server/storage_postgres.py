@@ -514,6 +514,129 @@ class PostgresReportStorage:
                 for r in results
             ]
 
+    def get_all_findings(
+        self, 
+        domain: Optional[str] = None, 
+        category: Optional[str] = None,
+        tool_type: Optional[str] = None,
+        include_accepted: bool = True
+    ) -> List[Dict]:
+        """Get all findings with optional filtering and acceptance status."""
+        with self._get_session() as session:
+            # Build the query dynamically
+            query = """
+                SELECT 
+                    f.id,
+                    f.report_id,
+                    f.tool_type,
+                    f.category,
+                    f.name,
+                    f.score,
+                    f.description,
+                    f.severity,
+                    r.domain,
+                    r.report_date,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM findings f
+                JOIN reports r ON f.report_id = r.id
+                LEFT JOIN accepted_risks ar ON 
+                    f.tool_type = ar.tool_type AND 
+                    f.category = ar.category AND 
+                    f.name = ar.name
+                WHERE 1=1
+            """
+            params = {}
+            
+            if domain:
+                query += " AND r.domain = :domain"
+                params['domain'] = domain
+            
+            if category:
+                query += " AND f.category = :category"
+                params['category'] = category
+            
+            if tool_type:
+                query += " AND f.tool_type = :tool_type"
+                params['tool_type'] = tool_type
+            
+            if not include_accepted:
+                query += " AND ar.id IS NULL"
+            
+            query += " ORDER BY f.score DESC, r.report_date DESC"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            return [
+                {
+                    "id": str(row.id),
+                    "report_id": str(row.report_id),
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "score": row.score,
+                    "description": row.description or "",
+                    "severity": row.severity,
+                    "domain": row.domain,
+                    "report_date": row.report_date.isoformat() if row.report_date else None,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+    
+    def get_findings_by_report(self, report_id: str) -> List[Dict]:
+        """Get all findings for a specific report with acceptance status."""
+        with self._get_session() as session:
+            results = session.execute(text("""
+                SELECT 
+                    f.id,
+                    f.report_id,
+                    f.tool_type,
+                    f.category,
+                    f.name,
+                    f.score,
+                    f.description,
+                    f.severity,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM findings f
+                LEFT JOIN accepted_risks ar ON 
+                    f.tool_type = ar.tool_type AND 
+                    f.category = ar.category AND 
+                    f.name = ar.name
+                WHERE f.report_id = :report_id
+                ORDER BY f.score DESC
+            """), {'report_id': report_id}).fetchall()
+            
+            return [
+                {
+                    "id": str(row.id),
+                    "report_id": str(row.report_id),
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "score": row.score,
+                    "description": row.description or "",
+                    "severity": row.severity,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+
     # Accepted Risks Management
     def add_accepted_risk(self, tool_type: SecurityToolType, category: str, name: str, 
                          reason: str = None, accepted_by: str = None):
@@ -740,6 +863,118 @@ class PostgresReportStorage:
             session.commit()
             logging.info("Reports and findings cleared successfully")
 
+    def clear_domain_data(self, domain: str) -> Dict:
+        """Clear all data for a specific domain."""
+        with self._get_session() as session:
+            # Get counts before deletion for reporting
+            report_count = session.execute(
+                text("SELECT COUNT(*) FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            ).scalar() or 0
+            
+            # Get report IDs for this domain
+            report_ids = [r[0] for r in session.execute(
+                text("SELECT id FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            ).fetchall()]
+            
+            findings_count = 0
+            memberships_count = 0
+            
+            if report_ids:
+                # Delete findings for these reports
+                findings_count = session.execute(
+                    text("DELETE FROM findings WHERE report_id = ANY(:report_ids)"),
+                    {'report_ids': report_ids}
+                ).rowcount or 0
+                
+                # Delete group memberships for these reports
+                memberships_count = session.execute(
+                    text("DELETE FROM group_memberships WHERE report_id = ANY(:report_ids)"),
+                    {'report_ids': report_ids}
+                ).rowcount or 0
+            
+            # Delete accepted group members for this domain
+            accepted_members_count = session.execute(
+                text("DELETE FROM accepted_group_members WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete monitored groups for this domain (except defaults)
+            monitored_groups_count = session.execute(
+                text("""
+                    DELETE FROM monitored_groups 
+                    WHERE domain = :domain 
+                    AND group_name NOT IN ('Domain Admins', 'Enterprise Admins', 'Schema Admins', 
+                                          'Administrators', 'Account Operators', 'Backup Operators', 
+                                          'Server Operators', 'Print Operators')
+                """),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete risk data for this domain
+            risk_assessments_count = session.execute(
+                text("DELETE FROM domain_risk_assessments WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            global_risk_count = session.execute(
+                text("DELETE FROM global_risk_scores WHERE domain = :domain"),
+                {'domain': domain}
+            ).rowcount or 0
+            
+            # Delete reports for this domain
+            session.execute(
+                text("DELETE FROM reports WHERE domain = :domain"),
+                {'domain': domain}
+            )
+            
+            session.commit()
+            
+            result = {
+                'domain': domain,
+                'reports_deleted': report_count,
+                'findings_deleted': findings_count,
+                'memberships_deleted': memberships_count,
+                'accepted_members_deleted': accepted_members_count,
+                'monitored_groups_deleted': monitored_groups_count,
+                'risk_assessments_deleted': risk_assessments_count,
+                'global_risk_deleted': global_risk_count
+            }
+            
+            logging.info(f"Domain data cleared for {domain}: {result}")
+            return result
+
+    def get_data_summary(self) -> List[Dict]:
+        """Get data summary per domain for management UI."""
+        with self._get_session() as session:
+            results = session.execute(text("""
+                SELECT 
+                    r.domain,
+                    COUNT(DISTINCT r.id) as report_count,
+                    COUNT(DISTINCT f.id) as finding_count,
+                    COUNT(DISTINCT gm.id) as membership_count,
+                    MAX(r.report_date) as latest_report,
+                    MIN(r.report_date) as oldest_report
+                FROM reports r
+                LEFT JOIN findings f ON r.id = f.report_id
+                LEFT JOIN group_memberships gm ON r.id = gm.report_id
+                GROUP BY r.domain
+                ORDER BY r.domain
+            """)).fetchall()
+            
+            return [
+                {
+                    'domain': r.domain,
+                    'report_count': r.report_count,
+                    'finding_count': r.finding_count,
+                    'membership_count': r.membership_count,
+                    'latest_report': r.latest_report.isoformat() if r.latest_report else None,
+                    'oldest_report': r.oldest_report.isoformat() if r.oldest_report else None
+                }
+                for r in results
+            ]
+
     def log_alert(self, message: str):
         """Log an alert message."""
         logging.info(f"Alert: {message}")
@@ -904,3 +1139,159 @@ class PostgresReportStorage:
                     logging.warning("group_risk_configs table does not exist - cannot save config. Run migration_002_add_group_member_tables.sql")
                     return ""
                 raise
+
+    def get_grouped_findings(
+        self, 
+        domain: Optional[str] = None, 
+        category: Optional[str] = None,
+        tool_type: Optional[str] = None,
+        include_accepted: bool = True
+    ) -> List[Dict]:
+        """Get findings grouped by (tool_type, category, name) with occurrence counts and latest report presence.
+        
+        Returns aggregated findings where identical findings from multiple reports
+        are grouped together with:
+        - occurrence_count: How many times this finding appeared across reports
+        - in_latest_report: Whether this finding is present in the most recent report
+        - first_seen: Date when this finding was first observed
+        - last_seen: Date when this finding was most recently observed
+        - domains: List of domains where this finding was observed
+        """
+        with self._get_session() as session:
+            # Build the base query with proper grouping and aggregation
+            query = """
+                WITH latest_report AS (
+                    SELECT id, report_date
+                    FROM reports 
+                    WHERE tool_type = :base_tool_type
+                    ORDER BY report_date DESC 
+                    LIMIT 1
+                ),
+                grouped_findings AS (
+                    SELECT 
+                        f.tool_type,
+                        f.category,
+                        f.name,
+                        MAX(f.description) as description,
+                        MAX(f.recommendation) as recommendation,
+                        MAX(f.severity) as severity,
+                        MAX(f.score) as max_score,
+                        MIN(f.score) as min_score,
+                        AVG(f.score) as avg_score,
+                        COUNT(*) as occurrence_count,
+                        MIN(r.report_date) as first_seen,
+                        MAX(r.report_date) as last_seen,
+                        array_agg(DISTINCT r.domain) as domains,
+                        array_agg(DISTINCT r.id) as report_ids,
+                        CASE WHEN EXISTS (
+                            SELECT 1 
+                            FROM findings lf 
+                            JOIN latest_report lr ON lf.report_id = lr.id
+                            WHERE lf.tool_type = f.tool_type 
+                              AND lf.category = f.category 
+                              AND lf.name = f.name
+                        ) THEN true ELSE false END as in_latest_report
+                    FROM findings f
+                    JOIN reports r ON f.report_id = r.id
+                    WHERE 1=1
+            """
+            
+            params = {'base_tool_type': tool_type or 'pingcastle'}
+            
+            if domain:
+                query += " AND r.domain = :domain"
+                params['domain'] = domain
+            
+            if category:
+                query += " AND f.category = :category"
+                params['category'] = category
+            
+            if tool_type:
+                query += " AND f.tool_type = :tool_type"
+                params['tool_type'] = tool_type
+            
+            query += """
+                    GROUP BY f.tool_type, f.category, f.name
+                )
+                SELECT 
+                    gf.*,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM grouped_findings gf
+                LEFT JOIN accepted_risks ar ON 
+                    gf.tool_type = ar.tool_type AND 
+                    gf.category = ar.category AND 
+                    gf.name = ar.name
+            """
+            
+            if not include_accepted:
+                query += " WHERE ar.id IS NULL"
+            
+            query += " ORDER BY gf.in_latest_report DESC, gf.occurrence_count DESC, gf.max_score DESC"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            return [
+                {
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "description": row.description or "",
+                    "recommendation": row.recommendation or "",
+                    "severity": row.severity,
+                    "max_score": row.max_score,
+                    "min_score": row.min_score,
+                    "avg_score": round(float(row.avg_score), 1) if row.avg_score else 0,
+                    "occurrence_count": row.occurrence_count,
+                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                    "domains": list(row.domains) if row.domains else [],
+                    "report_ids": [str(rid) for rid in row.report_ids] if row.report_ids else [],
+                    "in_latest_report": row.in_latest_report,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+
+    def get_grouped_findings_summary(
+        self, 
+        domain: Optional[str] = None,
+        tool_type: Optional[str] = None
+    ) -> Dict:
+        """Get a summary of grouped findings by category."""
+        grouped = self.get_grouped_findings(domain=domain, tool_type=tool_type or "pingcastle")
+        
+        # Count by category
+        categories = {
+            "PrivilegedAccounts": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "StaleObjects": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "Trusts": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "Anomalies": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+        }
+        
+        for finding in grouped:
+            cat = finding.get("category", "")
+            if cat in categories:
+                categories[cat]["total"] += 1
+                categories[cat]["total_score"] += finding.get("max_score", 0)
+                if finding.get("is_accepted"):
+                    categories[cat]["accepted"] += 1
+                if finding.get("in_latest_report"):
+                    categories[cat]["in_latest"] += 1
+        
+        total_in_latest = sum(1 for f in grouped if f.get("in_latest_report"))
+        
+        return {
+            "categories": categories,
+            "total_unique_findings": len(grouped),
+            "total_accepted": sum(1 for f in grouped if f.get("is_accepted")),
+            "total_in_latest": total_in_latest,
+            "total_score": sum(f.get("max_score", 0) for f in grouped)
+        }

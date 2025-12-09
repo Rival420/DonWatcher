@@ -1,6 +1,6 @@
 # DonWatcher Project Structure
 
-This document outlines the organized structure of the DonWatcher project after Phase 1 implementation.
+This document outlines the organized structure of the DonWatcher project after the React frontend overhaul.
 
 ## 📁 Directory Overview
 
@@ -9,20 +9,44 @@ DonWatcher/
 ├── 📄 README.md                          # Main project documentation
 ├── 📄 PROJECT_STRUCTURE.md               # This file - project organization
 ├── 📄 LICENSE                            # Project license
-├── 📄 requirements.txt                   # Python dependencies
-├── 📄 docker-compose.yml                 # Docker container orchestration
-├── 📄 Dockerfile                         # Docker image configuration
+├── 📄 requirements.txt                   # Python dependencies (backend)
+├── 📄 docker-compose.yml                 # Multi-container orchestration
 │
-├── 📁 client/                            # Client-side components
-│   ├── 📄 README.md                      # Client documentation
-│   ├── 📄 DonWatcher-Config.json         # Scanner configuration
-│   ├── 📄 DonWatcher-DomainScanner.ps1   # PowerShell domain scanner
-│   └── 📁 agents/                        # Legacy agent components
-│       ├── 📄 __init__.py
-│       ├── 📄 base_agent.py
-│       └── 📄 domain_scanner_agent.py
+├── 📁 frontend/                          # React Frontend Application
+│   ├── 📄 Dockerfile                     # Frontend container configuration
+│   ├── 📄 package.json                   # Node.js dependencies
+│   ├── 📄 vite.config.ts                 # Vite build configuration
+│   ├── 📄 tailwind.config.js             # Tailwind CSS theme configuration
+│   ├── 📄 tsconfig.json                  # TypeScript configuration
+│   ├── 📄 index.html                     # HTML entry point
+│   └── 📁 src/                           # React source code
+│       ├── 📄 main.tsx                   # React entry point
+│       ├── 📄 App.tsx                    # Root component with routing
+│       ├── 📁 components/                # Reusable UI components
+│       │   ├── 📄 Layout.tsx             # Main layout wrapper
+│       │   ├── 📄 Sidebar.tsx            # Navigation sidebar
+│       │   ├── 📄 Header.tsx             # Page header
+│       │   ├── 📄 RiskGauge.tsx          # Risk score gauge
+│       │   └── 📄 StatsCard.tsx          # Statistics card
+│       ├── 📁 pages/                     # Page components
+│       │   ├── 📄 Dashboard.tsx          # Main dashboard
+│       │   ├── 📄 Reports.tsx            # Reports listing
+│       │   ├── 📄 DomainGroups.tsx       # Group management
+│       │   ├── 📄 Upload.tsx             # File upload
+│       │   └── 📄 Settings.tsx           # System settings
+│       ├── 📁 services/                  # API integration
+│       │   └── 📄 api.ts                 # Backend API client
+│       ├── 📁 hooks/                     # Custom React hooks
+│       │   └── 📄 useApi.ts              # React Query hooks
+│       ├── 📁 types/                     # TypeScript definitions
+│       │   └── 📄 index.ts               # Type definitions
+│       └── 📁 styles/                    # Global styles
+│           └── 📄 index.css              # Tailwind imports
 │
-├── 📁 server/                            # Backend server application
+├── 📁 backend/                           # Backend Configuration
+│   └── 📄 Dockerfile                     # Backend container configuration
+│
+├── 📁 server/                            # FastAPI Backend Application
 │   ├── 📄 README.md                      # Server documentation  
 │   ├── 📄 main.py                        # FastAPI application entry point
 │   ├── 📄 models.py                      # Pydantic data models
@@ -31,176 +55,193 @@ DonWatcher/
 │   ├── 📄 storage_postgres.py            # PostgreSQL storage implementation
 │   ├── 📄 parser.py                      # Legacy parser (PingCastle)
 │   ├── 📄 alerter.py                     # Alert system
+│   ├── 📄 risk_service.py                # Risk calculation service
+│   ├── 📄 risk_calculator.py             # Risk scoring algorithms
+│   ├── 📄 cache_service.py               # Caching layer
+│   ├── 📄 health_check.py                # Health check utilities
+│   ├── 📄 migration_runner.py            # Database migration runner
 │   │
 │   ├── 📁 parsers/                       # Security tool parsers
 │   │   ├── 📄 __init__.py
 │   │   ├── 📄 base_parser.py             # Base parser interface
-│   │   ├── 📄 domain_analysis_parser.py  # Domain analysis parser (enhanced)
+│   │   ├── 📄 domain_analysis_parser.py  # Domain analysis parser
 │   │   └── 📄 locksmith_parser.py        # Locksmith parser
 │   │
-│   ├── 📁 routers/                       # API route modules
-│   │   └── 📄 settings.py                # Settings API routes
-│   │
-│   └── 📁 frontend/                      # Web frontend assets
-│       ├── 📄 index.html                 # Main dashboard
-│       ├── 📄 analyze.html               # Analysis page
-│       ├── 📄 reports.html               # Reports page
-│       ├── 📄 settings.html              # Settings page
-│       ├── 📄 agents.html                # Agents page
-│       ├── 📄 debug.html                 # Debug page
-│       ├── 📄 nav.html                   # Navigation component
-│       ├── 📄 styles.css                 # Application styles
-│       ├── 📄 app.js                     # Main application JavaScript
-│       ├── 📄 home.js                    # Dashboard JavaScript
-│       ├── 📄 analysis.js                # Analysis page JavaScript
-│       ├── 📄 settings.js                # Settings page JavaScript
-│       ├── 📄 agents.js                  # Agents page JavaScript
-│       ├── 📄 nav.js                     # Navigation JavaScript
-│       └── 📄 chartManager.js            # Chart management utilities
+│   └── 📁 routers/                       # API route modules
+│       └── 📄 settings.py                # Settings API routes
 │
-├── 📁 migrations/                        # Database schema migrations
+├── 📁 client/                            # Client-side Components
+│   ├── 📄 README.md                      # Client documentation
+│   ├── 📄 DonWatcher-Config.json         # Scanner configuration
+│   ├── 📄 DonWatcher-DomainScanner.ps1   # PowerShell domain scanner
+│   └── 📁 agents/                        # Legacy agent components
+│       ├── 📄 __init__.py
+│       ├── 📄 base_agent.py
+│       └── 📄 domain_scanner_agent.py
+│
+├── 📁 migrations/                        # Database Schema Migrations
 │   ├── 📄 README.md                      # Migration documentation
 │   ├── 📄 init_db.sql                    # Initial database schema
 │   ├── 📄 migration_001_rename_global_score.sql
 │   ├── 📄 migration_002_add_group_member_tables.sql
-│   └── 📄 migration_003_add_member_status.sql # Phase 1 enhancements
+│   ├── 📄 migration_003_add_member_status.sql
+│   ├── 📄 migration_004_add_risk_integration.sql
+│   └── 📄 migration_005_add_risk_dashboard_summary.sql
 │
-├── 📁 tests/                             # Unit tests and test data
+├── 📁 tests/                             # Unit Tests and Test Data
 │   ├── 📄 README.md                      # Testing documentation
 │   ├── 📄 test_domain_group_parser.py    # Parser unit tests
+│   ├── 📄 test_risk_integration.py       # Risk integration tests
+│   ├── 📄 test_storage_bug_fixes.py      # Storage layer tests
 │   └── 📄 test_domain_group_members.json # Sample test data
 │
-└── 📁 docs/                              # Project documentation
-    ├── 📄 Technical_Overview.md           # Technical overview
+└── 📁 docs/                              # Project Documentation
+    ├── 📄 Technical_Overview.md          # Technical overview
+    ├── 📄 LESSONS_LEARNED.md             # Development lessons
+    ├── 📄 PROJECT_COMPLETION_SUMMARY.md  # Project completion summary
+    ├── 📄 USER_GUIDE_DOMAIN_GROUPS.md    # User guide
     │
-    ├── 📁 api/                           # API documentation
+    ├── 📁 api/                           # API Documentation
     │   ├── 📄 README.md                  # API overview
-    │   └── 📄 domain-groups.md           # Domain Groups API reference
+    │   ├── 📄 domain-groups.md           # Domain Groups API reference
+    │   └── 📄 risk-integration.md        # Risk Integration API reference
     │
-    └── 📁 implementation/                # Implementation documentation
-        └── 📄 PHASE1_IMPLEMENTATION_SUMMARY.md # Phase 1 summary
+    └── 📁 implementation/                # Implementation Documentation
+        └── 📄 *.md                        # Phase implementation summaries
+```
+
+## 🐳 Docker Architecture
+
+The application runs as three separate containers:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Network                           │
+├─────────────────┬─────────────────┬─────────────────────────┤
+│  🌐 Frontend    │  🐍 Backend     │  🐘 PostgreSQL          │
+│  React + Vite   │  FastAPI        │  Database               │
+│  Port: 3000     │  Port: 8080     │  Port: 5432             │
+│                 │                 │                         │
+│  Hot-Reload ✓   │  Hot-Reload ✓   │  Persistent Data ✓      │
+└─────────────────┴─────────────────┴─────────────────────────┘
 ```
 
 ## 🎯 Key Directories Explained
 
-### `/client/` - Client Components
-Contains PowerShell scripts and configuration for client-side data collection:
-- **DonWatcher-DomainScanner.ps1**: Main domain scanner script (Phase 1 compatible)
-- **DonWatcher-Config.json**: Scanner configuration file
-- **agents/**: Legacy Python agent components (deprecated)
+### `/frontend/` - React Frontend
+Modern React application with dark cyber theme:
+- **Vite**: Fast build tool with hot module replacement
+- **TypeScript**: Type-safe development
+- **Tailwind CSS**: Utility-first styling with custom dark theme
+- **React Query**: Server state management
+- **Recharts**: Beautiful data visualizations
+- **Framer Motion**: Smooth animations
 
-### `/server/` - Backend Application  
-Core FastAPI application with enhanced Phase 1 functionality:
-- **main.py**: Application entry point with new domain group API endpoints
-- **parsers/**: Enhanced parser system supporting multiple formats
-- **frontend/**: Web interface assets (Phase 2 enhancements planned)
+### `/backend/` - Backend Docker Configuration
+Contains the Dockerfile for the Python backend container.
+
+### `/server/` - FastAPI Backend
+Core API application:
+- **main.py**: Application entry point with CORS configuration
+- **parsers/**: Multi-format security report parsers
+- **risk_service.py**: Risk calculation and scoring
+- **storage_postgres.py**: Database operations
+
+### `/client/` - PowerShell Scanner
+Client-side data collection tools:
+- **DonWatcher-DomainScanner.ps1**: Domain group member scanner
+- **DonWatcher-Config.json**: Scanner configuration
 
 ### `/migrations/` - Database Schema
-All database migrations in sequential order:
-- **init_db.sql**: Base schema for multi-tool security reporting
-- **migration_003_add_member_status.sql**: Phase 1 enhancements for member tracking
-
-### `/tests/` - Testing Suite
-Comprehensive test coverage for new functionality:
-- **test_domain_group_parser.py**: Parser validation and API logic tests
-- **test_domain_group_members.json**: Sample data for testing
-
-### `/docs/` - Documentation
-Well-organized documentation structure:
-- **api/**: Complete API reference with examples
-- **implementation/**: Phase implementation summaries and technical details
-
-## 🔄 Phase 1 Integration Points
-
-### Data Flow
-```
-PowerShell Scanner → JSON Upload → Enhanced Parser → Database → API → Frontend
-```
-
-### Key Files Modified/Added for Phase 1:
-- ✅ `server/parsers/domain_analysis_parser.py` - Enhanced with dual format support
-- ✅ `server/main.py` - Added 5 new domain group management endpoints  
-- ✅ `server/models.py` - Added DOMAIN_GROUP_MEMBERS tool type
-- ✅ `migrations/migration_003_add_member_status.sql` - Database enhancements
-- ✅ `tests/test_domain_group_parser.py` - Comprehensive unit tests
-- ✅ `docs/api/domain-groups.md` - Complete API documentation
+Sequential SQL migrations for PostgreSQL:
+- Idempotent migrations (safe to re-run)
+- Auto-applied on container startup
 
 ## 🚀 Development Workflow
 
-### Local Development
+### Starting Development Environment
 ```bash
-# Start database
-docker-compose up -d postgres
+# Start all containers with hot-reload
+docker compose up --build -d
 
-# Install dependencies  
-pip install -r requirements.txt
+# View logs
+docker compose logs -f
 
-# Run migrations
-psql -f migrations/init_db.sql
-psql -f migrations/migration_003_add_member_status.sql
-
-# Start server
-cd server && python main.py
-
-# Run tests
-python -m pytest tests/ -v
+# Stop containers
+docker compose down
 ```
 
-### Adding New Features
-1. **Database Changes**: Add migration to `/migrations/`
-2. **Backend Logic**: Update parsers, models, or API endpoints in `/server/`
-3. **Frontend Updates**: Modify files in `/server/frontend/`
-4. **Tests**: Add tests to `/tests/`
-5. **Documentation**: Update `/docs/` with changes
+### Accessing Services
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8080/api
+- **API Health**: http://localhost:8080/api/health
+- **Database**: localhost:5432
 
-## 📋 File Naming Conventions
+### Development Commands
+```bash
+# Rebuild specific container
+docker compose up --build frontend
 
-### Migrations
-- `migration_XXX_description.sql` - Sequential numbering with descriptive name
+# View frontend logs
+docker compose logs -f frontend
 
-### Tests  
-- `test_*.py` - Python unit tests
-- `test_*.json` - Test data files
+# View backend logs
+docker compose logs -f backend
 
-### Documentation
-- `README.md` - Directory overview and usage
-- `*.md` - Markdown format for all documentation
-- API docs use lowercase with hyphens: `domain-groups.md`
+# Reset database (deletes all data)
+docker compose down -v
+docker compose up --build -d
+```
+
+## 🎨 Frontend Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| React 18 | UI framework |
+| TypeScript | Type safety |
+| Vite | Build tool |
+| Tailwind CSS | Styling |
+| React Query | Server state |
+| React Router | Navigation |
+| Recharts | Charts |
+| Framer Motion | Animations |
+| Lucide React | Icons |
 
 ## 🔧 Configuration Files
 
-### Root Level
+### Docker Configuration
+- `docker-compose.yml` - Multi-container orchestration
+- `backend/Dockerfile` - Python backend container
+- `frontend/Dockerfile` - Node.js frontend container
+
+### Frontend Configuration
+- `frontend/vite.config.ts` - Vite build configuration
+- `frontend/tailwind.config.js` - Tailwind theme configuration
+- `frontend/tsconfig.json` - TypeScript configuration
+
+### Backend Configuration
 - `requirements.txt` - Python package dependencies
-- `docker-compose.yml` - Container orchestration
-- `Dockerfile` - Application container definition
-
-### Client Configuration
-- `client/DonWatcher-Config.json` - Scanner settings and group lists
-
-### Database Configuration
-- Environment variable `DATABASE_URL` for connection string
-- Default: `postgresql://donwatcher:donwatcher_pass@localhost:5432/donwatcher`
+- Environment variable `DATABASE_URL` for database connection
+- Environment variable `CORS_ORIGINS` for allowed origins
 
 ## 🎯 Clean Architecture Benefits
 
 ### Separation of Concerns
-- **Client**: Data collection and scanning
-- **Server**: API and business logic  
-- **Frontend**: User interface
-- **Tests**: Quality assurance
-- **Docs**: Knowledge management
-- **Migrations**: Schema versioning
+- **Frontend**: Independent React application
+- **Backend**: Pure API server (no HTML serving)
+- **Database**: Isolated PostgreSQL instance
+- **Client**: Data collection scripts
 
-### Maintainability
-- Clear file organization makes code easier to find and modify
-- Separate test directory enables comprehensive testing
-- Documentation co-located with relevant components
-- Migration history provides clear schema evolution
+### Developer Experience
+- Hot-reload for both frontend and backend
+- No local dependencies required (everything in Docker)
+- Clear separation between concerns
+- Type-safe development with TypeScript
 
-### Scalability
-- Modular parser system supports new security tools
-- API-first design enables multiple frontend implementations
-- Database migrations support schema evolution
-- Test structure supports continuous integration
+### Deployment Ready
+- Containerized architecture
+- Health checks built-in
+- Volume mounts for data persistence
+- Easy scaling potential
 
-This organized structure provides a solid foundation for Phase 2 development and beyond! 🚀
+This architecture provides a modern, maintainable foundation for future development! 🚀

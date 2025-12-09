@@ -8,8 +8,9 @@ from uuid import uuid4
 import aiofiles
 import uvicorn
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 
 from server.models import (
@@ -21,6 +22,7 @@ from server.storage_postgres import PostgresReportStorage, get_storage
 from server.parser import PingCastleParser
 from server.alerter import Alerter
 from server.routers import settings as settings_router
+from server.routers import upload as upload_router
 from server.database import init_database, engine
 from server.migration_runner import run_migrations_on_startup, get_migration_status
 from server.health_check import get_database_health, get_quick_health
@@ -70,6 +72,16 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# CORS configuration for frontend container
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Initialize database
 try:
     if not init_database():
@@ -110,6 +122,7 @@ MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MB
 
 # Include routers
 app.include_router(settings_router.router)
+app.include_router(upload_router.router)
 
 
 @app.middleware("http")
@@ -394,6 +407,148 @@ def add_accepted_risks(risk: AcceptedRisk, storage: PostgresReportStorage = Depe
 def delete_accepted_risk(risk: AcceptedRisk, storage: PostgresReportStorage = Depends(get_storage)):
     storage.remove_accepted_risk(risk.tool_type, risk.category, risk.name)
     return {"status": "ok"}
+
+
+# Findings API (Risk Catalog)
+@app.get("/api/findings")
+def get_all_findings(
+    domain: Optional[str] = None,
+    category: Optional[str] = None,
+    tool_type: Optional[SecurityToolType] = None,
+    include_accepted: bool = True,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all findings with optional filtering.
+    
+    Query parameters:
+    - domain: Filter by domain name
+    - category: Filter by category (PrivilegedAccounts, StaleObjects, Trusts, Anomalies)
+    - tool_type: Filter by security tool type
+    - include_accepted: Whether to include accepted findings (default: True)
+    """
+    tool_type_str = tool_type.value if tool_type else None
+    findings = storage.get_all_findings(
+        domain=domain,
+        category=category,
+        tool_type=tool_type_str,
+        include_accepted=include_accepted
+    )
+    return findings
+
+
+@app.get("/api/findings/summary")
+def get_findings_summary(
+    domain: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get a summary of findings by category."""
+    all_findings = storage.get_all_findings(domain=domain, tool_type="pingcastle")
+    
+    # Count by category
+    categories = {
+        "PrivilegedAccounts": {"total": 0, "accepted": 0, "total_score": 0},
+        "StaleObjects": {"total": 0, "accepted": 0, "total_score": 0},
+        "Trusts": {"total": 0, "accepted": 0, "total_score": 0},
+        "Anomalies": {"total": 0, "accepted": 0, "total_score": 0},
+    }
+    
+    for finding in all_findings:
+        cat = finding.get("category", "")
+        if cat in categories:
+            categories[cat]["total"] += 1
+            categories[cat]["total_score"] += finding.get("score", 0)
+            if finding.get("is_accepted"):
+                categories[cat]["accepted"] += 1
+    
+    return {
+        "categories": categories,
+        "total_findings": len(all_findings),
+        "total_accepted": sum(1 for f in all_findings if f.get("is_accepted")),
+        "total_score": sum(f.get("score", 0) for f in all_findings)
+    }
+
+
+@app.get("/api/findings/grouped")
+def get_grouped_findings(
+    domain: Optional[str] = None,
+    category: Optional[str] = None,
+    tool_type: Optional[SecurityToolType] = None,
+    include_accepted: bool = True,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get findings grouped by (tool_type, category, name) with occurrence counts.
+    
+    Returns unique findings aggregated across all reports, showing:
+    - occurrence_count: How many times this finding appeared across reports
+    - in_latest_report: Whether this finding is present in the most recent report
+    - first_seen: Date when this finding was first observed
+    - last_seen: Date when this finding was most recently observed
+    - domains: List of domains where this finding was observed
+    
+    Query parameters:
+    - domain: Filter by domain name
+    - category: Filter by category (PrivilegedAccounts, StaleObjects, Trusts, Anomalies)
+    - tool_type: Filter by security tool type (default: pingcastle)
+    - include_accepted: Whether to include accepted findings (default: True)
+    """
+    tool_type_str = tool_type.value if tool_type else None
+    findings = storage.get_grouped_findings(
+        domain=domain,
+        category=category,
+        tool_type=tool_type_str,
+        include_accepted=include_accepted
+    )
+    return findings
+
+
+@app.get("/api/findings/grouped/summary")
+def get_grouped_findings_summary(
+    domain: Optional[str] = None,
+    tool_type: Optional[SecurityToolType] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get a summary of grouped findings by category.
+    
+    Returns aggregated counts showing unique findings rather than total occurrences,
+    with additional in_latest counts per category.
+    """
+    tool_type_str = tool_type.value if tool_type else None
+    return storage.get_grouped_findings_summary(
+        domain=domain,
+        tool_type=tool_type_str
+    )
+
+
+@app.get("/api/reports/{report_id}/findings")
+def get_report_findings(
+    report_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all findings for a specific report."""
+    findings = storage.get_findings_by_report(report_id)
+    return findings
+
+
+@app.get("/api/reports/{report_id}/html")
+def get_report_html(
+    report_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get the HTML file path for a report (for opening in new tab)."""
+    report = storage.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    if not report.html_file:
+        raise HTTPException(status_code=404, detail="No HTML file associated with this report")
+    
+    # Return the relative path that can be used with /uploads
+    html_path = Path(report.html_file)
+    return {
+        "html_url": f"/uploads/{html_path.name}",
+        "filename": html_path.name
+    }
+
 
 # Monitored Groups Management
 @app.get("/api/monitored_groups", response_model=List[MonitoredGroup])
@@ -914,6 +1069,73 @@ def clear_cache():
             "error": str(e)
         }
 
+
+# Data Management Endpoints
+@app.get("/api/data/summary")
+def get_data_summary(storage: PostgresReportStorage = Depends(get_storage)):
+    """Get data summary per domain for management UI."""
+    try:
+        summary = storage.get_data_summary()
+        return {
+            "status": "ok",
+            "domains": summary,
+            "total_domains": len(summary)
+        }
+    except Exception as e:
+        logging.exception("Failed to get data summary")
+        raise HTTPException(status_code=500, detail=f"Failed to get data summary: {e}")
+
+
+@app.delete("/api/data/domain/{domain}")
+def delete_domain_data(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Delete all data for a specific domain."""
+    try:
+        logging.warning(f"Deleting all data for domain: {domain}")
+        result = storage.clear_domain_data(domain)
+        
+        # Clear cache after deletion
+        try:
+            cache = get_risk_cache()
+            cache.clear()
+        except Exception:
+            pass  # Cache clear is optional
+        
+        return {
+            "status": "ok",
+            "message": f"Successfully deleted all data for domain: {domain}",
+            "details": result
+        }
+    except Exception as e:
+        logging.exception(f"Failed to delete domain data for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete domain data: {e}")
+
+
+@app.delete("/api/data/all")
+def delete_all_data(storage: PostgresReportStorage = Depends(get_storage)):
+    """Delete all data from the database (nuclear option)."""
+    try:
+        logging.warning("DELETING ALL DATA - Nuclear option triggered")
+        storage.clear_all_data()
+        
+        # Clear cache after deletion
+        try:
+            cache = get_risk_cache()
+            cache.clear()
+        except Exception:
+            pass  # Cache clear is optional
+        
+        return {
+            "status": "ok",
+            "message": "Successfully deleted all data from database"
+        }
+    except Exception as e:
+        logging.exception("Failed to delete all data")
+        raise HTTPException(status_code=500, detail=f"Failed to delete all data: {e}")
+
+
 # Enhanced debug endpoint with risk information
 @app.get("/api/debug/risk_status")
 def debug_risk_status(storage: PostgresReportStorage = Depends(get_storage)):
@@ -961,35 +1183,8 @@ def debug_risk_status(storage: PostgresReportStorage = Depends(get_storage)):
 # Note: Agent Management endpoints removed - agents now run on client machines and submit data via /upload
 
 
-@app.get("/analyze")
-def analyze_page():
-    # Serve the standalone analysis page
-    return FileResponse(Path(__file__).parent / "frontend" / "analyze.html")
-
-
-@app.get("/reports")
-def reports_page():
-    # Serve the reports page
-    return FileResponse(Path(__file__).parent / "frontend" / "reports.html")
-
-
-@app.get("/settings")
-def settings_page():
-    return FileResponse(Path(__file__).parent / "frontend" / "settings.html")
-
-@app.get("/agents")
-def agents_page():
-    return FileResponse(Path(__file__).parent / "frontend" / "agents.html")
-
-@app.get("/debug")
-def debug_page():
-    return FileResponse(Path(__file__).parent / "frontend" / "debug.html")
-    
 # Serve uploaded reports (e.g., PingCastle HTML) at /uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-# Mount all other paths to your frontend
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "frontend", html=True), name="frontend")
 
 
 # Note: Agent initialization removed - agents now run on client machines
