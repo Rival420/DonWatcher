@@ -10,7 +10,16 @@ import type {
   FindingsSummary,
   AcceptRiskRequest,
   GroupedFinding,
-  GroupedFindingsSummary
+  GroupedFindingsSummary,
+  APIUploadRequest,
+  APIUploadResponse,
+  APIBulkUploadRequest,
+  APIBulkUploadResponse,
+  APIFindingInput,
+  APIGroupData,
+  SecurityToolType,
+  APIPingCastleScores,
+  APIDomainMetadata
 } from '../types'
 
 const API_BASE = '/api'
