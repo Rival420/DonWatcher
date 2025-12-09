@@ -7,7 +7,7 @@ import { clsx } from 'clsx'
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/reports': 'Security Reports',
-  '/groups': 'Domain Groups',
+  '/risk-catalog': 'Risk Catalog',
   '/upload': 'Upload Reports',
   '/settings': 'Settings',
 }

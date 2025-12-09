@@ -1,6 +1,6 @@
 export { Dashboard } from './Dashboard'
 export { Reports } from './Reports'
-export { DomainGroups } from './DomainGroups'
+export { RiskCatalog } from './RiskCatalog'
 export { Upload } from './Upload'
 export { Settings } from './Settings'
 
