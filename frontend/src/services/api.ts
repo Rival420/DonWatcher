@@ -19,7 +19,10 @@ import type {
   APIGroupData,
   SecurityToolType,
   APIPingCastleScores,
-  APIDomainMetadata
+  APIDomainMetadata,
+  DashboardKPIResponse,
+  DashboardKPIHistoryResponse,
+  AllDomainsKPIResponse
 } from '../types'
 
 const API_BASE = '/api'
@@ -51,16 +54,66 @@ export async function getReports(): Promise<Report[]> {
   return fetchJSON<Report[]>(`${API_BASE}/reports`)
 }
 
+// Paginated Reports - More efficient for large datasets
+export interface PaginatedReportsResponse {
+  status: string
+  page: number
+  page_size: number
+  total_count: number
+  total_pages: number
+  reports: Array<{
+    id: string
+    tool_type: string
+    domain: string
+    report_date: string
+    upload_date: string | null
+    global_score: number
+    domain_sid: string | null
+    html_file: string | null
+    total_findings: number
+    high_severity_findings: number
+    medium_severity_findings: number
+    low_severity_findings: number
+  }>
+}
+
+export async function getReportsPaginated(params?: {
+  page?: number
+  page_size?: number
+  domain?: string
+  tool_type?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}): Promise<PaginatedReportsResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.append('page', String(params.page))
+  if (params?.page_size) searchParams.append('page_size', String(params.page_size))
+  if (params?.domain) searchParams.append('domain', params.domain)
+  if (params?.tool_type) searchParams.append('tool_type', params.tool_type)
+  if (params?.sort_by) searchParams.append('sort_by', params.sort_by)
+  if (params?.sort_order) searchParams.append('sort_order', params.sort_order)
+  
+  const query = searchParams.toString()
+  return fetchJSON<PaginatedReportsResponse>(
+    `${API_BASE}/reports/paginated${query ? `?${query}` : ''}`
+  )
+}
+
 export async function getReport(id: string): Promise<Report> {
   return fetchJSON<Report>(`${API_BASE}/reports/${id}`)
 }
 
-export async function getLatestReport(domain?: string): Promise<Report | null> {
-  const reports = await getReports()
-  const filtered = domain ? reports.filter(r => r.domain === domain) : reports
-  return filtered.sort((a, b) => 
-    new Date(b.report_date).getTime() - new Date(a.report_date).getTime()
-  )[0] || null
+// Get latest report - Optimized endpoint (no longer loads all reports!)
+export async function getLatestReport(domain?: string, toolType?: string): Promise<Report | null> {
+  const params = new URLSearchParams()
+  if (domain) params.append('domain', domain)
+  if (toolType) params.append('tool_type', toolType)
+  
+  const query = params.toString()
+  const response = await fetchJSON<{ status: string; report: Report | null }>(
+    `${API_BASE}/reports/latest${query ? `?${query}` : ''}`
+  )
+  return response.report
 }
 
 // Domain Groups
@@ -147,11 +200,69 @@ export async function uploadReport(file: File): Promise<UploadResponse> {
   return response.json()
 }
 
-// Domains
+// Domains - Optimized endpoint (no longer loads all reports!)
 export async function getDomains(): Promise<string[]> {
-  const reports = await getReports()
-  const domains = [...new Set(reports.map(r => r.domain))]
-  return domains.sort()
+  const response = await fetchJSON<{ status: string; count: number; domains: string[] }>(
+    `${API_BASE}/domains`
+  )
+  return response.domains || []
+}
+
+// Domains with statistics
+export async function getDomainsWithStats(): Promise<{
+  domain: string
+  report_count: number
+  latest_report_date: string | null
+  first_report_date: string | null
+}[]> {
+  const response = await fetchJSON<{ 
+    status: string
+    count: number
+    domains: Array<{
+      domain: string
+      report_count: number
+      latest_report_date: string | null
+      first_report_date: string | null
+    }>
+  }>(`${API_BASE}/domains/stats`)
+  return response.domains || []
+}
+
+// =============================================================================
+// Dashboard KPIs - Optimized endpoints for fast dashboard loading
+// =============================================================================
+
+/**
+ * Get pre-aggregated dashboard KPIs for fast loading
+ * This is the primary endpoint for dashboard data
+ */
+export async function getDashboardKPIs(domain?: string): Promise<DashboardKPIResponse> {
+  const query = domain ? `?domain=${encodeURIComponent(domain)}` : ''
+  return fetchJSON<DashboardKPIResponse>(`${API_BASE}/dashboard/kpis${query}`)
+}
+
+/**
+ * Get historical KPI data for trend charts
+ */
+export async function getDashboardKPIHistory(
+  domain: string, 
+  limit: number = 10,
+  toolType?: string
+): Promise<DashboardKPIHistoryResponse> {
+  const params = new URLSearchParams()
+  params.append('limit', String(limit))
+  if (toolType) params.append('tool_type', toolType)
+  
+  return fetchJSON<DashboardKPIHistoryResponse>(
+    `${API_BASE}/dashboard/kpis/history/${encodeURIComponent(domain)}?${params.toString()}`
+  )
+}
+
+/**
+ * Get KPIs for all domains (multi-domain overview)
+ */
+export async function getAllDomainsKPIs(): Promise<AllDomainsKPIResponse> {
+  return fetchJSON<AllDomainsKPIResponse>(`${API_BASE}/dashboard/kpis/all-domains`)
 }
 
 // Findings (Risk Catalog)

@@ -236,6 +236,21 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
                 if memberships:
                     storage.save_group_memberships(report_id, memberships)
                 
+                # Update group KPIs for this report
+                try:
+                    group_stats = _calculate_group_stats_for_report(report, storage)
+                    storage.update_report_kpis_group_metrics(
+                        report_id=report_id,
+                        total_groups=group_stats['total_groups'],
+                        total_members=group_stats['total_members'],
+                        accepted_members=group_stats['accepted_members'],
+                        unaccepted_members=group_stats['unaccepted_members'],
+                        risk_score=group_stats['risk_score']
+                    )
+                    logging.info(f"Updated group KPIs for report {report_id}")
+                except Exception as e:
+                    logging.warning(f"Failed to update group KPIs: {e}")
+                
                 # Trigger risk calculation for domain group changes
                 try:
                     risk_service = get_risk_service(storage)
@@ -265,6 +280,74 @@ async def _process_single_file(file: UploadFile, storage: PostgresReportStorage)
     except Exception as e:
         logging.exception("Failed to process uploaded report")
         raise HTTPException(status_code=500, detail=f"Failed to process report: {e}")
+
+
+def _calculate_group_stats_for_report(report: Report, storage: PostgresReportStorage) -> dict:
+    """
+    Calculate group statistics for a domain analysis report.
+    Used to populate group-related KPIs.
+    """
+    total_groups = 0
+    total_members = 0
+    accepted_members = 0
+    unaccepted_members = 0
+    
+    for finding in report.findings:
+        if finding.category == "DonScanner" and finding.name.startswith("Group_"):
+            total_groups += 1
+            group_name = finding.metadata.get('group_name', '')
+            member_count = finding.metadata.get('member_count', 0)
+            total_members += member_count
+            
+            # Get accepted members count for this group
+            accepted = storage.get_accepted_group_members(report.domain, group_name)
+            accepted_count = len(accepted)
+            accepted_members += accepted_count
+            unaccepted_members += (member_count - accepted_count)
+    
+    # Calculate a simple risk score based on unaccepted members
+    # Using a formula: risk_score = min(unaccepted_members * 5, 100)
+    risk_score = min(unaccepted_members * 5, 100) if unaccepted_members > 0 else 0
+    
+    return {
+        'total_groups': total_groups,
+        'total_members': total_members,
+        'accepted_members': accepted_members,
+        'unaccepted_members': unaccepted_members,
+        'risk_score': float(risk_score)
+    }
+
+
+async def _update_domain_group_kpis(domain: str, storage: PostgresReportStorage) -> None:
+    """
+    Update group KPIs for the latest domain analysis report when members are accepted/denied.
+    """
+    # Get the latest domain analysis report
+    reports = storage.get_all_reports_summary()
+    domain_reports = [r for r in reports if r.domain == domain and r.tool_type == SecurityToolType.DOMAIN_ANALYSIS]
+    
+    if not domain_reports:
+        logging.warning(f"No domain analysis reports found for {domain} - cannot update group KPIs")
+        return
+    
+    latest_report = max(domain_reports, key=lambda r: r.report_date)
+    report_detail = storage.get_report(latest_report.id)
+    
+    # Calculate group stats
+    group_stats = _calculate_group_stats_for_report(report_detail, storage)
+    
+    # Update KPIs
+    storage.update_report_kpis_group_metrics(
+        report_id=latest_report.id,
+        total_groups=group_stats['total_groups'],
+        total_members=group_stats['total_members'],
+        accepted_members=group_stats['accepted_members'],
+        unaccepted_members=group_stats['unaccepted_members'],
+        risk_score=group_stats['risk_score']
+    )
+    
+    logging.info(f"Updated group KPIs for domain {domain} (report {latest_report.id})")
+
 
 async def _handle_html_upload(filename: str, saved_path: Path, storage: PostgresReportStorage) -> dict:
     """Handle HTML file uploads (typically PingCastle reports)."""
@@ -339,13 +422,148 @@ def debug_status(storage: PostgresReportStorage = Depends(get_storage)):
             "database_connected": False
         }
 
-# Report Management Endpoints
+# =============================================================================
+# Domains API - Fast domain retrieval without loading full reports
+# =============================================================================
+
+@app.get("/api/domains")
+def get_domains(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get list of unique domains efficiently.
+    
+    This is an optimized endpoint that returns just domain names
+    without loading full report data.
+    
+    Returns:
+        List of domain names sorted alphabetically
+    """
+    try:
+        domains = storage.get_domains()
+        return {
+            "status": "ok",
+            "count": len(domains),
+            "domains": domains
+        }
+    except Exception as e:
+        logging.exception("Failed to get domains")
+        raise HTTPException(status_code=500, detail=f"Failed to get domains: {e}")
+
+
+@app.get("/api/domains/stats")
+def get_domains_with_stats(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get domains with basic statistics.
+    
+    Returns domain info with report counts and date ranges
+    without loading full report data.
+    """
+    try:
+        domains = storage.get_domains_with_stats()
+        return {
+            "status": "ok",
+            "count": len(domains),
+            "domains": domains
+        }
+    except Exception as e:
+        logging.exception("Failed to get domains with stats")
+        raise HTTPException(status_code=500, detail=f"Failed to get domain stats: {e}")
+
+
+# =============================================================================
+# Paginated Reports API - Efficient report listing
+# =============================================================================
+
+@app.get("/api/reports/latest")
+def get_latest_report_api(
+    domain: Optional[str] = None,
+    tool_type: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get the most recent report efficiently.
+    
+    Query parameters:
+    - domain: Optional filter by domain
+    - tool_type: Optional filter by tool type
+    
+    Returns:
+        The latest report or null if none found
+    """
+    try:
+        result = storage.get_latest_report(domain=domain, tool_type=tool_type)
+        
+        if result is None:
+            return {"status": "ok", "report": None}
+        
+        return {
+            "status": "ok",
+            "report": result
+        }
+    except Exception as e:
+        logging.exception("Failed to get latest report")
+        raise HTTPException(status_code=500, detail=f"Failed to get latest report: {e}")
+
+
+@app.get("/api/reports/paginated")
+def get_reports_paginated(
+    page: int = 1,
+    page_size: int = 20,
+    domain: Optional[str] = None,
+    tool_type: Optional[str] = None,
+    sort_by: str = 'report_date',
+    sort_order: str = 'desc',
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get paginated report summaries for efficient listing.
+    
+    Query parameters:
+    - page: Page number (default: 1)
+    - page_size: Items per page (default: 20, max: 100)
+    - domain: Optional filter by domain
+    - tool_type: Optional filter by tool type
+    - sort_by: Column to sort by (report_date, domain, tool_type, pingcastle_global_score)
+    - sort_order: Sort direction (asc, desc)
+    
+    Returns:
+        Paginated report summaries with metadata
+    """
+    try:
+        # Limit page size to prevent abuse
+        page_size = min(page_size, 100)
+        
+        result = storage.get_reports_paginated(
+            page=page,
+            page_size=page_size,
+            domain=domain,
+            tool_type=tool_type,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        return {
+            "status": "ok",
+            **result
+        }
+    except Exception as e:
+        logging.exception("Failed to get paginated reports")
+        raise HTTPException(status_code=500, detail=f"Failed to get reports: {e}")
+
+
+# Report Management Endpoints (Legacy - kept for backward compatibility)
 @app.get("/api/reports", response_model=List[ReportSummary])
 def list_reports(
     tool_type: Optional[SecurityToolType] = None,
     storage: PostgresReportStorage = Depends(get_storage)
 ):
-    """Get all reports, optionally filtered by tool type."""
+    """Get all reports, optionally filtered by tool type.
+    
+    NOTE: For better performance on large datasets, use /api/reports/paginated instead.
+    """
     try:
         reports = storage.get_all_reports_summary()
         if tool_type:
@@ -758,6 +976,14 @@ async def accept_group_member(
     try:
         member_id = storage.add_accepted_group_member(member)
         
+        # Update report KPIs for the latest domain analysis report
+        kpi_update_success = True
+        try:
+            await _update_domain_group_kpis(member.domain, storage)
+        except Exception as e:
+            kpi_update_success = False
+            logging.warning(f"Failed to update group KPIs after member acceptance: {e}")
+        
         # Trigger risk score update with enhanced error reporting
         risk_update_success = True
         risk_error_message = None
@@ -774,7 +1000,8 @@ async def accept_group_member(
         response = {
             "status": "ok", 
             "member_id": member_id,
-            "risk_calculation_status": "success" if risk_update_success else "failed"
+            "risk_calculation_status": "success" if risk_update_success else "failed",
+            "kpi_update_status": "success" if kpi_update_success else "failed"
         }
         
         if not risk_update_success:
@@ -794,6 +1021,14 @@ async def remove_accepted_group_member(
     try:
         storage.remove_accepted_group_member(member.domain, member.group_name, member.member_name)
         
+        # Update report KPIs for the latest domain analysis report
+        kpi_update_success = True
+        try:
+            await _update_domain_group_kpis(member.domain, storage)
+        except Exception as e:
+            kpi_update_success = False
+            logging.warning(f"Failed to update group KPIs after member denial: {e}")
+        
         # Trigger risk score update with enhanced error reporting
         risk_update_success = True
         risk_error_message = None
@@ -809,7 +1044,8 @@ async def remove_accepted_group_member(
         
         response = {
             "status": "ok",
-            "risk_calculation_status": "success" if risk_update_success else "failed"
+            "risk_calculation_status": "success" if risk_update_success else "failed",
+            "kpi_update_status": "success" if kpi_update_success else "failed"
         }
         
         if not risk_update_success:
@@ -1068,6 +1304,94 @@ def clear_cache():
             "status": "error",
             "error": str(e)
         }
+
+
+# =============================================================================
+# Dashboard KPIs Endpoints - Optimized for fast dashboard loading
+# =============================================================================
+
+@app.get("/api/dashboard/kpis")
+def get_dashboard_kpis(
+    domain: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get pre-aggregated KPIs for the dashboard.
+    
+    This endpoint is optimized for fast dashboard loading by returning
+    pre-computed metrics from the reports_kpis table instead of aggregating
+    all reports on the fly.
+    
+    Query parameters:
+    - domain: Optional domain filter. If not provided, returns KPIs for the latest domain.
+    
+    Returns:
+    - Dashboard KPI summary including risk scores, findings counts, and group metrics
+    """
+    try:
+        result = storage.get_dashboard_kpis(domain)
+        return result
+    except Exception as e:
+        logging.exception("Failed to get dashboard KPIs")
+        raise HTTPException(status_code=500, detail=f"Failed to get dashboard KPIs: {e}")
+
+
+@app.get("/api/dashboard/kpis/history/{domain}")
+def get_dashboard_kpis_history(
+    domain: str,
+    limit: int = 10,
+    tool_type: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get historical KPI data for trend charts.
+    
+    Path parameters:
+    - domain: Domain to get history for
+    
+    Query parameters:
+    - limit: Maximum number of historical points (default: 10)
+    - tool_type: Optional filter by tool type
+    
+    Returns:
+    - List of historical KPI data points for trend visualization
+    """
+    try:
+        history = storage.get_dashboard_kpis_history(domain, limit, tool_type)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(history),
+            "history": history
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get KPI history for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get KPI history: {e}")
+
+
+@app.get("/api/dashboard/kpis/all-domains")
+def get_all_domains_kpis(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get latest KPIs for all domains.
+    
+    Useful for multi-domain dashboard overview showing a summary
+    of each domain's current security status.
+    
+    Returns:
+    - List of latest KPIs per domain
+    """
+    try:
+        domains = storage.get_all_domains_latest_kpis()
+        return {
+            "status": "ok",
+            "count": len(domains),
+            "domains": domains
+        }
+    except Exception as e:
+        logging.exception("Failed to get all domains KPIs")
+        raise HTTPException(status_code=500, detail=f"Failed to get all domains KPIs: {e}")
 
 
 # Data Management Endpoints

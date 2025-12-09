@@ -182,6 +182,94 @@ export interface GroupedCategorySummary {
 }
 
 // =============================================================================
+// Dashboard KPIs - Pre-aggregated metrics for fast dashboard loading
+// =============================================================================
+
+export interface DashboardKPIs {
+  id: string
+  report_id: string
+  tool_type: SecurityToolType
+  domain: string
+  report_date: string
+  domain_sid: string | null
+  domain_functional_level: string | null
+  forest_functional_level: string | null
+  maturity_level: string | null
+  
+  // PingCastle Risk Scores
+  global_score: number
+  stale_objects_score: number
+  privileged_accounts_score: number
+  trusts_score: number
+  anomalies_score: number
+  
+  // Domain Infrastructure Metrics
+  user_count: number
+  computer_count: number
+  dc_count: number
+  
+  // Findings Metrics
+  total_findings: number
+  high_severity_findings: number
+  medium_severity_findings: number
+  low_severity_findings: number
+  
+  // Domain Group Metrics
+  total_groups: number
+  total_group_members: number
+  accepted_group_members: number
+  unaccepted_group_members: number
+  
+  // Risk Assessment
+  domain_group_risk_score: number
+}
+
+export interface DashboardKPIResponse {
+  status: 'ok' | 'no_data' | 'error'
+  fallback?: boolean
+  message?: string
+  kpis?: DashboardKPIs
+}
+
+export interface DashboardKPIHistoryPoint {
+  date: string
+  global_score: number
+  stale_objects_score: number
+  privileged_accounts_score: number
+  trusts_score: number
+  anomalies_score: number
+  unaccepted_group_members: number
+  total_findings: number
+  domain_group_risk_score: number
+}
+
+export interface DashboardKPIHistoryResponse {
+  status: 'ok' | 'error'
+  domain: string
+  count: number
+  history: DashboardKPIHistoryPoint[]
+}
+
+export interface DomainKPISummary {
+  domain: string
+  report_id: string
+  report_date: string
+  tool_type: SecurityToolType
+  global_score: number
+  total_findings: number
+  high_severity_findings: number
+  unaccepted_group_members: number
+  domain_group_risk_score: number
+  domain_sid: string | null
+}
+
+export interface AllDomainsKPIResponse {
+  status: 'ok' | 'error'
+  count: number
+  domains: DomainKPISummary[]
+}
+
+// =============================================================================
 // API Upload Types - For programmatic report submission
 // =============================================================================
 

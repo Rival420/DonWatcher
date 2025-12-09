@@ -23,18 +23,34 @@ import {
   PolarRadiusAxis,
   Radar
 } from 'recharts'
-import { useLatestReport, useReports, useDomains, useDomainGroups } from '../hooks/useApi'
+import { 
+  useDashboardKPIs, 
+  useDashboardKPIHistory, 
+  useDomains, 
+  useDomainGroups 
+} from '../hooks/useApi'
 import { RiskGauge } from '../components/RiskGauge'
 import { StatsCard } from '../components/StatsCard'
 import { clsx } from 'clsx'
 
 export function Dashboard() {
   const [sidCopied, setSidCopied] = useState(false)
-  const { data: reports, isLoading: reportsLoading } = useReports()
+  
+  // Use optimized KPI endpoints instead of fetching all reports
   const { data: domains } = useDomains()
   const latestDomain = domains?.[0]
-  const { data: latestReport } = useLatestReport(latestDomain)
+  
+  // Main dashboard KPIs - pre-aggregated for fast loading
+  const { data: kpiResponse, isLoading: kpisLoading } = useDashboardKPIs(latestDomain)
+  
+  // Historical KPIs for trend charts
+  const { data: historyResponse } = useDashboardKPIHistory(latestDomain || '', 10)
+  
+  // Domain groups for the groups preview section
   const { data: domainGroups } = useDomainGroups(latestDomain || '')
+  
+  // Extract KPIs from response
+  const kpis = kpiResponse?.status === 'ok' ? kpiResponse.kpis : null
   
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -42,32 +58,57 @@ export function Dashboard() {
     setTimeout(() => setSidCopied(false), 2000)
   }
   
-  // Calculate stats
-  const unacceptedMembers = domainGroups?.reduce((sum, g) => sum + g.unaccepted_members, 0) || 0
+  // Get unaccepted members from KPIs (faster) or fallback to domainGroups
+  const unacceptedMembers = kpis?.unaccepted_group_members ?? 
+    domainGroups?.reduce((sum, g) => sum + g.unaccepted_members, 0) ?? 0
   
-  // Mock historical data for charts
-  const historicalData = reports?.slice(0, 10).reverse().map((r) => ({
-    date: new Date(r.report_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    score: r.global_score,
-    stale: r.stale_objects_score,
-    privileged: r.privileged_accounts_score,
-    trusts: r.trusts_score,
-    anomalies: r.anomalies_score,
+  // Historical data for charts from KPI history
+  const historicalData = historyResponse?.history?.map((h) => ({
+    date: new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    score: h.global_score,
+    stale: h.stale_objects_score,
+    privileged: h.privileged_accounts_score,
+    trusts: h.trusts_score,
+    anomalies: h.anomalies_score,
   })) || []
   
-  const radarData = latestReport ? [
-    { category: 'Stale Objects', value: latestReport.stale_objects_score, fullMark: 100 },
-    { category: 'Privileged', value: latestReport.privileged_accounts_score, fullMark: 100 },
-    { category: 'Trusts', value: latestReport.trusts_score, fullMark: 100 },
-    { category: 'Anomalies', value: latestReport.anomalies_score, fullMark: 100 },
+  // Radar chart data
+  const radarData = kpis ? [
+    { category: 'Stale Objects', value: kpis.stale_objects_score, fullMark: 100 },
+    { category: 'Privileged', value: kpis.privileged_accounts_score, fullMark: 100 },
+    { category: 'Trusts', value: kpis.trusts_score, fullMark: 100 },
+    { category: 'Anomalies', value: kpis.anomalies_score, fullMark: 100 },
   ] : []
   
-  if (reportsLoading) {
+  if (kpisLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-cyber-accent-cyan border-t-transparent rounded-full mx-auto" />
           <p className="mt-4 text-cyber-text-secondary">Loading dashboard data...</p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Handle no data state
+  if (kpiResponse?.status === 'no_data') {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 text-cyber-accent-yellow mx-auto mb-4" />
+          <h2 className="text-xl font-display font-semibold text-cyber-text-primary mb-2">
+            No Reports Found
+          </h2>
+          <p className="text-cyber-text-secondary mb-4">
+            Upload security reports to see dashboard metrics.
+          </p>
+          <a 
+            href="/upload" 
+            className="inline-block px-6 py-2 bg-cyber-accent-cyan text-cyber-bg-primary rounded-lg hover:bg-cyber-accent-cyan/80 transition-colors"
+          >
+            Upload Reports
+          </a>
         </div>
       </div>
     )
@@ -87,16 +128,16 @@ export function Dashboard() {
               Domain Overview
             </h2>
             <p className="text-sm text-cyber-text-muted mt-1">
-              {latestReport?.domain || 'No domain data available'}
+              {kpis?.domain || 'No domain data available'}
             </p>
           </div>
-          {latestReport?.domain_sid && (
+          {kpis?.domain_sid && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent-cyan/10 border border-cyber-accent-cyan/30 group">
               <span className="text-sm font-mono text-cyber-accent-cyan break-all">
-                SID: {latestReport.domain_sid}
+                SID: {kpis.domain_sid}
               </span>
               <button
-                onClick={() => copyToClipboard(latestReport.domain_sid || '')}
+                onClick={() => copyToClipboard(kpis.domain_sid || '')}
                 className="p-1 rounded hover:bg-cyber-accent-cyan/20 transition-colors flex-shrink-0"
                 title="Copy SID to clipboard"
               >
@@ -114,19 +155,19 @@ export function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard
             title="Total Users"
-            value={latestReport?.user_count || 0}
+            value={kpis?.user_count || 0}
             icon={<Users className="w-5 h-5" />}
             color="cyan"
           />
           <StatsCard
             title="Computers"
-            value={latestReport?.computer_count || 0}
+            value={kpis?.computer_count || 0}
             icon={<Server className="w-5 h-5" />}
             color="green"
           />
           <StatsCard
             title="Domain Controllers"
-            value={latestReport?.dc_count || 0}
+            value={kpis?.dc_count || 0}
             icon={<Zap className="w-5 h-5" />}
             color="yellow"
           />
@@ -151,21 +192,21 @@ export function Dashboard() {
         >
           <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Global Risk Score</h3>
           <RiskGauge 
-            value={latestReport?.global_score || 0} 
+            value={kpis?.global_score || 0} 
             label="Risk" 
             size="lg" 
           />
           <div className="mt-4 flex items-center gap-2">
             <span className={clsx(
               'px-3 py-1 rounded-full text-xs font-medium',
-              (latestReport?.global_score || 0) >= 75 && 'badge-critical',
-              (latestReport?.global_score || 0) >= 50 && (latestReport?.global_score || 0) < 75 && 'badge-high',
-              (latestReport?.global_score || 0) >= 25 && (latestReport?.global_score || 0) < 50 && 'badge-medium',
-              (latestReport?.global_score || 0) < 25 && 'badge-low',
+              (kpis?.global_score || 0) >= 75 && 'badge-critical',
+              (kpis?.global_score || 0) >= 50 && (kpis?.global_score || 0) < 75 && 'badge-high',
+              (kpis?.global_score || 0) >= 25 && (kpis?.global_score || 0) < 50 && 'badge-medium',
+              (kpis?.global_score || 0) < 25 && 'badge-low',
             )}>
-              {(latestReport?.global_score || 0) >= 75 ? 'Critical' : 
-               (latestReport?.global_score || 0) >= 50 ? 'High' : 
-               (latestReport?.global_score || 0) >= 25 ? 'Medium' : 'Low'}
+              {(kpis?.global_score || 0) >= 75 ? 'Critical' : 
+               (kpis?.global_score || 0) >= 50 ? 'High' : 
+               (kpis?.global_score || 0) >= 25 ? 'Medium' : 'Low'}
             </span>
           </div>
         </motion.section>
@@ -180,16 +221,16 @@ export function Dashboard() {
           <h3 className="text-sm font-medium text-cyber-text-secondary mb-6">Risk Categories</h3>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="flex flex-col items-center">
-              <RiskGauge value={latestReport?.stale_objects_score || 0} label="Stale" size="sm" />
+              <RiskGauge value={kpis?.stale_objects_score || 0} label="Stale" size="sm" />
             </div>
             <div className="flex flex-col items-center">
-              <RiskGauge value={latestReport?.privileged_accounts_score || 0} label="Privileged" size="sm" />
+              <RiskGauge value={kpis?.privileged_accounts_score || 0} label="Privileged" size="sm" />
             </div>
             <div className="flex flex-col items-center">
-              <RiskGauge value={latestReport?.trusts_score || 0} label="Trusts" size="sm" />
+              <RiskGauge value={kpis?.trusts_score || 0} label="Trusts" size="sm" />
             </div>
             <div className="flex flex-col items-center">
-              <RiskGauge value={latestReport?.anomalies_score || 0} label="Anomalies" size="sm" />
+              <RiskGauge value={kpis?.anomalies_score || 0} label="Anomalies" size="sm" />
             </div>
           </div>
         </motion.section>
@@ -347,10 +388,10 @@ export function Dashboard() {
           <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Category Breakdown</h3>
           <div className="space-y-4">
             {[
-              { name: 'Stale Objects', score: latestReport?.stale_objects_score || 0, color: 'bg-orange-500' },
-              { name: 'Privileged Accounts', score: latestReport?.privileged_accounts_score || 0, color: 'bg-red-500' },
-              { name: 'Trusts', score: latestReport?.trusts_score || 0, color: 'bg-purple-500' },
-              { name: 'Anomalies', score: latestReport?.anomalies_score || 0, color: 'bg-yellow-500' },
+              { name: 'Stale Objects', score: kpis?.stale_objects_score || 0, color: 'bg-orange-500' },
+              { name: 'Privileged Accounts', score: kpis?.privileged_accounts_score || 0, color: 'bg-red-500' },
+              { name: 'Trusts', score: kpis?.trusts_score || 0, color: 'bg-purple-500' },
+              { name: 'Anomalies', score: kpis?.anomalies_score || 0, color: 'bg-yellow-500' },
             ].map((cat) => (
               <div key={cat.name} className="flex items-center gap-4">
                 <div className="w-32 text-sm text-cyber-text-muted">{cat.name}</div>
@@ -416,4 +457,3 @@ export function Dashboard() {
     </div>
   )
 }
-
