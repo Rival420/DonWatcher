@@ -43,12 +43,10 @@ export function Dashboard() {
   }
   
   // Calculate stats
-  const totalFindings = reports?.reduce((sum, r) => sum + (r.total_findings || 0), 0) || 0
-  const criticalFindings = reports?.reduce((sum, r) => sum + (r.high_severity_findings || 0), 0) || 0
   const unacceptedMembers = domainGroups?.reduce((sum, g) => sum + g.unaccepted_members, 0) || 0
   
   // Mock historical data for charts
-  const historicalData = reports?.slice(0, 10).reverse().map((r, i) => ({
+  const historicalData = reports?.slice(0, 10).reverse().map((r) => ({
     date: new Date(r.report_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     score: r.global_score,
     stale: r.stale_objects_score,

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, Calendar, Shield, ChevronDown, ExternalLink, Filter } from 'lucide-react'
+import { FileText, Calendar, ExternalLink, Filter } from 'lucide-react'
 import { useReports } from '../hooks/useApi'
 import { clsx } from 'clsx'
 import { format } from 'date-fns'

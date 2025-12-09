@@ -175,6 +175,8 @@ export function useAcceptRisk() {
       queryClient.invalidateQueries({ queryKey: ['findings'] })
       queryClient.invalidateQueries({ queryKey: ['findingsSummary'] })
       queryClient.invalidateQueries({ queryKey: ['reportFindings'] })
+      queryClient.invalidateQueries({ queryKey: ['groupedFindings'] })
+      queryClient.invalidateQueries({ queryKey: ['groupedFindingsSummary'] })
     },
   })
 }
@@ -188,7 +190,29 @@ export function useRemoveAcceptedRisk() {
       queryClient.invalidateQueries({ queryKey: ['findings'] })
       queryClient.invalidateQueries({ queryKey: ['findingsSummary'] })
       queryClient.invalidateQueries({ queryKey: ['reportFindings'] })
+      queryClient.invalidateQueries({ queryKey: ['groupedFindings'] })
+      queryClient.invalidateQueries({ queryKey: ['groupedFindingsSummary'] })
     },
+  })
+}
+
+// Grouped Findings (Risk Catalog - aggregated view)
+export function useGroupedFindings(params?: {
+  domain?: string
+  category?: string
+  tool_type?: string
+  include_accepted?: boolean
+}) {
+  return useQuery({
+    queryKey: ['groupedFindings', params],
+    queryFn: () => api.getGroupedFindings(params),
+  })
+}
+
+export function useGroupedFindingsSummary(domain?: string, tool_type?: string) {
+  return useQuery({
+    queryKey: ['groupedFindingsSummary', domain, tool_type],
+    queryFn: () => api.getGroupedFindingsSummary(domain, tool_type),
   })
 }
 

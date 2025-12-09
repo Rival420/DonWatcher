@@ -1139,3 +1139,159 @@ class PostgresReportStorage:
                     logging.warning("group_risk_configs table does not exist - cannot save config. Run migration_002_add_group_member_tables.sql")
                     return ""
                 raise
+
+    def get_grouped_findings(
+        self, 
+        domain: Optional[str] = None, 
+        category: Optional[str] = None,
+        tool_type: Optional[str] = None,
+        include_accepted: bool = True
+    ) -> List[Dict]:
+        """Get findings grouped by (tool_type, category, name) with occurrence counts and latest report presence.
+        
+        Returns aggregated findings where identical findings from multiple reports
+        are grouped together with:
+        - occurrence_count: How many times this finding appeared across reports
+        - in_latest_report: Whether this finding is present in the most recent report
+        - first_seen: Date when this finding was first observed
+        - last_seen: Date when this finding was most recently observed
+        - domains: List of domains where this finding was observed
+        """
+        with self._get_session() as session:
+            # Build the base query with proper grouping and aggregation
+            query = """
+                WITH latest_report AS (
+                    SELECT id, report_date
+                    FROM reports 
+                    WHERE tool_type = :base_tool_type
+                    ORDER BY report_date DESC 
+                    LIMIT 1
+                ),
+                grouped_findings AS (
+                    SELECT 
+                        f.tool_type,
+                        f.category,
+                        f.name,
+                        MAX(f.description) as description,
+                        MAX(f.recommendation) as recommendation,
+                        MAX(f.severity) as severity,
+                        MAX(f.score) as max_score,
+                        MIN(f.score) as min_score,
+                        AVG(f.score) as avg_score,
+                        COUNT(*) as occurrence_count,
+                        MIN(r.report_date) as first_seen,
+                        MAX(r.report_date) as last_seen,
+                        array_agg(DISTINCT r.domain) as domains,
+                        array_agg(DISTINCT r.id) as report_ids,
+                        CASE WHEN EXISTS (
+                            SELECT 1 
+                            FROM findings lf 
+                            JOIN latest_report lr ON lf.report_id = lr.id
+                            WHERE lf.tool_type = f.tool_type 
+                              AND lf.category = f.category 
+                              AND lf.name = f.name
+                        ) THEN true ELSE false END as in_latest_report
+                    FROM findings f
+                    JOIN reports r ON f.report_id = r.id
+                    WHERE 1=1
+            """
+            
+            params = {'base_tool_type': tool_type or 'pingcastle'}
+            
+            if domain:
+                query += " AND r.domain = :domain"
+                params['domain'] = domain
+            
+            if category:
+                query += " AND f.category = :category"
+                params['category'] = category
+            
+            if tool_type:
+                query += " AND f.tool_type = :tool_type"
+                params['tool_type'] = tool_type
+            
+            query += """
+                    GROUP BY f.tool_type, f.category, f.name
+                )
+                SELECT 
+                    gf.*,
+                    ar.id as accepted_id,
+                    ar.reason as accepted_reason,
+                    ar.accepted_by,
+                    ar.accepted_at,
+                    ar.expires_at
+                FROM grouped_findings gf
+                LEFT JOIN accepted_risks ar ON 
+                    gf.tool_type = ar.tool_type AND 
+                    gf.category = ar.category AND 
+                    gf.name = ar.name
+            """
+            
+            if not include_accepted:
+                query += " WHERE ar.id IS NULL"
+            
+            query += " ORDER BY gf.in_latest_report DESC, gf.occurrence_count DESC, gf.max_score DESC"
+            
+            results = session.execute(text(query), params).fetchall()
+            
+            return [
+                {
+                    "tool_type": row.tool_type,
+                    "category": row.category,
+                    "name": row.name,
+                    "description": row.description or "",
+                    "recommendation": row.recommendation or "",
+                    "severity": row.severity,
+                    "max_score": row.max_score,
+                    "min_score": row.min_score,
+                    "avg_score": round(float(row.avg_score), 1) if row.avg_score else 0,
+                    "occurrence_count": row.occurrence_count,
+                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                    "domains": list(row.domains) if row.domains else [],
+                    "report_ids": [str(rid) for rid in row.report_ids] if row.report_ids else [],
+                    "in_latest_report": row.in_latest_report,
+                    "is_accepted": row.accepted_id is not None,
+                    "accepted_reason": row.accepted_reason,
+                    "accepted_by": row.accepted_by,
+                    "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
+                }
+                for row in results
+            ]
+
+    def get_grouped_findings_summary(
+        self, 
+        domain: Optional[str] = None,
+        tool_type: Optional[str] = None
+    ) -> Dict:
+        """Get a summary of grouped findings by category."""
+        grouped = self.get_grouped_findings(domain=domain, tool_type=tool_type or "pingcastle")
+        
+        # Count by category
+        categories = {
+            "PrivilegedAccounts": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "StaleObjects": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "Trusts": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+            "Anomalies": {"total": 0, "accepted": 0, "total_score": 0, "in_latest": 0},
+        }
+        
+        for finding in grouped:
+            cat = finding.get("category", "")
+            if cat in categories:
+                categories[cat]["total"] += 1
+                categories[cat]["total_score"] += finding.get("max_score", 0)
+                if finding.get("is_accepted"):
+                    categories[cat]["accepted"] += 1
+                if finding.get("in_latest_report"):
+                    categories[cat]["in_latest"] += 1
+        
+        total_in_latest = sum(1 for f in grouped if f.get("in_latest_report"))
+        
+        return {
+            "categories": categories,
+            "total_unique_findings": len(grouped),
+            "total_accepted": sum(1 for f in grouped if f.get("is_accepted")),
+            "total_in_latest": total_in_latest,
+            "total_score": sum(f.get("max_score", 0) for f in grouped)
+        }

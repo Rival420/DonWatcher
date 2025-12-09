@@ -8,7 +8,6 @@ import {
   Search,
   Check,
   X,
-  ExternalLink,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -21,11 +20,15 @@ import {
   CheckCircle,
   XCircle,
   Castle,
-  Network
+  Network,
+  Activity,
+  History,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { 
-  useFindings, 
-  useFindingsSummary, 
+  useGroupedFindings, 
+  useGroupedFindingsSummary, 
   useDomains, 
   useAcceptRisk, 
   useRemoveAcceptedRisk,
@@ -35,7 +38,7 @@ import {
   useDenyMember
 } from '../hooks/useApi'
 import { clsx } from 'clsx'
-import type { Finding } from '../types'
+import type { GroupedFinding } from '../types'
 
 // Category configuration for PingCastle
 const PINGCASTLE_CATEGORIES = {
@@ -47,6 +50,15 @@ const PINGCASTLE_CATEGORIES = {
 } as const
 
 type CategoryKey = keyof typeof PINGCASTLE_CATEGORIES
+
+// Latest report filter options
+const LATEST_FILTER_OPTIONS = {
+  all: { label: 'All Findings', icon: Eye },
+  in_latest: { label: 'In Latest Report', icon: Activity },
+  not_in_latest: { label: 'Not In Latest', icon: EyeOff }
+} as const
+
+type LatestFilterKey = keyof typeof LATEST_FILTER_OPTIONS
 
 function getSeverityColor(score: number): string {
   if (score >= 50) return 'text-red-400 bg-red-500/20 border-red-500/30'
@@ -68,7 +80,7 @@ function AcceptFindingModal({
   onClose, 
   onAccept 
 }: { 
-  finding: Finding
+  finding: GroupedFinding
   onClose: () => void
   onAccept: (reason: string, expiresAt?: string) => void
 }) {
@@ -96,14 +108,23 @@ function AcceptFindingModal({
           <div className="flex items-center gap-2 mb-2">
             <span className={clsx(
               'px-2 py-0.5 text-xs font-mono rounded border',
-              getSeverityColor(finding.score)
+              getSeverityColor(finding.max_score)
             )}>
-              {finding.score} pts
+              {finding.max_score} pts
             </span>
             <span className="text-slate-400 text-sm">{finding.category}</span>
+            {finding.in_latest_report && (
+              <span className="px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 rounded-full border border-cyan-500/30 flex items-center gap-1">
+                <Activity size={10} />
+                In Latest
+              </span>
+            )}
           </div>
           <p className="text-white font-mono text-sm">{finding.name}</p>
           <p className="text-slate-400 text-sm mt-1">{finding.description}</p>
+          <p className="text-slate-500 text-xs mt-2">
+            Occurred {finding.occurrence_count} time{finding.occurrence_count !== 1 ? 's' : ''} across reports
+          </p>
         </div>
         
         <div className="space-y-4">
@@ -153,19 +174,23 @@ function AcceptFindingModal({
   )
 }
 
-// Finding Card Component
-function FindingCard({ 
+// Grouped Finding Card Component
+function GroupedFindingCard({ 
   finding, 
   onAccept, 
-  onRemove,
-  onViewReport
+  onRemove
 }: { 
-  finding: Finding
-  onAccept: (finding: Finding) => void
-  onRemove: (finding: Finding) => void
-  onViewReport: (reportId: string) => void
+  finding: GroupedFinding
+  onAccept: (finding: GroupedFinding) => void
+  onRemove: (finding: GroupedFinding) => void
 }) {
   const CategoryIcon = PINGCASTLE_CATEGORIES[finding.category as CategoryKey]?.icon || AlertTriangle
+  
+  // Format the date for display
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Unknown'
+    return new Date(dateStr).toLocaleDateString()
+  }
   
   return (
     <motion.div
@@ -182,19 +207,39 @@ function FindingCard({
         {/* Score Badge */}
         <div className={clsx(
           "flex-shrink-0 w-16 h-16 rounded-lg flex flex-col items-center justify-center border",
-          getSeverityColor(finding.score)
+          getSeverityColor(finding.max_score)
         )}>
-          <span className="text-2xl font-bold font-mono">{finding.score}</span>
-          <span className="text-xs uppercase">{getSeverityLabel(finding.score)}</span>
+          <span className="text-2xl font-bold font-mono">{finding.max_score}</span>
+          <span className="text-xs uppercase">{getSeverityLabel(finding.max_score)}</span>
         </div>
         
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <CategoryIcon size={16} className="text-slate-400" />
             <span className="text-xs text-slate-500 uppercase tracking-wider">
               {finding.category}
             </span>
+            
+            {/* In Latest Report Indicator */}
+            {finding.in_latest_report ? (
+              <span className="px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 rounded-full border border-cyan-500/30 flex items-center gap-1 animate-pulse">
+                <Activity size={10} />
+                In Latest Report
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-xs bg-slate-700/50 text-slate-400 rounded-full border border-slate-600 flex items-center gap-1">
+                <EyeOff size={10} />
+                Not In Latest
+              </span>
+            )}
+            
+            {/* Occurrence Count Badge */}
+            <span className="px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded-full border border-purple-500/30 flex items-center gap-1">
+              <History size={10} />
+              {finding.occurrence_count}x
+            </span>
+            
             {finding.is_accepted && (
               <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded-full border border-green-500/30 flex items-center gap-1">
                 <Check size={12} />
@@ -229,16 +274,25 @@ function FindingCard({
             </div>
           )}
           
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-xs text-slate-500">
-              {finding.domain}
-            </span>
-            {finding.report_date && (
+          {/* Timeline info */}
+          <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400">First seen:</span>
+              {formatDate(finding.first_seen)}
+            </div>
+            <span className="text-slate-600">•</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400">Last seen:</span>
+              {formatDate(finding.last_seen)}
+            </div>
+            {finding.domains.length > 1 && (
               <>
                 <span className="text-slate-600">•</span>
-                <span className="text-xs text-slate-500">
-                  {new Date(finding.report_date).toLocaleDateString()}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400">Domains:</span>
+                  {finding.domains.slice(0, 2).join(', ')}
+                  {finding.domains.length > 2 && ` +${finding.domains.length - 2}`}
+                </div>
               </>
             )}
           </div>
@@ -263,20 +317,13 @@ function FindingCard({
               Accept
             </button>
           )}
-          <button
-            onClick={() => onViewReport(finding.report_id)}
-            className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <ExternalLink size={14} />
-            Report
-          </button>
         </div>
       </div>
     </motion.div>
   )
 }
 
-// Domain Groups Section Component
+// Domain Groups Section Component (unchanged)
 function DomainGroupsSection({ domain }: { domain: string }) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -539,30 +586,42 @@ function DomainGroupsSection({ domain }: { domain: string }) {
   )
 }
 
-// PingCastle Section Component
+// PingCastle Section Component - Updated to use grouped findings
 function PingCastleSection({ domain }: { domain: string }) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('all')
+  const [latestFilter, setLatestFilter] = useState<LatestFilterKey>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showAccepted, setShowAccepted] = useState(true)
-  const [findingToAccept, setFindingToAccept] = useState<Finding | null>(null)
+  const [findingToAccept, setFindingToAccept] = useState<GroupedFinding | null>(null)
   
-  const { data: findings, isLoading } = useFindings({
+  const { data: groupedFindings, isLoading } = useGroupedFindings({
     domain: domain || undefined,
     category: selectedCategory !== 'all' ? selectedCategory : undefined,
     tool_type: 'pingcastle',
     include_accepted: showAccepted
   })
   
-  const { data: summary } = useFindingsSummary(domain || undefined)
+  const { data: summary } = useGroupedFindingsSummary(domain || undefined, 'pingcastle')
   
   const acceptRisk = useAcceptRisk()
   const removeAcceptedRisk = useRemoveAcceptedRisk()
   
-  // Filter findings by search
-  const filteredFindings = findings?.filter(f => 
-    f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.description.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || []
+  // Filter findings by search and latest report status
+  const filteredFindings = groupedFindings?.filter(f => {
+    // Search filter
+    const matchesSearch = f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.description.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    // Latest report filter
+    let matchesLatest = true
+    if (latestFilter === 'in_latest') {
+      matchesLatest = f.in_latest_report
+    } else if (latestFilter === 'not_in_latest') {
+      matchesLatest = !f.in_latest_report
+    }
+    
+    return matchesSearch && matchesLatest
+  }) || []
   
   const handleAccept = (reason: string, expiresAt?: string) => {
     if (!findingToAccept) return
@@ -578,7 +637,7 @@ function PingCastleSection({ domain }: { domain: string }) {
     setFindingToAccept(null)
   }
   
-  const handleRemove = (finding: Finding) => {
+  const handleRemove = (finding: GroupedFinding) => {
     removeAcceptedRisk.mutate({
       tool_type: finding.tool_type,
       category: finding.category,
@@ -586,28 +645,25 @@ function PingCastleSection({ domain }: { domain: string }) {
     })
   }
   
-  const handleViewReport = async (reportId: string) => {
-    try {
-      const response = await fetch(`/api/reports/${reportId}/html`)
-      if (response.ok) {
-        const data = await response.json()
-        window.open(data.html_url, '_blank')
-      } else {
-        window.location.href = `/reports`
-      }
-    } catch {
-      window.location.href = `/reports`
-    }
-  }
+  // Calculate stats for the in-latest indicator
+  const inLatestCount = filteredFindings.filter(f => f.in_latest_report).length
+  const notInLatestCount = filteredFindings.filter(f => !f.in_latest_report).length
   
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
+      {/* Summary Cards - Updated with new metrics */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-            <div className="text-3xl font-bold text-white mb-1">{summary.total_findings}</div>
-            <div className="text-sm text-slate-400">Total Findings</div>
+            <div className="text-3xl font-bold text-white mb-1">{summary.total_unique_findings}</div>
+            <div className="text-sm text-slate-400">Unique Findings</div>
+          </div>
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+            <div className="text-3xl font-bold text-cyan-400 mb-1 flex items-center gap-2">
+              {summary.total_in_latest}
+              <Activity className="w-5 h-5" />
+            </div>
+            <div className="text-sm text-slate-400">In Latest Report</div>
           </div>
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
             <div className="text-3xl font-bold text-red-400 mb-1">{summary.total_score}</div>
@@ -619,7 +675,7 @@ function PingCastleSection({ domain }: { domain: string }) {
           </div>
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
             <div className="text-3xl font-bold text-orange-400 mb-1">
-              {summary.total_findings - summary.total_accepted}
+              {summary.total_unique_findings - summary.total_accepted}
             </div>
             <div className="text-sm text-slate-400">Unaccepted</div>
           </div>
@@ -638,6 +694,46 @@ function PingCastleSection({ domain }: { domain: string }) {
             placeholder="Search findings..."
             className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
           />
+        </div>
+        
+        {/* Latest Report Filter */}
+        <div className="flex gap-2">
+          {Object.entries(LATEST_FILTER_OPTIONS).map(([key, config]) => {
+            const Icon = config.icon
+            const count = key === 'all' 
+              ? filteredFindings.length 
+              : key === 'in_latest' 
+                ? inLatestCount 
+                : notInLatestCount
+            
+            return (
+              <button
+                key={key}
+                onClick={() => setLatestFilter(key as LatestFilterKey)}
+                className={clsx(
+                  "px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 text-sm",
+                  latestFilter === key
+                    ? key === 'in_latest' 
+                      ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                      : key === 'not_in_latest'
+                        ? "bg-slate-700 border-slate-600 text-slate-300"
+                        : "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                    : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                )}
+              >
+                <Icon size={16} />
+                <span className="hidden md:inline">{config.label}</span>
+                <span className={clsx(
+                  "px-1.5 py-0.5 text-xs rounded-full",
+                  latestFilter === key
+                    ? "bg-cyan-500/30 text-cyan-300"
+                    : "bg-slate-700 text-slate-400"
+                )}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
         
         {/* Show Accepted Toggle */}
@@ -659,9 +755,9 @@ function PingCastleSection({ domain }: { domain: string }) {
       <div className="flex flex-wrap gap-2">
         {Object.entries(PINGCASTLE_CATEGORIES).map(([key, config]) => {
           const Icon = config.icon
-          const count = key === 'all' 
-            ? summary?.total_findings || 0
-            : summary?.categories?.[key as keyof typeof summary.categories]?.total || 0
+          const categoryData = key === 'all' 
+            ? { total: summary?.total_unique_findings || 0, in_latest: summary?.total_in_latest || 0 }
+            : summary?.categories?.[key as keyof typeof summary.categories] || { total: 0, in_latest: 0 }
           
           return (
             <button
@@ -676,14 +772,27 @@ function PingCastleSection({ domain }: { domain: string }) {
             >
               <Icon size={18} />
               <span>{config.label}</span>
-              <span className={clsx(
-                "px-2 py-0.5 text-xs rounded-full",
-                selectedCategory === key
-                  ? "bg-cyan-500/30 text-cyan-300"
-                  : "bg-slate-700 text-slate-400"
-              )}>
-                {count}
-              </span>
+              <div className="flex items-center gap-1">
+                <span className={clsx(
+                  "px-2 py-0.5 text-xs rounded-full",
+                  selectedCategory === key
+                    ? "bg-cyan-500/30 text-cyan-300"
+                    : "bg-slate-700 text-slate-400"
+                )}>
+                  {categoryData.total}
+                </span>
+                {categoryData.in_latest > 0 && (
+                  <span className={clsx(
+                    "px-1.5 py-0.5 text-xs rounded-full flex items-center gap-0.5",
+                    selectedCategory === key
+                      ? "bg-cyan-400/20 text-cyan-300"
+                      : "bg-cyan-500/10 text-cyan-400/70"
+                  )}>
+                    <Activity size={10} />
+                    {categoryData.in_latest}
+                  </span>
+                )}
+              </div>
             </button>
           )
         })}
@@ -705,12 +814,11 @@ function PingCastleSection({ domain }: { domain: string }) {
         ) : (
           <AnimatePresence mode="popLayout">
             {filteredFindings.map((finding) => (
-              <FindingCard
-                key={`${finding.report_id}-${finding.name}`}
+              <GroupedFindingCard
+                key={`${finding.tool_type}-${finding.category}-${finding.name}`}
                 finding={finding}
                 onAccept={setFindingToAccept}
                 onRemove={handleRemove}
-                onViewReport={handleViewReport}
               />
             ))}
           </AnimatePresence>
@@ -753,7 +861,11 @@ export function RiskCatalog() {
         <div>
           <h1 className="text-3xl font-orbitron text-white mb-2">Risk Catalog</h1>
           <p className="text-slate-400">
-            Unified security findings from all tools • Accept findings to manage alerts
+            Unified security findings grouped by type • 
+            <span className="text-cyan-400 ml-1 inline-flex items-center gap-1">
+              <Activity size={14} />
+              In Latest
+            </span> shows active findings
           </p>
         </div>
         
