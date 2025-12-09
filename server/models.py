@@ -194,3 +194,138 @@ class GroupRiskConfig(BaseModel):
     max_acceptable_members: int = 5
     alert_threshold: int = 10
     description: Optional[str] = None
+
+
+# =============================================================================
+# API Upload Models - For programmatic report submission
+# =============================================================================
+
+class APIFindingInput(BaseModel):
+    """Input model for a single finding in API upload."""
+    category: str
+    name: str
+    score: int = 0
+    severity: str = "medium"
+    description: str = ""
+    recommendation: str = ""
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class APIPingCastleScores(BaseModel):
+    """PingCastle-specific scores for API upload."""
+    global_score: Optional[int] = None
+    stale_objects_score: Optional[int] = 0
+    privileged_accounts_score: Optional[int] = 0
+    trusts_score: Optional[int] = 0
+    anomalies_score: Optional[int] = 0
+
+
+class APIDomainMetadata(BaseModel):
+    """Domain metadata for API upload."""
+    domain_sid: Optional[str] = None
+    domain_functional_level: Optional[str] = None
+    forest_functional_level: Optional[str] = None
+    maturity_level: Optional[str] = None
+    dc_count: Optional[int] = None
+    user_count: Optional[int] = None
+    computer_count: Optional[int] = None
+
+
+class APIGroupMember(BaseModel):
+    """Group member data for domain group analysis uploads."""
+    name: str
+    samaccountname: Optional[str] = ""
+    sid: Optional[str] = ""
+    type: str = "user"  # user, computer, group
+    enabled: Optional[bool] = None
+
+
+class APIGroupData(BaseModel):
+    """Group data for domain analysis uploads."""
+    group_name: str
+    members: List[APIGroupMember] = Field(default_factory=list)
+    group_sid: Optional[str] = ""
+    group_type: str = "security"
+
+
+class APIUploadRequest(BaseModel):
+    """
+    Request model for programmatic API report uploads.
+    
+    Supports multiple upload modes:
+    1. Full report with findings - provide domain, tool_type, and findings
+    2. PingCastle data - provide domain, tool_type=pingcastle, pingcastle_scores, and optionally findings
+    3. Domain group data - provide domain, tool_type=domain_analysis, and groups
+    
+    Examples:
+        # Upload PingCastle-style findings
+        {
+            "domain": "CORP.LOCAL",
+            "tool_type": "pingcastle",
+            "report_date": "2024-01-15T10:30:00Z",
+            "pingcastle_scores": {"global_score": 45, "stale_objects_score": 10},
+            "findings": [{"category": "PrivilegedAccounts", "name": "AdminSDHolder", "score": 15}]
+        }
+        
+        # Upload domain group membership data
+        {
+            "domain": "CORP.LOCAL", 
+            "tool_type": "domain_analysis",
+            "groups": [
+                {"group_name": "Domain Admins", "members": [{"name": "admin1", "type": "user"}]}
+            ]
+        }
+    """
+    # Required fields
+    domain: str = Field(..., description="Domain name (e.g., CORP.LOCAL)")
+    tool_type: SecurityToolType = Field(..., description="Security tool type")
+    
+    # Optional report metadata
+    report_date: Optional[datetime] = Field(None, description="Report generation date (defaults to now)")
+    
+    # Domain metadata (optional)
+    domain_metadata: Optional[APIDomainMetadata] = None
+    
+    # PingCastle-specific scores (optional, for pingcastle tool_type)
+    pingcastle_scores: Optional[APIPingCastleScores] = None
+    
+    # Findings list (optional, can be empty)
+    findings: List[APIFindingInput] = Field(default_factory=list, description="List of security findings")
+    
+    # Domain group data (optional, for domain_analysis tool_type)
+    groups: List[APIGroupData] = Field(default_factory=list, description="List of domain groups with members")
+    
+    # Additional metadata
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional report metadata")
+    
+    # Alert configuration
+    send_alert: bool = Field(True, description="Send webhook alert for unaccepted findings")
+
+
+class APIUploadResponse(BaseModel):
+    """Response model for API upload endpoints."""
+    status: str = "success"
+    report_id: str
+    tool_type: SecurityToolType
+    domain: str
+    findings_count: int = 0
+    groups_processed: int = 0
+    message: str = ""
+    alert_sent: bool = False
+    
+    # Additional details
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class APIBulkUploadRequest(BaseModel):
+    """Request model for bulk API uploads."""
+    reports: List[APIUploadRequest] = Field(..., description="List of reports to upload")
+
+
+class APIBulkUploadResponse(BaseModel):
+    """Response model for bulk API uploads."""
+    status: str = "success"
+    total_reports: int = 0
+    successful: int = 0
+    failed: int = 0
+    results: List[Dict[str, Any]] = Field(default_factory=list)

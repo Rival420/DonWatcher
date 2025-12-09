@@ -181,6 +181,98 @@ export interface GroupedCategorySummary {
   in_latest: number
 }
 
+// =============================================================================
+// API Upload Types - For programmatic report submission
+// =============================================================================
+
+export type SecurityToolType = 'pingcastle' | 'locksmith' | 'domain_analysis' | 'domain_group_members' | 'custom'
+
+export interface APIFindingInput {
+  category: string
+  name: string
+  score?: number
+  severity?: 'critical' | 'high' | 'medium' | 'low'
+  description?: string
+  recommendation?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface APIPingCastleScores {
+  global_score?: number
+  stale_objects_score?: number
+  privileged_accounts_score?: number
+  trusts_score?: number
+  anomalies_score?: number
+}
+
+export interface APIDomainMetadata {
+  domain_sid?: string
+  domain_functional_level?: string
+  forest_functional_level?: string
+  maturity_level?: string
+  dc_count?: number
+  user_count?: number
+  computer_count?: number
+}
+
+export interface APIGroupMemberInput {
+  name: string
+  samaccountname?: string
+  sid?: string
+  type?: 'user' | 'computer' | 'group'
+  enabled?: boolean
+}
+
+export interface APIGroupData {
+  group_name: string
+  members: APIGroupMemberInput[]
+  group_sid?: string
+  group_type?: string
+}
+
+export interface APIUploadRequest {
+  domain: string
+  tool_type: SecurityToolType
+  report_date?: string
+  domain_metadata?: APIDomainMetadata
+  pingcastle_scores?: APIPingCastleScores
+  findings?: APIFindingInput[]
+  groups?: APIGroupData[]
+  metadata?: Record<string, unknown>
+  send_alert?: boolean
+}
+
+export interface APIUploadResponse {
+  status: 'success' | 'error' | 'partial'
+  report_id: string
+  tool_type: SecurityToolType
+  domain: string
+  findings_count: number
+  groups_processed: number
+  message: string
+  alert_sent: boolean
+  details?: Record<string, unknown>
+}
+
+export interface APIBulkUploadRequest {
+  reports: APIUploadRequest[]
+}
+
+export interface APIBulkUploadResponse {
+  status: 'success' | 'partial' | 'error'
+  total_reports: number
+  successful: number
+  failed: number
+  results: Array<{
+    status: 'success' | 'error'
+    domain: string
+    tool_type: string
+    report_id?: string
+    findings_count?: number
+    error?: string
+  }>
+}
+
 // UI Types
 export type Theme = 'dark' | 'light'
 

@@ -22,6 +22,7 @@ from server.storage_postgres import PostgresReportStorage, get_storage
 from server.parser import PingCastleParser
 from server.alerter import Alerter
 from server.routers import settings as settings_router
+from server.routers import upload as upload_router
 from server.database import init_database, engine
 from server.migration_runner import run_migrations_on_startup, get_migration_status
 from server.health_check import get_database_health, get_quick_health
@@ -121,6 +122,7 @@ MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MB
 
 # Include routers
 app.include_router(settings_router.router)
+app.include_router(upload_router.router)
 
 
 @app.middleware("http")
