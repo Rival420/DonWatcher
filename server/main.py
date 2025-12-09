@@ -466,6 +466,57 @@ def get_findings_summary(
     }
 
 
+@app.get("/api/findings/grouped")
+def get_grouped_findings(
+    domain: Optional[str] = None,
+    category: Optional[str] = None,
+    tool_type: Optional[SecurityToolType] = None,
+    include_accepted: bool = True,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get findings grouped by (tool_type, category, name) with occurrence counts.
+    
+    Returns unique findings aggregated across all reports, showing:
+    - occurrence_count: How many times this finding appeared across reports
+    - in_latest_report: Whether this finding is present in the most recent report
+    - first_seen: Date when this finding was first observed
+    - last_seen: Date when this finding was most recently observed
+    - domains: List of domains where this finding was observed
+    
+    Query parameters:
+    - domain: Filter by domain name
+    - category: Filter by category (PrivilegedAccounts, StaleObjects, Trusts, Anomalies)
+    - tool_type: Filter by security tool type (default: pingcastle)
+    - include_accepted: Whether to include accepted findings (default: True)
+    """
+    tool_type_str = tool_type.value if tool_type else None
+    findings = storage.get_grouped_findings(
+        domain=domain,
+        category=category,
+        tool_type=tool_type_str,
+        include_accepted=include_accepted
+    )
+    return findings
+
+
+@app.get("/api/findings/grouped/summary")
+def get_grouped_findings_summary(
+    domain: Optional[str] = None,
+    tool_type: Optional[SecurityToolType] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get a summary of grouped findings by category.
+    
+    Returns aggregated counts showing unique findings rather than total occurrences,
+    with additional in_latest counts per category.
+    """
+    tool_type_str = tool_type.value if tool_type else None
+    return storage.get_grouped_findings_summary(
+        domain=domain,
+        tool_type=tool_type_str
+    )
+
+
 @app.get("/api/reports/{report_id}/findings")
 def get_report_findings(
     report_id: str,

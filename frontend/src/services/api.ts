@@ -8,7 +8,9 @@ import type {
   GroupMember,
   Finding,
   FindingsSummary,
-  AcceptRiskRequest
+  AcceptRiskRequest,
+  GroupedFinding,
+  GroupedFindingsSummary
 } from '../types'
 
 const API_BASE = '/api'
@@ -187,5 +189,33 @@ export async function removeAcceptedRisk(request: AcceptRiskRequest): Promise<vo
     method: 'DELETE',
     body: JSON.stringify(request),
   })
+}
+
+// Grouped Findings (Risk Catalog - aggregated view)
+export async function getGroupedFindings(params?: {
+  domain?: string
+  category?: string
+  tool_type?: string
+  include_accepted?: boolean
+}): Promise<GroupedFinding[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.domain) searchParams.append('domain', params.domain)
+  if (params?.category) searchParams.append('category', params.category)
+  if (params?.tool_type) searchParams.append('tool_type', params.tool_type)
+  if (params?.include_accepted !== undefined) {
+    searchParams.append('include_accepted', String(params.include_accepted))
+  }
+  
+  const query = searchParams.toString()
+  return fetchJSON<GroupedFinding[]>(`${API_BASE}/findings/grouped${query ? `?${query}` : ''}`)
+}
+
+export async function getGroupedFindingsSummary(domain?: string, tool_type?: string): Promise<GroupedFindingsSummary> {
+  const searchParams = new URLSearchParams()
+  if (domain) searchParams.append('domain', domain)
+  if (tool_type) searchParams.append('tool_type', tool_type)
+  
+  const query = searchParams.toString()
+  return fetchJSON<GroupedFindingsSummary>(`${API_BASE}/findings/grouped/summary${query ? `?${query}` : ''}`)
 }
 

@@ -137,6 +137,50 @@ export interface AcceptRiskRequest {
   expires_at?: string
 }
 
+// Grouped Finding - represents a finding aggregated across multiple reports
+export interface GroupedFinding {
+  tool_type: string
+  category: 'PrivilegedAccounts' | 'StaleObjects' | 'Trusts' | 'Anomalies' | string
+  name: string  // RiskId (e.g., "P-PrivilegeEveryone")
+  description: string
+  recommendation: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  max_score: number
+  min_score: number
+  avg_score: number
+  occurrence_count: number  // How many times this finding appeared
+  first_seen: string | null
+  last_seen: string | null
+  domains: string[]
+  report_ids: string[]
+  in_latest_report: boolean  // Whether present in the most recent report
+  is_accepted: boolean
+  accepted_reason: string | null
+  accepted_by: string | null
+  accepted_at: string | null
+  expires_at: string | null
+}
+
+export interface GroupedFindingsSummary {
+  categories: {
+    PrivilegedAccounts: GroupedCategorySummary
+    StaleObjects: GroupedCategorySummary
+    Trusts: GroupedCategorySummary
+    Anomalies: GroupedCategorySummary
+  }
+  total_unique_findings: number
+  total_accepted: number
+  total_in_latest: number
+  total_score: number
+}
+
+export interface GroupedCategorySummary {
+  total: number
+  accepted: number
+  total_score: number
+  in_latest: number
+}
+
 // UI Types
 export type Theme = 'dark' | 'light'
 

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, FileText, CheckCircle, XCircle, X, FileUp } from 'lucide-react'
+import { FileText, CheckCircle, XCircle, X, FileUp } from 'lucide-react'
 import { useUpload } from '../hooks/useApi'
 import { clsx } from 'clsx'
 
