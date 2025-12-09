@@ -228,3 +228,99 @@ export async function getGroupedFindingsSummary(domain?: string, tool_type?: str
   return fetchJSON<GroupedFindingsSummary>(`${API_BASE}/findings/grouped/summary${query ? `?${query}` : ''}`)
 }
 
+// =============================================================================
+// API Upload Methods - For programmatic report submission
+// =============================================================================
+
+/**
+ * Upload a report via JSON API (programmatic upload)
+ * Use this for integrating with scripts, CI/CD, or external tools
+ */
+export async function uploadReportAPI(request: APIUploadRequest): Promise<APIUploadResponse> {
+  return fetchJSON<APIUploadResponse>(`${API_BASE}/upload/report`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Bulk upload multiple reports via JSON API
+ */
+export async function uploadReportsBulkAPI(request: APIBulkUploadRequest): Promise<APIBulkUploadResponse> {
+  return fetchJSON<APIBulkUploadResponse>(`${API_BASE}/upload/reports`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Upload PingCastle data via API
+ */
+export async function uploadPingCastleAPI(
+  domain: string,
+  findings: APIFindingInput[],
+  options?: {
+    pingcastle_scores?: APIPingCastleScores
+    domain_metadata?: APIDomainMetadata
+    report_date?: string
+    send_alert?: boolean
+  }
+): Promise<APIUploadResponse> {
+  const request: APIUploadRequest = {
+    domain,
+    tool_type: 'pingcastle',
+    findings,
+    ...options,
+  }
+  return uploadReportAPI(request)
+}
+
+/**
+ * Upload domain group membership data via API
+ */
+export async function uploadDomainGroupsAPI(
+  domain: string,
+  groups: APIGroupData[],
+  options?: {
+    domain_metadata?: APIDomainMetadata
+    report_date?: string
+    send_alert?: boolean
+  }
+): Promise<APIUploadResponse> {
+  const request: APIUploadRequest = {
+    domain,
+    tool_type: 'domain_analysis',
+    groups,
+    ...options,
+  }
+  return uploadReportAPI(request)
+}
+
+/**
+ * Upload custom findings via API
+ */
+export async function uploadFindingsAPI(
+  domain: string,
+  findings: APIFindingInput[],
+  tool_type: SecurityToolType = 'custom',
+  options?: {
+    report_date?: string
+    send_alert?: boolean
+  }
+): Promise<APIUploadResponse> {
+  const request: APIUploadRequest = {
+    domain,
+    tool_type,
+    findings,
+    ...options,
+  }
+  return uploadReportAPI(request)
+}
+
+/**
+ * Check health of the upload API
+ */
+export async function getUploadAPIHealth(): Promise<{ status: string; module: string; endpoints: string[] }> {
+  return fetchJSON(`${API_BASE}/upload/health`)
+}
+
