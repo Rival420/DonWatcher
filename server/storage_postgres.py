@@ -169,19 +169,101 @@ class PostgresReportStorage:
                         else:
                             raise
 
-                # Save findings
+                # Save findings and calculate stats for KPIs
+                findings_stats = {'total': 0, 'high': 0, 'medium': 0, 'low': 0}
                 for finding in report.findings:
                     self._save_finding(session, finding)
                     self._save_risk_to_catalog(session, finding)
+                    # Count findings by severity for KPIs
+                    findings_stats['total'] += 1
+                    severity = finding.severity.lower() if finding.severity else 'medium'
+                    if severity == 'high':
+                        findings_stats['high'] += 1
+                    elif severity == 'medium':
+                        findings_stats['medium'] += 1
+                    elif severity == 'low':
+                        findings_stats['low'] += 1
 
                 session.commit()
                 logging.info(f"Saved report {report.id} with {len(report.findings)} findings")
+                
+                # Save KPIs for dashboard performance (after commit to ensure report exists)
+                try:
+                    self._save_report_kpis_internal(report, findings_stats)
+                except Exception as kpi_error:
+                    # Log but don't fail the report save if KPI save fails
+                    logging.warning(f"Failed to save KPIs for report {report.id}: {kpi_error}")
+                
                 return report.id
 
             except Exception as e:
                 session.rollback()
                 logging.error(f"Failed to save report: {e}")
                 raise
+    
+    def _save_report_kpis_internal(self, report: Report, findings_stats: Dict) -> None:
+        """Internal method to save KPIs within the save_report transaction context."""
+        with self._get_session() as session:
+            try:
+                session.execute(text("""
+                    INSERT INTO reports_kpis (
+                        report_id, tool_type, domain, report_date,
+                        global_score, stale_objects_score, privileged_accounts_score,
+                        trusts_score, anomalies_score,
+                        user_count, computer_count, dc_count,
+                        total_findings, high_severity_findings, 
+                        medium_severity_findings, low_severity_findings
+                    ) VALUES (
+                        :report_id, :tool_type, :domain, :report_date,
+                        :global_score, :stale_objects_score, :privileged_accounts_score,
+                        :trusts_score, :anomalies_score,
+                        :user_count, :computer_count, :dc_count,
+                        :total_findings, :high_severity_findings,
+                        :medium_severity_findings, :low_severity_findings
+                    )
+                    ON CONFLICT (report_id) DO UPDATE SET
+                        tool_type = EXCLUDED.tool_type,
+                        domain = EXCLUDED.domain,
+                        report_date = EXCLUDED.report_date,
+                        global_score = EXCLUDED.global_score,
+                        stale_objects_score = EXCLUDED.stale_objects_score,
+                        privileged_accounts_score = EXCLUDED.privileged_accounts_score,
+                        trusts_score = EXCLUDED.trusts_score,
+                        anomalies_score = EXCLUDED.anomalies_score,
+                        user_count = EXCLUDED.user_count,
+                        computer_count = EXCLUDED.computer_count,
+                        dc_count = EXCLUDED.dc_count,
+                        total_findings = EXCLUDED.total_findings,
+                        high_severity_findings = EXCLUDED.high_severity_findings,
+                        medium_severity_findings = EXCLUDED.medium_severity_findings,
+                        low_severity_findings = EXCLUDED.low_severity_findings,
+                        updated_at = NOW()
+                """), {
+                    'report_id': report.id,
+                    'tool_type': report.tool_type.value,
+                    'domain': report.domain,
+                    'report_date': report.report_date,
+                    'global_score': report.global_score or 0,
+                    'stale_objects_score': report.stale_objects_score or 0,
+                    'privileged_accounts_score': report.privileged_accounts_score or 0,
+                    'trusts_score': report.trusts_score or 0,
+                    'anomalies_score': report.anomalies_score or 0,
+                    'user_count': report.user_count or 0,
+                    'computer_count': report.computer_count or 0,
+                    'dc_count': report.dc_count or 0,
+                    'total_findings': findings_stats.get('total', 0),
+                    'high_severity_findings': findings_stats.get('high', 0),
+                    'medium_severity_findings': findings_stats.get('medium', 0),
+                    'low_severity_findings': findings_stats.get('low', 0)
+                })
+                session.commit()
+                logging.info(f"Saved KPIs for report {report.id}")
+            except Exception as e:
+                # Table might not exist if migration hasn't run
+                if "reports_kpis" in str(e) and "does not exist" in str(e):
+                    logging.warning("reports_kpis table does not exist yet - skipping KPI save")
+                else:
+                    raise
 
     def _save_finding(self, session: Session, finding: Finding):
         """Save a finding to the database."""
@@ -1295,3 +1377,500 @@ class PostgresReportStorage:
             "total_in_latest": total_in_latest,
             "total_score": sum(f.get("max_score", 0) for f in grouped)
         }
+
+    # ==========================================================================
+    # Reports KPIs - Pre-aggregated metrics for dashboard performance
+    # ==========================================================================
+    
+    def save_report_kpis(self, report: Report, findings_stats: Dict = None) -> str:
+        """
+        Save or update KPIs for a report. 
+        Called automatically after saving a report.
+        
+        Args:
+            report: The Report object
+            findings_stats: Optional pre-computed findings statistics
+            
+        Returns:
+            KPI record ID
+        """
+        with self._get_session() as session:
+            try:
+                # Calculate findings stats if not provided
+                if findings_stats is None:
+                    result = session.execute(text("""
+                        SELECT 
+                            COUNT(*) as total,
+                            COUNT(*) FILTER (WHERE severity = 'high') as high,
+                            COUNT(*) FILTER (WHERE severity = 'medium') as medium,
+                            COUNT(*) FILTER (WHERE severity = 'low') as low
+                        FROM findings 
+                        WHERE report_id = :report_id
+                    """), {'report_id': report.id}).fetchone()
+                    
+                    findings_stats = {
+                        'total': result.total if result else 0,
+                        'high': result.high if result else 0,
+                        'medium': result.medium if result else 0,
+                        'low': result.low if result else 0
+                    }
+                
+                # Insert or update KPIs
+                result = session.execute(text("""
+                    INSERT INTO reports_kpis (
+                        report_id, tool_type, domain, report_date,
+                        global_score, stale_objects_score, privileged_accounts_score,
+                        trusts_score, anomalies_score,
+                        user_count, computer_count, dc_count,
+                        total_findings, high_severity_findings, 
+                        medium_severity_findings, low_severity_findings
+                    ) VALUES (
+                        :report_id, :tool_type, :domain, :report_date,
+                        :global_score, :stale_objects_score, :privileged_accounts_score,
+                        :trusts_score, :anomalies_score,
+                        :user_count, :computer_count, :dc_count,
+                        :total_findings, :high_severity_findings,
+                        :medium_severity_findings, :low_severity_findings
+                    )
+                    ON CONFLICT (report_id) DO UPDATE SET
+                        tool_type = EXCLUDED.tool_type,
+                        domain = EXCLUDED.domain,
+                        report_date = EXCLUDED.report_date,
+                        global_score = EXCLUDED.global_score,
+                        stale_objects_score = EXCLUDED.stale_objects_score,
+                        privileged_accounts_score = EXCLUDED.privileged_accounts_score,
+                        trusts_score = EXCLUDED.trusts_score,
+                        anomalies_score = EXCLUDED.anomalies_score,
+                        user_count = EXCLUDED.user_count,
+                        computer_count = EXCLUDED.computer_count,
+                        dc_count = EXCLUDED.dc_count,
+                        total_findings = EXCLUDED.total_findings,
+                        high_severity_findings = EXCLUDED.high_severity_findings,
+                        medium_severity_findings = EXCLUDED.medium_severity_findings,
+                        low_severity_findings = EXCLUDED.low_severity_findings,
+                        updated_at = NOW()
+                    RETURNING id
+                """), {
+                    'report_id': report.id,
+                    'tool_type': report.tool_type.value,
+                    'domain': report.domain,
+                    'report_date': report.report_date,
+                    'global_score': report.global_score or 0,
+                    'stale_objects_score': report.stale_objects_score or 0,
+                    'privileged_accounts_score': report.privileged_accounts_score or 0,
+                    'trusts_score': report.trusts_score or 0,
+                    'anomalies_score': report.anomalies_score or 0,
+                    'user_count': report.user_count or 0,
+                    'computer_count': report.computer_count or 0,
+                    'dc_count': report.dc_count or 0,
+                    'total_findings': findings_stats.get('total', 0),
+                    'high_severity_findings': findings_stats.get('high', 0),
+                    'medium_severity_findings': findings_stats.get('medium', 0),
+                    'low_severity_findings': findings_stats.get('low', 0)
+                })
+                
+                kpi_id = str(result.scalar())
+                session.commit()
+                logging.info(f"Saved KPIs for report {report.id}")
+                return kpi_id
+                
+            except Exception as e:
+                session.rollback()
+                logging.error(f"Failed to save report KPIs: {e}")
+                raise
+
+    def update_report_kpis_group_metrics(
+        self, 
+        report_id: str,
+        total_groups: int,
+        total_members: int,
+        accepted_members: int,
+        unaccepted_members: int,
+        risk_score: float = 0.0
+    ) -> None:
+        """
+        Update group-related KPIs for a report.
+        Called after processing domain group data.
+        
+        Args:
+            report_id: Report ID to update
+            total_groups: Total number of groups
+            total_members: Total group members across all groups
+            accepted_members: Number of accepted members
+            unaccepted_members: Number of unaccepted members
+            risk_score: Domain group risk score
+        """
+        with self._get_session() as session:
+            try:
+                session.execute(text("""
+                    UPDATE reports_kpis SET
+                        total_groups = :total_groups,
+                        total_group_members = :total_members,
+                        accepted_group_members = :accepted_members,
+                        unaccepted_group_members = :unaccepted_members,
+                        domain_group_risk_score = :risk_score,
+                        updated_at = NOW()
+                    WHERE report_id = :report_id
+                """), {
+                    'report_id': report_id,
+                    'total_groups': total_groups,
+                    'total_members': total_members,
+                    'accepted_members': accepted_members,
+                    'unaccepted_members': unaccepted_members,
+                    'risk_score': risk_score
+                })
+                session.commit()
+                logging.info(f"Updated group KPIs for report {report_id}")
+                
+            except Exception as e:
+                session.rollback()
+                logging.error(f"Failed to update group KPIs: {e}")
+                raise
+
+    def get_dashboard_kpis(self, domain: Optional[str] = None) -> Dict:
+        """
+        Get dashboard KPIs optimized for fast loading.
+        Returns latest KPIs for the specified domain or all domains.
+        
+        Args:
+            domain: Optional domain filter. If None, returns KPIs for latest domain.
+            
+        Returns:
+            Dictionary with dashboard KPI data
+        """
+        with self._get_session() as session:
+            try:
+                if domain:
+                    # Get latest KPIs for specific domain
+                    query = text("""
+                        SELECT 
+                            rk.id,
+                            rk.report_id,
+                            rk.tool_type,
+                            rk.domain,
+                            rk.report_date,
+                            rk.global_score,
+                            rk.stale_objects_score,
+                            rk.privileged_accounts_score,
+                            rk.trusts_score,
+                            rk.anomalies_score,
+                            rk.user_count,
+                            rk.computer_count,
+                            rk.dc_count,
+                            rk.total_findings,
+                            rk.high_severity_findings,
+                            rk.medium_severity_findings,
+                            rk.low_severity_findings,
+                            rk.total_groups,
+                            rk.total_group_members,
+                            rk.accepted_group_members,
+                            rk.unaccepted_group_members,
+                            rk.domain_group_risk_score,
+                            r.domain_sid,
+                            r.domain_functional_level,
+                            r.forest_functional_level,
+                            r.maturity_level
+                        FROM reports_kpis rk
+                        JOIN reports r ON rk.report_id = r.id
+                        WHERE rk.domain = :domain
+                        ORDER BY rk.report_date DESC
+                        LIMIT 1
+                    """)
+                    result = session.execute(query, {'domain': domain}).fetchone()
+                else:
+                    # Get latest KPIs across all domains
+                    query = text("""
+                        SELECT 
+                            rk.id,
+                            rk.report_id,
+                            rk.tool_type,
+                            rk.domain,
+                            rk.report_date,
+                            rk.global_score,
+                            rk.stale_objects_score,
+                            rk.privileged_accounts_score,
+                            rk.trusts_score,
+                            rk.anomalies_score,
+                            rk.user_count,
+                            rk.computer_count,
+                            rk.dc_count,
+                            rk.total_findings,
+                            rk.high_severity_findings,
+                            rk.medium_severity_findings,
+                            rk.low_severity_findings,
+                            rk.total_groups,
+                            rk.total_group_members,
+                            rk.accepted_group_members,
+                            rk.unaccepted_group_members,
+                            rk.domain_group_risk_score,
+                            r.domain_sid,
+                            r.domain_functional_level,
+                            r.forest_functional_level,
+                            r.maturity_level
+                        FROM reports_kpis rk
+                        JOIN reports r ON rk.report_id = r.id
+                        ORDER BY rk.report_date DESC
+                        LIMIT 1
+                    """)
+                    result = session.execute(query).fetchone()
+                
+                if not result:
+                    return {
+                        'status': 'no_data',
+                        'message': 'No reports found'
+                    }
+                
+                return {
+                    'status': 'ok',
+                    'kpis': {
+                        'id': str(result.id),
+                        'report_id': str(result.report_id),
+                        'tool_type': result.tool_type,
+                        'domain': result.domain,
+                        'report_date': result.report_date.isoformat(),
+                        'domain_sid': result.domain_sid,
+                        'domain_functional_level': result.domain_functional_level,
+                        'forest_functional_level': result.forest_functional_level,
+                        'maturity_level': result.maturity_level,
+                        'global_score': result.global_score,
+                        'stale_objects_score': result.stale_objects_score,
+                        'privileged_accounts_score': result.privileged_accounts_score,
+                        'trusts_score': result.trusts_score,
+                        'anomalies_score': result.anomalies_score,
+                        'user_count': result.user_count,
+                        'computer_count': result.computer_count,
+                        'dc_count': result.dc_count,
+                        'total_findings': result.total_findings,
+                        'high_severity_findings': result.high_severity_findings,
+                        'medium_severity_findings': result.medium_severity_findings,
+                        'low_severity_findings': result.low_severity_findings,
+                        'total_groups': result.total_groups,
+                        'total_group_members': result.total_group_members,
+                        'accepted_group_members': result.accepted_group_members,
+                        'unaccepted_group_members': result.unaccepted_group_members,
+                        'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0
+                    }
+                }
+                
+            except Exception as e:
+                logging.error(f"Failed to get dashboard KPIs: {e}")
+                # Fallback: return basic data from reports table
+                return self._get_fallback_dashboard_kpis(session, domain)
+
+    def _get_fallback_dashboard_kpis(self, session, domain: Optional[str] = None) -> Dict:
+        """Fallback method if reports_kpis table doesn't exist yet."""
+        try:
+            if domain:
+                query = text("""
+                    SELECT r.*, 
+                           COUNT(f.id) as total_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'high') as high_severity_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'medium') as medium_severity_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'low') as low_severity_findings
+                    FROM reports r
+                    LEFT JOIN findings f ON r.id = f.report_id
+                    WHERE r.domain = :domain
+                    GROUP BY r.id
+                    ORDER BY r.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query, {'domain': domain}).fetchone()
+            else:
+                query = text("""
+                    SELECT r.*, 
+                           COUNT(f.id) as total_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'high') as high_severity_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'medium') as medium_severity_findings,
+                           COUNT(f.id) FILTER (WHERE f.severity = 'low') as low_severity_findings
+                    FROM reports r
+                    LEFT JOIN findings f ON r.id = f.report_id
+                    GROUP BY r.id
+                    ORDER BY r.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query).fetchone()
+            
+            if not result:
+                return {'status': 'no_data', 'message': 'No reports found'}
+            
+            return {
+                'status': 'ok',
+                'fallback': True,
+                'kpis': {
+                    'report_id': str(result.id),
+                    'tool_type': result.tool_type,
+                    'domain': result.domain,
+                    'report_date': result.report_date.isoformat(),
+                    'domain_sid': result.domain_sid,
+                    'global_score': result.pingcastle_global_score or 0,
+                    'stale_objects_score': result.stale_objects_score or 0,
+                    'privileged_accounts_score': result.privileged_accounts_score or 0,
+                    'trusts_score': result.trusts_score or 0,
+                    'anomalies_score': result.anomalies_score or 0,
+                    'user_count': result.user_count or 0,
+                    'computer_count': result.computer_count or 0,
+                    'dc_count': result.dc_count or 0,
+                    'total_findings': result.total_findings or 0,
+                    'high_severity_findings': result.high_severity_findings or 0,
+                    'medium_severity_findings': result.medium_severity_findings or 0,
+                    'low_severity_findings': result.low_severity_findings or 0,
+                    'total_groups': 0,
+                    'total_group_members': 0,
+                    'accepted_group_members': 0,
+                    'unaccepted_group_members': 0,
+                    'domain_group_risk_score': 0.0
+                }
+            }
+        except Exception as e:
+            logging.error(f"Fallback dashboard KPIs also failed: {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def get_dashboard_kpis_history(
+        self, 
+        domain: str, 
+        limit: int = 10,
+        tool_type: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get historical KPIs for trend charts.
+        
+        Args:
+            domain: Domain to get history for
+            limit: Maximum number of historical points
+            tool_type: Optional filter by tool type
+            
+        Returns:
+            List of historical KPI data points
+        """
+        with self._get_session() as session:
+            try:
+                query = text("""
+                    SELECT 
+                        report_date,
+                        global_score,
+                        stale_objects_score,
+                        privileged_accounts_score,
+                        trusts_score,
+                        anomalies_score,
+                        unaccepted_group_members,
+                        total_findings,
+                        domain_group_risk_score
+                    FROM reports_kpis
+                    WHERE domain = :domain
+                    """ + (" AND tool_type = :tool_type" if tool_type else "") + """
+                    ORDER BY report_date DESC
+                    LIMIT :limit
+                """)
+                
+                params = {'domain': domain, 'limit': limit}
+                if tool_type:
+                    params['tool_type'] = tool_type
+                
+                results = session.execute(query, params).fetchall()
+                
+                # Return in chronological order (oldest first)
+                return [
+                    {
+                        'date': r.report_date.isoformat(),
+                        'global_score': r.global_score,
+                        'stale_objects_score': r.stale_objects_score,
+                        'privileged_accounts_score': r.privileged_accounts_score,
+                        'trusts_score': r.trusts_score,
+                        'anomalies_score': r.anomalies_score,
+                        'unaccepted_group_members': r.unaccepted_group_members,
+                        'total_findings': r.total_findings,
+                        'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                    }
+                    for r in reversed(results)
+                ]
+                
+            except Exception as e:
+                logging.error(f"Failed to get KPI history: {e}")
+                # Fallback to reports table
+                return self._get_fallback_kpi_history(session, domain, limit)
+
+    def _get_fallback_kpi_history(self, session, domain: str, limit: int = 10) -> List[Dict]:
+        """Fallback method for KPI history if reports_kpis doesn't exist."""
+        try:
+            query = text("""
+                SELECT 
+                    report_date,
+                    pingcastle_global_score as global_score,
+                    stale_objects_score,
+                    privileged_accounts_score,
+                    trusts_score,
+                    anomalies_score
+                FROM reports
+                WHERE domain = :domain AND tool_type = 'pingcastle'
+                ORDER BY report_date DESC
+                LIMIT :limit
+            """)
+            
+            results = session.execute(query, {'domain': domain, 'limit': limit}).fetchall()
+            
+            return [
+                {
+                    'date': r.report_date.isoformat(),
+                    'global_score': r.global_score or 0,
+                    'stale_objects_score': r.stale_objects_score or 0,
+                    'privileged_accounts_score': r.privileged_accounts_score or 0,
+                    'trusts_score': r.trusts_score or 0,
+                    'anomalies_score': r.anomalies_score or 0,
+                    'unaccepted_group_members': 0,
+                    'total_findings': 0,
+                    'domain_group_risk_score': 0.0
+                }
+                for r in reversed(results)
+            ]
+        except Exception as e:
+            logging.error(f"Fallback KPI history also failed: {e}")
+            return []
+
+    def get_all_domains_latest_kpis(self) -> List[Dict]:
+        """
+        Get latest KPIs for all domains.
+        Useful for multi-domain dashboard overview.
+        
+        Returns:
+            List of latest KPIs per domain
+        """
+        with self._get_session() as session:
+            try:
+                query = text("""
+                    SELECT DISTINCT ON (domain)
+                        rk.domain,
+                        rk.report_id,
+                        rk.report_date,
+                        rk.tool_type,
+                        rk.global_score,
+                        rk.total_findings,
+                        rk.high_severity_findings,
+                        rk.unaccepted_group_members,
+                        rk.domain_group_risk_score,
+                        r.domain_sid
+                    FROM reports_kpis rk
+                    JOIN reports r ON rk.report_id = r.id
+                    ORDER BY domain, report_date DESC
+                """)
+                
+                results = session.execute(query).fetchall()
+                
+                return [
+                    {
+                        'domain': r.domain,
+                        'report_id': str(r.report_id),
+                        'report_date': r.report_date.isoformat(),
+                        'tool_type': r.tool_type,
+                        'global_score': r.global_score,
+                        'total_findings': r.total_findings,
+                        'high_severity_findings': r.high_severity_findings,
+                        'unaccepted_group_members': r.unaccepted_group_members,
+                        'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0,
+                        'domain_sid': r.domain_sid
+                    }
+                    for r in results
+                ]
+                
+            except Exception as e:
+                logging.error(f"Failed to get all domains KPIs: {e}")
+                return []

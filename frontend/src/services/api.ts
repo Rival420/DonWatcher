@@ -19,7 +19,10 @@ import type {
   APIGroupData,
   SecurityToolType,
   APIPingCastleScores,
-  APIDomainMetadata
+  APIDomainMetadata,
+  DashboardKPIResponse,
+  DashboardKPIHistoryResponse,
+  AllDomainsKPIResponse
 } from '../types'
 
 const API_BASE = '/api'
@@ -152,6 +155,43 @@ export async function getDomains(): Promise<string[]> {
   const reports = await getReports()
   const domains = [...new Set(reports.map(r => r.domain))]
   return domains.sort()
+}
+
+// =============================================================================
+// Dashboard KPIs - Optimized endpoints for fast dashboard loading
+// =============================================================================
+
+/**
+ * Get pre-aggregated dashboard KPIs for fast loading
+ * This is the primary endpoint for dashboard data
+ */
+export async function getDashboardKPIs(domain?: string): Promise<DashboardKPIResponse> {
+  const query = domain ? `?domain=${encodeURIComponent(domain)}` : ''
+  return fetchJSON<DashboardKPIResponse>(`${API_BASE}/dashboard/kpis${query}`)
+}
+
+/**
+ * Get historical KPI data for trend charts
+ */
+export async function getDashboardKPIHistory(
+  domain: string, 
+  limit: number = 10,
+  toolType?: string
+): Promise<DashboardKPIHistoryResponse> {
+  const params = new URLSearchParams()
+  params.append('limit', String(limit))
+  if (toolType) params.append('tool_type', toolType)
+  
+  return fetchJSON<DashboardKPIHistoryResponse>(
+    `${API_BASE}/dashboard/kpis/history/${encodeURIComponent(domain)}?${params.toString()}`
+  )
+}
+
+/**
+ * Get KPIs for all domains (multi-domain overview)
+ */
+export async function getAllDomainsKPIs(): Promise<AllDomainsKPIResponse> {
+  return fetchJSON<AllDomainsKPIResponse>(`${API_BASE}/dashboard/kpis/all-domains`)
 }
 
 // Findings (Risk Catalog)

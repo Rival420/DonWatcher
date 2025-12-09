@@ -197,6 +197,105 @@ class GroupRiskConfig(BaseModel):
 
 
 # =============================================================================
+# Dashboard KPIs - Pre-aggregated metrics for fast dashboard loading
+# =============================================================================
+
+class ReportKPI(BaseModel):
+    """
+    Pre-aggregated KPIs for a single report.
+    One-to-one relationship with reports table for fast dashboard queries.
+    """
+    id: Optional[str] = None
+    report_id: str
+    tool_type: SecurityToolType
+    domain: str
+    report_date: datetime
+    
+    # PingCastle Risk Scores
+    global_score: int = 0
+    stale_objects_score: int = 0
+    privileged_accounts_score: int = 0
+    trusts_score: int = 0
+    anomalies_score: int = 0
+    
+    # Domain Infrastructure Metrics
+    user_count: int = 0
+    computer_count: int = 0
+    dc_count: int = 0
+    
+    # Findings Metrics
+    total_findings: int = 0
+    high_severity_findings: int = 0
+    medium_severity_findings: int = 0
+    low_severity_findings: int = 0
+    
+    # Domain Group Metrics (for domain_analysis reports)
+    total_groups: int = 0
+    total_group_members: int = 0
+    accepted_group_members: int = 0
+    unaccepted_group_members: int = 0
+    
+    # Risk Assessment Metrics
+    domain_group_risk_score: float = 0.0
+
+
+class DashboardKPISummary(BaseModel):
+    """
+    Dashboard summary combining latest KPIs across all data sources.
+    Optimized response model for the dashboard page.
+    """
+    # Domain Information
+    domain: str
+    domain_sid: Optional[str] = None
+    domain_functional_level: Optional[str] = None
+    forest_functional_level: Optional[str] = None
+    maturity_level: Optional[str] = None
+    
+    # Latest report info
+    latest_report_id: str
+    latest_report_date: datetime
+    tool_type: SecurityToolType
+    
+    # PingCastle Risk Scores (from latest PingCastle report)
+    global_score: int = 0
+    stale_objects_score: int = 0
+    privileged_accounts_score: int = 0
+    trusts_score: int = 0
+    anomalies_score: int = 0
+    
+    # Domain Infrastructure Metrics
+    user_count: int = 0
+    computer_count: int = 0
+    dc_count: int = 0
+    
+    # Findings Metrics (aggregated)
+    total_findings: int = 0
+    high_severity_findings: int = 0
+    medium_severity_findings: int = 0
+    low_severity_findings: int = 0
+    
+    # Domain Group Metrics
+    total_groups: int = 0
+    total_group_members: int = 0
+    accepted_group_members: int = 0
+    unaccepted_group_members: int = 0
+    
+    # Risk Assessment
+    domain_group_risk_score: float = 0.0
+
+
+class DashboardKPIHistory(BaseModel):
+    """Historical KPI data point for trend charts."""
+    report_date: datetime
+    global_score: int = 0
+    stale_objects_score: int = 0
+    privileged_accounts_score: int = 0
+    trusts_score: int = 0
+    anomalies_score: int = 0
+    unaccepted_group_members: int = 0
+
+
+# =============================================================================
 # API Upload Models - For programmatic report submission
 # =============================================================================
 

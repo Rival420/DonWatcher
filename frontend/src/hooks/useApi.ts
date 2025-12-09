@@ -1,6 +1,45 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../services/api'
 
+// =============================================================================
+// Dashboard KPIs - Optimized hooks for fast dashboard loading
+// =============================================================================
+
+/**
+ * Get pre-aggregated dashboard KPIs
+ * This is the primary hook for dashboard data - much faster than fetching all reports
+ */
+export function useDashboardKPIs(domain?: string) {
+  return useQuery({
+    queryKey: ['dashboardKPIs', domain],
+    queryFn: () => api.getDashboardKPIs(domain),
+    staleTime: 30000, // Cache for 30 seconds
+  })
+}
+
+/**
+ * Get historical KPI data for trend charts
+ */
+export function useDashboardKPIHistory(domain: string, limit: number = 10, toolType?: string) {
+  return useQuery({
+    queryKey: ['dashboardKPIHistory', domain, limit, toolType],
+    queryFn: () => api.getDashboardKPIHistory(domain, limit, toolType),
+    enabled: !!domain,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+/**
+ * Get KPIs for all domains (multi-domain overview)
+ */
+export function useAllDomainsKPIs() {
+  return useQuery({
+    queryKey: ['allDomainsKPIs'],
+    queryFn: api.getAllDomainsKPIs,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
 // Health check
 export function useHealth() {
   return useQuery({
