@@ -606,22 +606,26 @@ function PingCastleSection({ domain }: { domain: string }) {
   const acceptRisk = useAcceptRisk()
   const removeAcceptedRisk = useRemoveAcceptedRisk()
   
-  // Filter findings by search and latest report status
-  const filteredFindings = groupedFindings?.filter(f => {
-    // Search filter
-    const matchesSearch = f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  // First apply search filter only (for calculating filter button counts)
+  const searchFilteredFindings = groupedFindings?.filter(f => {
+    return f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.description.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    // Latest report filter
-    let matchesLatest = true
-    if (latestFilter === 'in_latest') {
-      matchesLatest = f.in_latest_report
-    } else if (latestFilter === 'not_in_latest') {
-      matchesLatest = !f.in_latest_report
-    }
-    
-    return matchesSearch && matchesLatest
   }) || []
+  
+  // Calculate counts from search-filtered data (before latestFilter is applied)
+  // This ensures filter button counts remain accurate regardless of which filter is selected
+  const inLatestCount = searchFilteredFindings.filter(f => f.in_latest_report).length
+  const notInLatestCount = searchFilteredFindings.filter(f => !f.in_latest_report).length
+  
+  // Then apply the latest report filter to get final filtered findings
+  const filteredFindings = searchFilteredFindings.filter(f => {
+    if (latestFilter === 'in_latest') {
+      return f.in_latest_report
+    } else if (latestFilter === 'not_in_latest') {
+      return !f.in_latest_report
+    }
+    return true
+  })
   
   const handleAccept = (reason: string, expiresAt?: string) => {
     if (!findingToAccept) return
@@ -645,9 +649,6 @@ function PingCastleSection({ domain }: { domain: string }) {
     })
   }
   
-  // Calculate stats for the in-latest indicator
-  const inLatestCount = filteredFindings.filter(f => f.in_latest_report).length
-  const notInLatestCount = filteredFindings.filter(f => !f.in_latest_report).length
   
   return (
     <div className="space-y-6">
@@ -701,7 +702,7 @@ function PingCastleSection({ domain }: { domain: string }) {
           {Object.entries(LATEST_FILTER_OPTIONS).map(([key, config]) => {
             const Icon = config.icon
             const count = key === 'all' 
-              ? filteredFindings.length 
+              ? searchFilteredFindings.length 
               : key === 'in_latest' 
                 ? inLatestCount 
                 : notInLatestCount
