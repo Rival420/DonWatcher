@@ -1379,6 +1379,230 @@ class PostgresReportStorage:
         }
 
     # ==========================================================================
+    # Optimized Domain Queries - Fast domain retrieval without loading reports
+    # ==========================================================================
+    
+    def get_domains(self) -> List[str]:
+        """
+        Get list of unique domains efficiently.
+        Returns just domain names without loading full reports.
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT DISTINCT domain 
+                    FROM reports 
+                    ORDER BY domain
+                """)).fetchall()
+                return [r.domain for r in results]
+            except Exception as e:
+                logging.error(f"Failed to get domains: {e}")
+                return []
+
+    def get_domains_with_stats(self) -> List[Dict]:
+        """
+        Get domains with basic statistics efficiently.
+        Returns domain info without loading full report data.
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        domain,
+                        COUNT(*) as report_count,
+                        MAX(report_date) as latest_report_date,
+                        MIN(report_date) as first_report_date
+                    FROM reports
+                    GROUP BY domain
+                    ORDER BY MAX(report_date) DESC
+                """)).fetchall()
+                
+                return [
+                    {
+                        'domain': r.domain,
+                        'report_count': r.report_count,
+                        'latest_report_date': r.latest_report_date.isoformat() if r.latest_report_date else None,
+                        'first_report_date': r.first_report_date.isoformat() if r.first_report_date else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.error(f"Failed to get domains with stats: {e}")
+                return []
+
+    def get_latest_report(
+        self,
+        domain: Optional[str] = None,
+        tool_type: Optional[str] = None
+    ) -> Optional[Dict]:
+        """
+        Get the most recent report efficiently.
+        Optionally filtered by domain and/or tool type.
+        """
+        with self._get_session() as session:
+            try:
+                where_clauses = ["1=1"]
+                params = {}
+                
+                if domain:
+                    where_clauses.append("r.domain = :domain")
+                    params['domain'] = domain
+                
+                if tool_type:
+                    where_clauses.append("r.tool_type = :tool_type")
+                    params['tool_type'] = tool_type
+                
+                where_sql = " AND ".join(where_clauses)
+                
+                result = session.execute(text(f"""
+                    SELECT 
+                        r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                        r.pingcastle_global_score as global_score,
+                        r.domain_sid, r.original_file, r.html_file,
+                        r.pingcastle_stale_objects_score,
+                        r.pingcastle_trust_score,
+                        r.pingcastle_privileged_score,
+                        r.pingcastle_anomaly_score,
+                        COUNT(f.id) as total_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'high') as high_severity_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'medium') as medium_severity_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'low') as low_severity_findings
+                    FROM reports r
+                    LEFT JOIN findings f ON r.id = f.report_id
+                    WHERE {where_sql}
+                    GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                             r.pingcastle_global_score, r.domain_sid, r.original_file, r.html_file,
+                             r.pingcastle_stale_objects_score, r.pingcastle_trust_score,
+                             r.pingcastle_privileged_score, r.pingcastle_anomaly_score
+                    ORDER BY r.report_date DESC
+                    LIMIT 1
+                """), params).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'tool_type': result.tool_type,
+                    'domain': result.domain,
+                    'report_date': result.report_date.isoformat(),
+                    'upload_date': result.upload_date.isoformat() if result.upload_date else None,
+                    'global_score': result.global_score or 0,
+                    'domain_sid': result.domain_sid,
+                    'original_file': result.original_file,
+                    'html_file': result.html_file,
+                    'stale_objects_score': result.pingcastle_stale_objects_score,
+                    'trust_score': result.pingcastle_trust_score,
+                    'privileged_score': result.pingcastle_privileged_score,
+                    'anomaly_score': result.pingcastle_anomaly_score,
+                    'total_findings': result.total_findings,
+                    'high_severity_findings': result.high_severity_findings,
+                    'medium_severity_findings': result.medium_severity_findings,
+                    'low_severity_findings': result.low_severity_findings
+                }
+                
+            except Exception as e:
+                logging.error(f"Failed to get latest report: {e}")
+                return None
+
+    def get_reports_paginated(
+        self, 
+        page: int = 1, 
+        page_size: int = 20,
+        domain: Optional[str] = None,
+        tool_type: Optional[str] = None,
+        sort_by: str = 'report_date',
+        sort_order: str = 'desc'
+    ) -> Dict:
+        """
+        Get paginated report summaries efficiently.
+        Returns light-weight summaries for listing pages.
+        """
+        with self._get_session() as session:
+            try:
+                # Calculate offset
+                offset = (page - 1) * page_size
+                
+                # Build query with optional filters
+                where_clauses = ["1=1"]
+                params = {'limit': page_size, 'offset': offset}
+                
+                if domain:
+                    where_clauses.append("r.domain = :domain")
+                    params['domain'] = domain
+                
+                if tool_type:
+                    where_clauses.append("r.tool_type = :tool_type")
+                    params['tool_type'] = tool_type
+                
+                where_sql = " AND ".join(where_clauses)
+                
+                # Validate sort column
+                valid_sort_columns = ['report_date', 'domain', 'tool_type', 'pingcastle_global_score']
+                if sort_by not in valid_sort_columns:
+                    sort_by = 'report_date'
+                
+                sort_direction = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+                
+                # Get total count
+                count_result = session.execute(text(f"""
+                    SELECT COUNT(*) FROM reports r WHERE {where_sql}
+                """), params).scalar()
+                
+                # Get paginated results
+                results = session.execute(text(f"""
+                    SELECT 
+                        r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                        r.pingcastle_global_score as global_score,
+                        r.domain_sid, r.html_file,
+                        COUNT(f.id) as total_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'high') as high_severity_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'medium') as medium_severity_findings,
+                        COUNT(f.id) FILTER (WHERE f.severity = 'low') as low_severity_findings
+                    FROM reports r
+                    LEFT JOIN findings f ON r.id = f.report_id
+                    WHERE {where_sql}
+                    GROUP BY r.id, r.tool_type, r.domain, r.report_date, r.upload_date,
+                             r.pingcastle_global_score, r.domain_sid, r.html_file
+                    ORDER BY r.{sort_by} {sort_direction}
+                    LIMIT :limit OFFSET :offset
+                """), params).fetchall()
+                
+                return {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_count': count_result,
+                    'total_pages': (count_result + page_size - 1) // page_size,
+                    'reports': [
+                        {
+                            'id': str(r.id),
+                            'tool_type': r.tool_type,
+                            'domain': r.domain,
+                            'report_date': r.report_date.isoformat(),
+                            'upload_date': r.upload_date.isoformat() if r.upload_date else None,
+                            'global_score': r.global_score or 0,
+                            'domain_sid': r.domain_sid,
+                            'html_file': r.html_file,
+                            'total_findings': r.total_findings,
+                            'high_severity_findings': r.high_severity_findings,
+                            'medium_severity_findings': r.medium_severity_findings,
+                            'low_severity_findings': r.low_severity_findings
+                        }
+                        for r in results
+                    ]
+                }
+                
+            except Exception as e:
+                logging.error(f"Failed to get paginated reports: {e}")
+                return {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_count': 0,
+                    'total_pages': 0,
+                    'reports': []
+                }
+
+    # ==========================================================================
     # Reports KPIs - Pre-aggregated metrics for dashboard performance
     # ==========================================================================
     

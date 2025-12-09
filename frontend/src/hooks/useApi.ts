@@ -72,11 +72,37 @@ export function useLatestReport(domain?: string) {
   })
 }
 
-// Domains
+// Domains - Now uses optimized endpoint (no longer loads all reports!)
 export function useDomains() {
   return useQuery({
     queryKey: ['domains'],
     queryFn: api.getDomains,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+// Domains with statistics
+export function useDomainsWithStats() {
+  return useQuery({
+    queryKey: ['domainsWithStats'],
+    queryFn: api.getDomainsWithStats,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+// Paginated Reports - More efficient for large datasets
+export function useReportsPaginated(params?: {
+  page?: number
+  page_size?: number
+  domain?: string
+  tool_type?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}) {
+  return useQuery({
+    queryKey: ['reportsPaginated', params],
+    queryFn: () => api.getReportsPaginated(params),
+    staleTime: 30000, // Cache for 30 seconds
   })
 }
 

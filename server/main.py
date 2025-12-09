@@ -422,13 +422,148 @@ def debug_status(storage: PostgresReportStorage = Depends(get_storage)):
             "database_connected": False
         }
 
-# Report Management Endpoints
+# =============================================================================
+# Domains API - Fast domain retrieval without loading full reports
+# =============================================================================
+
+@app.get("/api/domains")
+def get_domains(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get list of unique domains efficiently.
+    
+    This is an optimized endpoint that returns just domain names
+    without loading full report data.
+    
+    Returns:
+        List of domain names sorted alphabetically
+    """
+    try:
+        domains = storage.get_domains()
+        return {
+            "status": "ok",
+            "count": len(domains),
+            "domains": domains
+        }
+    except Exception as e:
+        logging.exception("Failed to get domains")
+        raise HTTPException(status_code=500, detail=f"Failed to get domains: {e}")
+
+
+@app.get("/api/domains/stats")
+def get_domains_with_stats(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get domains with basic statistics.
+    
+    Returns domain info with report counts and date ranges
+    without loading full report data.
+    """
+    try:
+        domains = storage.get_domains_with_stats()
+        return {
+            "status": "ok",
+            "count": len(domains),
+            "domains": domains
+        }
+    except Exception as e:
+        logging.exception("Failed to get domains with stats")
+        raise HTTPException(status_code=500, detail=f"Failed to get domain stats: {e}")
+
+
+# =============================================================================
+# Paginated Reports API - Efficient report listing
+# =============================================================================
+
+@app.get("/api/reports/latest")
+def get_latest_report_api(
+    domain: Optional[str] = None,
+    tool_type: Optional[str] = None,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get the most recent report efficiently.
+    
+    Query parameters:
+    - domain: Optional filter by domain
+    - tool_type: Optional filter by tool type
+    
+    Returns:
+        The latest report or null if none found
+    """
+    try:
+        result = storage.get_latest_report(domain=domain, tool_type=tool_type)
+        
+        if result is None:
+            return {"status": "ok", "report": None}
+        
+        return {
+            "status": "ok",
+            "report": result
+        }
+    except Exception as e:
+        logging.exception("Failed to get latest report")
+        raise HTTPException(status_code=500, detail=f"Failed to get latest report: {e}")
+
+
+@app.get("/api/reports/paginated")
+def get_reports_paginated(
+    page: int = 1,
+    page_size: int = 20,
+    domain: Optional[str] = None,
+    tool_type: Optional[str] = None,
+    sort_by: str = 'report_date',
+    sort_order: str = 'desc',
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get paginated report summaries for efficient listing.
+    
+    Query parameters:
+    - page: Page number (default: 1)
+    - page_size: Items per page (default: 20, max: 100)
+    - domain: Optional filter by domain
+    - tool_type: Optional filter by tool type
+    - sort_by: Column to sort by (report_date, domain, tool_type, pingcastle_global_score)
+    - sort_order: Sort direction (asc, desc)
+    
+    Returns:
+        Paginated report summaries with metadata
+    """
+    try:
+        # Limit page size to prevent abuse
+        page_size = min(page_size, 100)
+        
+        result = storage.get_reports_paginated(
+            page=page,
+            page_size=page_size,
+            domain=domain,
+            tool_type=tool_type,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        return {
+            "status": "ok",
+            **result
+        }
+    except Exception as e:
+        logging.exception("Failed to get paginated reports")
+        raise HTTPException(status_code=500, detail=f"Failed to get reports: {e}")
+
+
+# Report Management Endpoints (Legacy - kept for backward compatibility)
 @app.get("/api/reports", response_model=List[ReportSummary])
 def list_reports(
     tool_type: Optional[SecurityToolType] = None,
     storage: PostgresReportStorage = Depends(get_storage)
 ):
-    """Get all reports, optionally filtered by tool type."""
+    """Get all reports, optionally filtered by tool type.
+    
+    NOTE: For better performance on large datasets, use /api/reports/paginated instead.
+    """
     try:
         reports = storage.get_all_reports_summary()
         if tool_type:
