@@ -149,25 +149,6 @@ async def upload_security_report(
 ):
     return await _process_single_file(file, storage)
 
-
-# Backward-compatible alias for /upload/pingcastle (used by legacy PowerShell scripts)
-# This allows scripts that upload to /upload/pingcastle to continue working
-@app.post("/upload/pingcastle", response_model=UploadResponse)
-async def upload_pingcastle_file(
-    file: UploadFile = File(...),
-    storage: PostgresReportStorage = Depends(get_storage)
-):
-    """
-    Legacy endpoint for PingCastle file uploads.
-    
-    This endpoint maintains backward compatibility with existing scripts that
-    upload to /upload/pingcastle. It accepts the same file format as /upload.
-    
-    For new integrations, use /upload instead.
-    """
-    return await _process_single_file(file, storage)
-
-
 @app.post("/upload/multiple")
 async def upload_multiple_files(
     files: List[UploadFile] = File(...),
