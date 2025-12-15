@@ -332,6 +332,7 @@ function Send-ReportToDonWatcher {
     Write-Host "[INFO] Uploading report to: $uploadUrl" -ForegroundColor Cyan
     
     $tempFile = $null
+    $jsonFile = $null
     try {
         # Convert to JSON
         $jsonContent = $Report | ConvertTo-Json -Depth 10
