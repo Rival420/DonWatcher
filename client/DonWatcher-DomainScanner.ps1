@@ -1,36 +1,59 @@
 #Requires -Modules ActiveDirectory
 <#
 .SYNOPSIS
-    DonWatcher Domain Scanner Agent (Minimal)
+    DonWatcher Domain Group Scanner - Minimal & Focused
+    
 .DESCRIPTION
-    Collects only:
-      - Domain SID
-      - Configured groups and their members (name, samaccountname, sid, type, enabled)
-    Optional domain SID mismatch enforcement.
-    Uploads JSON via multipart/form-data to DonWatcher /upload.
-    Saves JSON reports to ./reports/ directory for testing and debugging.
+    Collects privileged AD group memberships and uploads to DonWatcher.
+    
+    Features:
+    - Scans only configured privileged groups
+    - Reports group members with name, SID, type, and enabled status
+    - Domain SID verification to ensure correct domain targeting
+    - JSON config for easy customization
+    - Designed for scheduled task execution
+    
+.PARAMETER DonWatcherUrl
+    URL of the DonWatcher server (e.g., http://donwatcher:8080)
+    
+.PARAMETER ConfigFile
+    Path to JSON configuration file (default: DonWatcher-Config.json)
+    
+.PARAMETER TestConnection
+    Only test connectivity to DonWatcher, do not scan
+
+.EXAMPLE
+    .\DonWatcher-DomainScanner.ps1 -DonWatcherUrl "http://donwatcher:8080"
+    
+.EXAMPLE
+    .\DonWatcher-DomainScanner.ps1 -TestConnection
+    
+.NOTES
+    Requires: Active Directory PowerShell module (RSAT-AD-PowerShell)
+    Version: 2.0
+    Author: Donwatcher Development Team
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$DonWatcherUrl,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$ConfigFile = "DonWatcher-Config.json",
 
-    [Parameter(Mandatory=$false)]
-    [string[]]$Groups,
-
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$TestConnection
 )
 
 $ErrorActionPreference = "Stop"
 
-#region Configuration
+# =============================================================================
+# Configuration
+# =============================================================================
+
 $DefaultConfig = @{
-    DonWatcherUrl = "http://localhost:8080"
+    DonWatcherUrl    = "http://localhost:8080"
     PrivilegedGroups = @(
         "Domain Admins",
         "Enterprise Admins",
@@ -41,340 +64,399 @@ $DefaultConfig = @{
         "Server Operators",
         "Print Operators"
     )
-    TimeoutSeconds = 300
-    UserAgent = "DonWatcher-DomainScanner/1.0"
-    LogLevel = "Info"
-    # Optional: ExpectedDomainSID = "S-1-5-21-..."
+    TimeoutSeconds   = 120
 }
 
-$Config = $DefaultConfig.Clone()
-if (Test-Path $ConfigFile) {
-    try {
-        Write-Verbose "Loading configuration from: $ConfigFile"
-        $FileConfig = Get-Content $ConfigFile -Raw | ConvertFrom-Json
-        foreach ($key in $FileConfig.PSObject.Properties.Name) {
-            $Config[$key] = $FileConfig.$key
+function Load-Configuration {
+    param([string]$Path)
+    
+    $config = $DefaultConfig.Clone()
+    
+    if (Test-Path $Path) {
+        try {
+            $fileConfig = Get-Content $Path -Raw | ConvertFrom-Json
+            foreach ($prop in $fileConfig.PSObject.Properties) {
+                $config[$prop.Name] = $prop.Value
+            }
+            Write-Verbose "Loaded configuration from: $Path"
+        }
+        catch {
+            Write-Warning "Failed to load config file: $($_.Exception.Message). Using defaults."
         }
     }
-    catch {
-        Write-Warning "Failed to load config file '$ConfigFile': $($_.Exception.Message)"
-        Write-Warning "Using default configuration"
+    else {
+        # Create default config file for user to customize
+        Write-Host "[INFO] Creating default configuration file: $Path" -ForegroundColor Cyan
+        @{
+            DonWatcherUrl    = $config.DonWatcherUrl
+            PrivilegedGroups = $config.PrivilegedGroups
+            TimeoutSeconds   = $config.TimeoutSeconds
+            # Optional: Uncomment and set to enforce domain SID matching
+            # ExpectedDomainSID = "S-1-5-21-XXXXXXXXXX-XXXXXXXXXX-XXXXXXXXXX"
+        } | ConvertTo-Json -Depth 3 | Out-File $Path -Encoding UTF8
+        Write-Host "[INFO] Edit $Path to customize groups and settings" -ForegroundColor Yellow
     }
+    
+    return $config
 }
 
-if ($DonWatcherUrl) { $Config.DonWatcherUrl = $DonWatcherUrl }
-if ($Groups) { $Config.PrivilegedGroups = $Groups }
-#endregion
+# Load configuration
+$Config = Load-Configuration -Path $ConfigFile
 
-#region Logging
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet("Info","Warning","Error","Debug")]
-        [string]$Level = "Info"
-    )
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] [$Level] $Message"
-    switch ($Level) {
-        "Info"    { Write-Host $logMessage -ForegroundColor Green }
-        "Warning" { Write-Warning $logMessage }
-        "Error"   { Write-Error $logMessage }
-        "Debug"   { Write-Verbose $logMessage }
-    }
+# Override URL from parameter if provided
+if ($DonWatcherUrl) {
+    $Config.DonWatcherUrl = $DonWatcherUrl
 }
-#endregion
 
-#region Helpers
+# =============================================================================
+# Prerequisites Check
+# =============================================================================
+
 function Test-Prerequisites {
-    Write-Log "Checking prerequisites..." -Level Debug
+    Write-Verbose "Checking prerequisites..."
+    
+    # Check domain membership
     try {
-        $domain = (Get-WmiObject Win32_ComputerSystem).Domain
-        if (-not $domain -or $domain -eq "WORKGROUP") {
-            throw "This machine is not domain-joined"
+        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        if (-not $cs.Domain -or $cs.Domain -eq "WORKGROUP") {
+            Write-Host "[ERROR] This machine is not domain-joined" -ForegroundColor Red
+            return $false
         }
-        Write-Log "Domain detected: $domain" -Level Debug
+        Write-Verbose "Domain: $($cs.Domain)"
     }
     catch {
-        Write-Log "Failed to detect domain: $($_.Exception.Message)" -Level Error
+        Write-Host "[ERROR] Cannot detect domain: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
-
+    
+    # Check AD module
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
-        Write-Log "Active Directory module loaded successfully" -Level Debug
+        Write-Verbose "Active Directory module loaded"
     }
     catch {
-        Write-Log "Active Directory module not available: $($_.Exception.Message)" -Level Error
-        Write-Log "Please install RSAT-AD-PowerShell feature" -Level Error
+        Write-Host "[ERROR] Active Directory module not available" -ForegroundColor Red
+        Write-Host "[ERROR] Install RSAT-AD-PowerShell feature" -ForegroundColor Red
         return $false
     }
+    
     return $true
 }
 
-# Returns JSON status or $null
+# =============================================================================
+# DonWatcher Connection
+# =============================================================================
+
 function Test-DonWatcherConnection {
     param([string]$BaseUrl)
-    Write-Log "Testing connection to DonWatcher at: $BaseUrl" -Level Debug
+    
+    $statusUrl = "$BaseUrl/api/debug/status"
+    Write-Host "[INFO] Testing connection to: $BaseUrl" -ForegroundColor Cyan
+    
     try {
-        $statusUrl = "$BaseUrl/api/debug/status"
         $response = Invoke-RestMethod -Uri $statusUrl -Method Get -TimeoutSec 30 -UseBasicParsing
-        Write-Log "[OK] DonWatcher connection successful" -Level Info
+        Write-Host "[OK] Connected to DonWatcher" -ForegroundColor Green
+        Write-Host "     Server Status    : $($response.status)" -ForegroundColor Gray
+        Write-Host "     Reports in DB    : $($response.reports_count)" -ForegroundColor Gray
+        Write-Host "     Parsers Loaded   : $($response.parsers_registered)" -ForegroundColor Gray
         return $response
     }
     catch {
-        Write-Log "[ERROR] Failed to connect to DonWatcher: $($_.Exception.Message)" -Level Error
+        Write-Host "[ERROR] Cannot connect to DonWatcher: $($_.Exception.Message)" -ForegroundColor Red
         return $null
     }
 }
 
-function Get-DomainInfoMinimal {
-    Write-Log "Collecting minimal domain info (SID)..." -Level Info
+# =============================================================================
+# Domain SID Verification
+# =============================================================================
+
+function Get-DomainSID {
     $domain = Get-ADDomain -ErrorAction Stop
-    if (-not $domain.DomainSID) { throw "Unable to retrieve DomainSID" }
     return @{
-        domain     = $domain.DNSRoot
-        domain_sid = $domain.DomainSID.Value
-        netbios    = $domain.NetBIOSName
+        DomainName = $domain.DNSRoot
+        DomainSID  = $domain.DomainSID.Value
+        NetBIOS    = $domain.NetBIOSName
     }
 }
 
-function Resolve-MemberEnabled {
+function Test-DomainSIDMatch {
+    param(
+        [string]$ActualSID,
+        [string]$ExpectedSID
+    )
+    
+    if ([string]::IsNullOrWhiteSpace($ExpectedSID)) {
+        Write-Verbose "No expected SID configured - skipping verification"
+        return $true
+    }
+    
+    if ($ActualSID -ne $ExpectedSID) {
+        Write-Host "[ERROR] Domain SID mismatch!" -ForegroundColor Red
+        Write-Host "        Actual:   $ActualSID" -ForegroundColor Red
+        Write-Host "        Expected: $ExpectedSID" -ForegroundColor Red
+        return $false
+    }
+    
+    Write-Host "[OK] Domain SID verified" -ForegroundColor Green
+    return $true
+}
+
+# =============================================================================
+# Group Membership Collection
+# =============================================================================
+
+function Get-MemberEnabledStatus {
     param(
         [string]$ObjectClass,
         [string]$DistinguishedName
     )
+    
     try {
         switch ($ObjectClass) {
-            'user'     { return (Get-ADUser -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled }
-            'computer' { return (Get-ADComputer -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled }
-            default    { return $null } # groups, contacts, etc. -> not applicable
+            'user' {
+                return (Get-ADUser -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled
+            }
+            'computer' {
+                return (Get-ADComputer -Identity $DistinguishedName -Properties Enabled -ErrorAction Stop).Enabled
+            }
+            default {
+                return $null  # Groups, contacts, etc. don't have Enabled property
+            }
         }
     }
     catch {
-        Write-Log "Failed to resolve Enabled for $ObjectClass : $DistinguishedName : $($_.Exception.Message)" -Level Warning
+        Write-Verbose "Cannot get Enabled status for $ObjectClass $DistinguishedName"
         return $null
     }
 }
 
-function Get-ConfiguredGroupMemberships {
-    Write-Log "Collecting group memberships..." -Level Info
+function Get-GroupMemberships {
+    param([string[]]$Groups)
+    
+    Write-Host "[INFO] Scanning $($Groups.Count) privileged groups..." -ForegroundColor Cyan
     $result = @{}
-
-    foreach ($groupName in $Config.PrivilegedGroups) {
-        Write-Log "Group: $groupName" -Level Debug
-        $membersArray = @()
-
+    
+    foreach ($groupName in $Groups) {
+        Write-Host "     Scanning: $groupName" -ForegroundColor Gray -NoNewline
+        $members = @()
+        
         try {
+            # Check if group exists
             $adGroup = Get-ADGroup -Identity $groupName -ErrorAction SilentlyContinue
             if (-not $adGroup) {
-                Write-Log "Group '$groupName' not found" -Level Warning
+                Write-Host " -> NOT FOUND" -ForegroundColor Yellow
                 $result[$groupName] = @()
                 continue
             }
-
+            
+            # Get recursive members
             $groupMembers = Get-ADGroupMember -Identity $groupName -Recursive -ErrorAction SilentlyContinue
-            foreach ($m in $groupMembers) {
+            
+            foreach ($member in $groupMembers) {
                 try {
-                    # Query a generic AD object + collect extra props if present
-                    $obj = Get-ADObject -Identity $m.DistinguishedName -Properties Name, sAMAccountName, ObjectClass, objectSID -ErrorAction SilentlyContinue
+                    # Get full object details
+                    $obj = Get-ADObject -Identity $member.DistinguishedName `
+                        -Properties Name, sAMAccountName, objectSID, objectClass `
+                        -ErrorAction SilentlyContinue
+                    
                     if (-not $obj) { continue }
-
-                    $enabled = Resolve-MemberEnabled -ObjectClass $obj.ObjectClass -DistinguishedName $m.DistinguishedName
-
-                    $membersArray += @{
+                    
+                    $enabled = Get-MemberEnabledStatus -ObjectClass $obj.objectClass `
+                        -DistinguishedName $member.DistinguishedName
+                    
+                    $members += @{
                         name           = $obj.Name
-                        samaccountname = ($obj.PSObject.Properties['sAMAccountName']?.Value)
-                        sid            = ($obj.PSObject.Properties['objectSID']?.Value)
-                        type           = $obj.ObjectClass
+                        samaccountname = $obj.sAMAccountName
+                        sid            = $obj.objectSID.Value
+                        type           = $obj.objectClass
                         enabled        = $enabled
                     }
                 }
                 catch {
-                    Write-Log "Failed member detail for '$($m.Name)' in '$groupName': $($_.Exception.Message)" -Level Warning
+                    Write-Verbose "Skipped member: $($member.Name) - $($_.Exception.Message)"
                 }
             }
-            $result[$groupName] = $membersArray
-            Write-Log "Collected $($membersArray.Count) member(s) for '$groupName'" -Level Debug
+            
+            $result[$groupName] = $members
+            Write-Host " -> $($members.Count) members" -ForegroundColor White
         }
         catch {
-            Write-Log "Error processing group '$groupName': $($_.Exception.Message)" -Level Warning
+            Write-Host " -> ERROR" -ForegroundColor Red
+            Write-Warning "Error processing group '$groupName': $($_.Exception.Message)"
             $result[$groupName] = @()
         }
     }
-
+    
     return $result
 }
 
-function New-MinimalReportJson {
+# =============================================================================
+# Report Generation
+# =============================================================================
+
+function New-ScanReport {
     param(
         [hashtable]$DomainInfo,
-        [hashtable]$GroupsMap
+        [hashtable]$GroupsData
     )
-
-    # Simple, compliance-focused JSON:
-    # {
-    #   "tool_type": "domain_group_members",
-    #   "domain": "corp.example.com",
-    #   "domain_sid": "S-1-5-21-...",
-    #   "report_date": "...",
-    #   "groups": { "Domain Admins": [ {member...}, ... ], ... },
-    #   "metadata": {...}
-    # }
-    $currentTime = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
+    
     return @{
         tool_type   = "domain_group_members"
-        domain      = $DomainInfo.domain
-        domain_sid  = $DomainInfo.domain_sid
-        report_date = $currentTime
-        groups      = $GroupsMap
+        domain      = $DomainInfo.DomainName
+        domain_sid  = $DomainInfo.DomainSID
+        report_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+        groups      = $GroupsData
         metadata    = @{
-            agent_name        = "powershell_domain_scanner_minimal"
-            collection_method = "powershell_ldap"
-            script_version    = "1.0"
+            agent_name        = "donwatcher_domain_scanner"
+            collection_method = "powershell_ad"
+            script_version    = "2.0"
             collected_by      = "$env:USERDOMAIN\$env:USERNAME"
             machine_name      = $env:COMPUTERNAME
         }
     }
 }
 
+# =============================================================================
+# Upload to DonWatcher
+# =============================================================================
+
 function Send-ReportToDonWatcher {
     param(
         [hashtable]$Report,
-        [string]$BaseUrl
+        [string]$BaseUrl,
+        [int]$TimeoutSeconds = 120
     )
-
-    Write-Log "Uploading JSON report to DonWatcher..." -Level Info
-
-    # Create reports directory if it doesn't exist
-    $reportsDir = Join-Path (Get-Location) "reports"
-    if (-not (Test-Path $reportsDir)) {
-        New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
-        Write-Log "Created reports directory: $reportsDir" -Level Debug
-    }
-
-    # Generate timestamped filename for saved report
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $savedReportFile = Join-Path $reportsDir "groupscan_$timestamp.json"
     
-    $tempFile = [System.IO.Path]::GetTempFileName()
-    $jsonFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
-
+    $uploadUrl = "$BaseUrl/upload"
+    Write-Host "[INFO] Uploading report to: $uploadUrl" -ForegroundColor Cyan
+    
+    $tempFile = $null
     try {
-        # Convert report to JSON
+        # Convert to JSON
         $jsonContent = $Report | ConvertTo-Json -Depth 10
         
-        # Save to temporary file for upload
+        # Create temp file for upload
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $jsonFile = [System.IO.Path]::ChangeExtension($tempFile, ".json")
         $jsonContent | Out-File -FilePath $jsonFile -Encoding UTF8
         
-        # Save to persistent reports directory for testing/debugging
-        try {
-            $jsonContent | Out-File -FilePath $savedReportFile -Encoding UTF8
-            Write-Log "Report saved to: $savedReportFile" -Level Info
-        }
-        catch {
-            Write-Log "Warning: Failed to save report file: $($_.Exception.Message)" -Level Warning
-            # Continue with upload even if save fails
-        }
-
-        $uploadUrl = "$BaseUrl/upload"
+        # Build multipart form data
         $boundary = [System.Guid]::NewGuid().ToString()
-        $LF = "`r`n"
-
-        $fileContent = Get-Content -Path $jsonFile -Raw
         $fileName = "domain-groups-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-
-        $bodyLines = @(
+        $LF = "`r`n"
+        
+        $body = @(
             "--$boundary",
             "Content-Disposition: form-data; name=`"file`"; filename=`"$fileName`"",
             "Content-Type: application/json$LF",
-            $fileContent,
+            $jsonContent,
             "--$boundary--$LF"
         ) -join $LF
-
-        $null = Invoke-RestMethod -Uri $uploadUrl -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $bodyLines -TimeoutSec $Config.TimeoutSeconds
-        Write-Log "[SUCCESS] Report uploaded." -Level Info
+        
+        # Upload
+        $null = Invoke-RestMethod -Uri $uploadUrl -Method Post `
+            -ContentType "multipart/form-data; boundary=$boundary" `
+            -Body $body -TimeoutSec $TimeoutSeconds
+        
+        Write-Host "[OK] Report uploaded successfully" -ForegroundColor Green
         return $true
     }
     catch {
-        Write-Log "[ERROR] Upload failed: $($_.Exception.Message)" -Level Error
+        Write-Host "[ERROR] Upload failed: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
     finally {
-        if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $jsonFile) { Remove-Item $jsonFile -Force -ErrorAction SilentlyContinue }
+        # Cleanup temp files
+        if ($tempFile -and (Test-Path $tempFile)) {
+            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+        }
+        if ($jsonFile -and (Test-Path $jsonFile)) {
+            Remove-Item $jsonFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
-#endregion
 
-#region Main
+# =============================================================================
+# Main Execution
+# =============================================================================
+
 function Main {
-    Write-Log "DonWatcher Domain Scanner (Minimal) starting..." -Level Info
-
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host " DonWatcher Domain Group Scanner v2.0" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host ""
+    
+    # Show configuration summary
+    Write-Host "[INFO] Configuration:" -ForegroundColor Cyan
+    Write-Host "     Config File      : $ConfigFile" -ForegroundColor Gray
+    Write-Host "     Target Server    : $($Config.DonWatcherUrl)" -ForegroundColor Gray
+    Write-Host "     Groups to Scan   : $($Config.PrivilegedGroups.Count)" -ForegroundColor Gray
+    Write-Host ""
+    
+    # Step 1: Check prerequisites
+    if (-not (Test-Prerequisites)) {
+        exit 1
+    }
+    
+    # Step 2: Test DonWatcher connection
+    $dwStatus = Test-DonWatcherConnection -BaseUrl $Config.DonWatcherUrl
+    if (-not $dwStatus) {
+        exit 1
+    }
+    
+    # If only testing connection, exit here
+    if ($TestConnection) {
+        Write-Host ""
+        Write-Host "[SUCCESS] Connection test completed" -ForegroundColor Green
+        exit 0
+    }
+    
+    # Step 3: Get domain information
+    Write-Host "[INFO] Retrieving domain information..." -ForegroundColor Cyan
     try {
-        if (-not (Test-Prerequisites)) {
-            Write-Log "[ERROR] Prerequisites check failed" -Level Error
-            exit 1
-        }
-
-        $dwStatus = Test-DonWatcherConnection -BaseUrl $Config.DonWatcherUrl
-        if (-not $dwStatus -and -not $TestConnection) {
-            Write-Log "[ERROR] Cannot connect to DonWatcher" -Level Error
-            exit 1
-        }
-
-        if ($TestConnection) {
-            Write-Log "[SUCCESS] Connection test completed" -Level Info
-            exit 0
-        }
-
-        $domainInfo = Get-DomainInfoMinimal
-
-        # Enforce domain SID, if an expected value is available
-        $expectedSid = $null
-        if ($Config.PSObject.Properties.Name -contains 'ExpectedDomainSID' -and $Config.ExpectedDomainSID) {
-            $expectedSid = $Config.ExpectedDomainSID
-            Write-Log "Using ExpectedDomainSID from config." -Level Debug
-        } elseif ($dwStatus -and $dwStatus.domain_sid) {
-            $expectedSid = $dwStatus.domain_sid
-            Write-Log "Using domain_sid from DonWatcher status." -Level Debug
-        }
-
-        if ($expectedSid) {
-            if ($expectedSid -ne $domainInfo.domain_sid) {
-                Write-Log "[ERROR] Domain SID mismatch! AD: $($domainInfo.domain_sid) Expected: $expectedSid" -Level Error
-                throw "Domain SID does not match expected value. Aborting."
-            } else {
-                Write-Log "Domain SID matches expected value." -Level Info
-            }
-        } else {
-            Write-Log "No expected domain SID provided; skipping SID enforcement." -Level Warning
-        }
-
-        $groupsMap = Get-ConfiguredGroupMemberships
-
-        $report = New-MinimalReportJson -DomainInfo $domainInfo -GroupsMap $groupsMap
-
-        if (Send-ReportToDonWatcher -Report $report -BaseUrl $Config.DonWatcherUrl) {
-            Write-Log "[SUCCESS] Minimal domain scan finished." -Level Info
-            exit 0
-        } else {
-            Write-Log "[ERROR] Upload failed." -Level Error
-            exit 1
-        }
+        $domainInfo = Get-DomainSID
+        Write-Host "[OK] Domain: $($domainInfo.DomainName)" -ForegroundColor Green
+        Write-Verbose "Domain SID: $($domainInfo.DomainSID)"
     }
     catch {
-        Write-Log "[ERROR] Fatal: $($_.Exception.Message)" -Level Error
-        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Debug
+        Write-Host "[ERROR] Cannot get domain info: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+    
+    # Step 4: Verify Domain SID
+    $expectedSID = $null
+    if ($Config.ContainsKey('ExpectedDomainSID') -and $Config.ExpectedDomainSID) {
+        $expectedSID = $Config.ExpectedDomainSID
+    }
+    
+    if (-not (Test-DomainSIDMatch -ActualSID $domainInfo.DomainSID -ExpectedSID $expectedSID)) {
+        Write-Host "[ERROR] Domain SID verification failed. Aborting." -ForegroundColor Red
+        exit 1
+    }
+    
+    # Step 5: Collect group memberships
+    $groupsData = Get-GroupMemberships -Groups $Config.PrivilegedGroups
+    
+    $totalMembers = ($groupsData.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+    $groupCount = $groupsData.Keys.Count
+    Write-Host "[OK] Collected $totalMembers members from $groupCount groups" -ForegroundColor Green
+    
+    # Step 6: Generate report
+    $report = New-ScanReport -DomainInfo $domainInfo -GroupsData $groupsData
+    
+    # Step 7: Upload to DonWatcher
+    if (Send-ReportToDonWatcher -Report $report -BaseUrl $Config.DonWatcherUrl -TimeoutSeconds $Config.TimeoutSeconds) {
+        Write-Host ""
+        Write-Host "[SUCCESS] Domain scan completed successfully" -ForegroundColor Green
+        exit 0
+    }
+    else {
+        Write-Host ""
+        Write-Host "[ERROR] Domain scan completed but upload failed" -ForegroundColor Red
         exit 1
     }
 }
 
-# Create a default config if missing (non-destructive if present)
-if (-not (Test-Path $ConfigFile)) {
-    Write-Log "Creating default configuration file: $ConfigFile" -Level Info
-    $DefaultConfig | ConvertTo-Json -Depth 3 | Out-File $ConfigFile -Encoding UTF8
-    Write-Log "Review and customize the configuration file before running again." -Level Info
-}
-
+# Run main
 Main
-#endregion
