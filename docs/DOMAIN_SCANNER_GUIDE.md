@@ -2,12 +2,13 @@
 
 ## Overview
 
-The DonWatcher Domain Scanner (`client/DonWatcher-DomainScanner.ps1`) is a PowerShell script that collects privileged Active Directory group memberships and uploads them to DonWatcher for monitoring and compliance tracking.
+The DonWatcher Domain Scanner (`client/DonWatcher-DomainScanner.ps1`) is a PowerShell script that collects privileged Active Directory group memberships and uploads them directly to the DonWatcher API for monitoring and compliance tracking.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
+| **Direct API Upload** | Uses dedicated `/api/upload/domain-groups` endpoint - no file handling |
 | **Focused Collection** | Scans only configured privileged groups |
 | **Member Details** | Collects name, SAMAccountName, SID, type, and enabled status |
 | **Domain SID Verification** | Optional enforcement to ensure correct domain targeting |
@@ -18,17 +19,25 @@ The DonWatcher Domain Scanner (`client/DonWatcher-DomainScanner.ps1`) is a Power
 ## Data Flow
 
 ```
-┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  PowerShell Script  │───▶│  POST /upload    │───▶│  DomainAnalysis │
-│  Collects Groups    │    │  (multipart/form)│    │  Parser         │
-└─────────────────────┘    └──────────────────┘    └────────┬────────┘
-                                                            │
-                                                            ▼
+┌─────────────────────┐    ┌────────────────────────┐    ┌─────────────────┐
+│  PowerShell Script  │───▶│  POST /api/upload/     │───▶│  Upload Service │
+│  Collects Groups    │    │  domain-groups (JSON)  │    │  (Direct DB)    │
+└─────────────────────┘    └────────────────────────┘    └────────┬────────┘
+                                                                  │
+                                                                  ▼
 ┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │  Dashboard          │◀───│  /api/domain_    │◀───│  PostgreSQL     │
 │  Privileged Groups  │    │  groups/{domain} │    │  Database       │
 └─────────────────────┘    └──────────────────┘    └─────────────────┘
 ```
+
+### Why Direct API?
+
+The v3.0 scanner uses the dedicated JSON API instead of file uploads:
+- **No encoding issues** - Direct JSON over HTTP, no UTF-8 BOM problems
+- **No temp files** - Cleaner, faster, more reliable
+- **Better validation** - Server validates schema upfront with clear errors
+- **Explicit contract** - API knows exactly what to expect
 
 ## Prerequisites
 
@@ -324,15 +333,51 @@ $testData | Out-File -FilePath "test.json" -Encoding UTF8
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/debug/status` | GET | Connection test |
-| `/upload` | POST | Upload scan report (multipart/form-data) |
+| `/api/debug/status` | GET | Connection test, server health |
+| `/api/upload/domain-groups` | POST | Upload group membership data (JSON) |
+
+### API Request Format
+
+```http
+POST /api/upload/domain-groups?domain=corp.example.com
+Content-Type: application/json
+
+{
+  "groups": [
+    {
+      "group_name": "Domain Admins",
+      "members": [
+        {"name": "Admin", "samaccountname": "admin", "sid": "S-1-5-...", "type": "user", "enabled": true}
+      ]
+    }
+  ],
+  "domain_metadata": {
+    "domain_sid": "S-1-5-21-..."
+  }
+}
+```
+
+### API Response
+
+```json
+{
+  "status": "success",
+  "report_id": "uuid-here",
+  "tool_type": "domain_analysis",
+  "domain": "corp.example.com",
+  "findings_count": 8,
+  "groups_processed": 8,
+  "message": "Successfully uploaded domain_analysis report"
+}
+```
 
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 2.0 | 2024-12 | Complete rewrite - minimal, focused, bug-free |
-| 1.0 | 2024-01 | Initial version |
+| 3.0 | 2024-12 | Direct API upload, removed file handling |
+| 2.0 | 2024-12 | Rewrite - minimal and focused |
+| 1.0 | 2024-01 | Initial version (file-based upload) |
 
 ## Related Documentation
 

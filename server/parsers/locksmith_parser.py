@@ -26,7 +26,8 @@ class LocksmithParser(BaseSecurityParser):
         
         try:
             if file_path.suffix.lower() == '.json':
-                with open(file_path, 'r', encoding='utf-8') as f:
+                # Use utf-8-sig to handle UTF-8 BOM from PowerShell
+                with open(file_path, 'r', encoding='utf-8-sig') as f:
                     data = json.load(f)
                 
                 # Check for Locksmith-specific structure
@@ -37,7 +38,8 @@ class LocksmithParser(BaseSecurityParser):
                         any('template' in str(key).lower() for key in data.keys())))
             
             elif file_path.suffix.lower() == '.csv':
-                with open(file_path, 'r', encoding='utf-8') as f:
+                # Use utf-8-sig to handle UTF-8 BOM
+                with open(file_path, 'r', encoding='utf-8-sig') as f:
                     reader = csv.DictReader(f)
                     headers = reader.fieldnames or []
                     
@@ -46,7 +48,8 @@ class LocksmithParser(BaseSecurityParser):
                     return any(header.lower() in [h.lower() for h in headers] 
                               for header in locksmith_headers)
             
-        except Exception:
+        except Exception as e:
+            logging.warning(f"LocksmithParser.can_parse failed for {file_path}: {e}")
             return False
         
         return False
@@ -62,7 +65,8 @@ class LocksmithParser(BaseSecurityParser):
     
     def _parse_json_report(self, file_path: Path) -> Report:
         """Parse JSON format Locksmith report."""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Use utf-8-sig to handle UTF-8 BOM from PowerShell
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
         
         # Extract basic information
@@ -124,7 +128,8 @@ class LocksmithParser(BaseSecurityParser):
         domain = "Unknown"
         report_id = str(uuid4())
         
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Use utf-8-sig to handle UTF-8 BOM from PowerShell
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             
             for row in reader:

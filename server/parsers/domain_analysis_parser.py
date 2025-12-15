@@ -24,7 +24,8 @@ class DomainAnalysisParser(BaseSecurityParser):
             return False
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            # Use utf-8-sig to handle UTF-8 BOM from PowerShell
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             
             # Check for domain analysis specific structure
@@ -33,25 +34,30 @@ class DomainAnalysisParser(BaseSecurityParser):
                 # Check for new domain_group_members format (from PowerShell scanner)
                 if (data.get('tool_type') == 'domain_group_members' and 
                     'domain' in data and 'groups' in data):
+                    logging.debug(f"DomainAnalysisParser: Matched domain_group_members format for {file_path}")
                     return True
                 
                 # Check for DonWatcher report format (from PowerShell agent)
                 if (data.get('tool_type') == 'domain_analysis' and 
                     'domain' in data and 'findings' in data):
+                    logging.debug(f"DomainAnalysisParser: Matched domain_analysis format for {file_path}")
                     return True
                 
                 # Check for raw domain analysis format  
                 if (('domain' in data or 'domain_info' in data) and
                     ('groups' in data or 'privileged_groups' in data)):
+                    logging.debug(f"DomainAnalysisParser: Matched raw format for {file_path}")
                     return True
             
             return False
-        except Exception:
+        except Exception as e:
+            logging.warning(f"DomainAnalysisParser.can_parse failed for {file_path}: {e}")
             return False
     
     def parse_report(self, file_path: Path) -> Report:
         """Parse domain analysis JSON file."""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Use utf-8-sig to handle UTF-8 BOM from PowerShell
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
         
         # Check for new domain_group_members format (from PowerShell scanner)
