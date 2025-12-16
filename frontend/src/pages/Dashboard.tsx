@@ -27,10 +27,9 @@ import {
   useDashboardKPIs, 
   useDashboardKPIHistory, 
   useDomains, 
-  useDomainGroups 
+  useDomainGroupsFast 
 } from '../hooks/useApi'
-import { RiskGauge } from '../components/RiskGauge'
-import { StatsCard } from '../components/StatsCard'
+import { RiskGauge, StatsCard, DashboardSkeleton } from '../components'
 import { clsx } from 'clsx'
 
 export function Dashboard() {
@@ -46,8 +45,8 @@ export function Dashboard() {
   // Historical KPIs for trend charts
   const { data: historyResponse } = useDashboardKPIHistory(latestDomain || '', 10)
   
-  // Domain groups for the groups preview section
-  const { data: domainGroups } = useDomainGroups(latestDomain || '')
+  // Domain groups for the groups preview section (using fast endpoint)
+  const { data: domainGroups } = useDomainGroupsFast(latestDomain || '')
   
   // Extract KPIs from response
   const kpis = kpiResponse?.status === 'ok' ? kpiResponse.kpis : null
@@ -81,14 +80,7 @@ export function Dashboard() {
   ] : []
   
   if (kpisLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-cyber-accent-cyan border-t-transparent rounded-full mx-auto" />
-          <p className="mt-4 text-cyber-text-secondary">Loading dashboard data...</p>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton />
   }
   
   // Handle no data state

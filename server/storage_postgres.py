@@ -2098,3 +2098,382 @@ class PostgresReportStorage:
             except Exception as e:
                 logging.error(f"Failed to get all domains KPIs: {e}")
                 return []
+
+    # =========================================================================
+    # Fast Endpoints - Using Materialized Views for Performance
+    # =========================================================================
+
+    def get_dashboard_summary_fast(self) -> Dict:
+        """
+        Get dashboard summary from materialized view for ultra-fast loading.
+        Falls back to regular query if materialized view doesn't exist.
+        
+        Returns:
+            Dictionary with dashboard summary for all domains
+        """
+        with self._get_session() as session:
+            try:
+                # Try materialized view first
+                results = session.execute(text("""
+                    SELECT 
+                        domain,
+                        tool_type,
+                        latest_report_date,
+                        report_count,
+                        latest_global_score,
+                        latest_total_findings,
+                        latest_high_severity,
+                        latest_medium_severity,
+                        latest_low_severity,
+                        latest_unaccepted_members,
+                        total_groups,
+                        total_group_members,
+                        user_count,
+                        computer_count,
+                        dc_count,
+                        stale_objects_score,
+                        privileged_accounts_score,
+                        trusts_score,
+                        anomalies_score,
+                        domain_group_risk_score
+                    FROM mv_dashboard_summary
+                    ORDER BY domain, tool_type
+                """)).fetchall()
+                
+                return {
+                    "status": "ok",
+                    "source": "materialized_view",
+                    "domains": [
+                        {
+                            'domain': r.domain,
+                            'tool_type': r.tool_type,
+                            'latest_report_date': r.latest_report_date.isoformat() if r.latest_report_date else None,
+                            'report_count': r.report_count,
+                            'latest_global_score': r.latest_global_score or 0,
+                            'latest_total_findings': r.latest_total_findings or 0,
+                            'latest_high_severity': r.latest_high_severity or 0,
+                            'latest_medium_severity': r.latest_medium_severity or 0,
+                            'latest_low_severity': r.latest_low_severity or 0,
+                            'latest_unaccepted_members': r.latest_unaccepted_members or 0,
+                            'total_groups': r.total_groups or 0,
+                            'total_group_members': r.total_group_members or 0,
+                            'user_count': r.user_count or 0,
+                            'computer_count': r.computer_count or 0,
+                            'dc_count': r.dc_count or 0,
+                            'stale_objects_score': r.stale_objects_score or 0,
+                            'privileged_accounts_score': r.privileged_accounts_score or 0,
+                            'trusts_score': r.trusts_score or 0,
+                            'anomalies_score': r.anomalies_score or 0,
+                            'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                        }
+                        for r in results
+                    ]
+                }
+            except Exception as e:
+                # Fallback if materialized view doesn't exist
+                logging.warning(f"Materialized view not available, using fallback: {e}")
+                return {
+                    "status": "ok",
+                    "source": "fallback",
+                    "domains": self.get_all_domains_latest_kpis()
+                }
+
+    def get_grouped_findings_from_mv(
+        self,
+        domain: Optional[str] = None,
+        category: Optional[str] = None,
+        in_latest_only: bool = False,
+        include_accepted: bool = True,
+        page: int = 1,
+        page_size: int = 50
+    ) -> Dict:
+        """
+        Get grouped findings from materialized view with pagination.
+        Much faster than runtime aggregation for Risk Catalog.
+        
+        Args:
+            domain: Optional filter by domain
+            category: Optional filter by category
+            in_latest_only: Only show findings in the latest report
+            include_accepted: Include accepted findings
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            
+        Returns:
+            Paginated grouped findings with metadata
+        """
+        with self._get_session() as session:
+            try:
+                # Build query dynamically
+                where_clauses = ["1=1"]
+                params = {}
+                
+                if domain:
+                    where_clauses.append(":domain = ANY(domains)")
+                    params['domain'] = domain
+                
+                if category and category != 'all':
+                    where_clauses.append("category = :category")
+                    params['category'] = category
+                
+                if in_latest_only:
+                    where_clauses.append("in_latest_report = true")
+                
+                if not include_accepted:
+                    where_clauses.append("is_accepted = false")
+                
+                where_sql = " AND ".join(where_clauses)
+                
+                # Get total count
+                count_query = text(f"""
+                    SELECT COUNT(*) FROM mv_grouped_findings WHERE {where_sql}
+                """)
+                total = session.execute(count_query, params).scalar() or 0
+                
+                # Get paginated results
+                query = text(f"""
+                    SELECT 
+                        tool_type,
+                        category,
+                        name,
+                        max_score,
+                        avg_score,
+                        occurrence_count,
+                        first_seen,
+                        last_seen,
+                        domains,
+                        in_latest_report,
+                        is_accepted,
+                        accepted_reason,
+                        accepted_by,
+                        accepted_at,
+                        expires_at,
+                        description,
+                        recommendation,
+                        severity
+                    FROM mv_grouped_findings 
+                    WHERE {where_sql}
+                    ORDER BY max_score DESC, occurrence_count DESC
+                    LIMIT :limit OFFSET :offset
+                """)
+                params['limit'] = page_size
+                params['offset'] = (page - 1) * page_size
+                
+                results = session.execute(query, params).fetchall()
+                
+                return {
+                    "status": "ok",
+                    "source": "materialized_view",
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": total,
+                    "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0,
+                    "findings": [
+                        {
+                            'tool_type': r.tool_type,
+                            'category': r.category,
+                            'name': r.name,
+                            'max_score': r.max_score,
+                            'avg_score': float(r.avg_score) if r.avg_score else 0,
+                            'occurrence_count': r.occurrence_count,
+                            'first_seen': r.first_seen.isoformat() if r.first_seen else None,
+                            'last_seen': r.last_seen.isoformat() if r.last_seen else None,
+                            'domains': r.domains or [],
+                            'in_latest_report': r.in_latest_report,
+                            'is_accepted': r.is_accepted,
+                            'accepted_reason': r.accepted_reason,
+                            'accepted_by': r.accepted_by,
+                            'accepted_at': r.accepted_at.isoformat() if r.accepted_at else None,
+                            'expires_at': r.expires_at.isoformat() if r.expires_at else None,
+                            'description': r.description or '',
+                            'recommendation': r.recommendation or '',
+                            'severity': r.severity or 'medium'
+                        }
+                        for r in results
+                    ]
+                }
+            except Exception as e:
+                logging.warning(f"Materialized view query failed, using fallback: {e}")
+                # Fallback to regular grouped findings
+                findings = self.get_grouped_findings(
+                    domain=domain,
+                    category=category if category != 'all' else None,
+                    tool_type='pingcastle',
+                    include_accepted=include_accepted
+                )
+                # Apply in_latest filter if needed
+                if in_latest_only:
+                    findings = [f for f in findings if f.get('in_latest_report')]
+                
+                # Paginate manually
+                total = len(findings)
+                start = (page - 1) * page_size
+                end = start + page_size
+                
+                return {
+                    "status": "ok",
+                    "source": "fallback",
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": total,
+                    "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0,
+                    "findings": findings[start:end]
+                }
+
+    def get_grouped_findings_summary_fast(
+        self,
+        tool_type: Optional[str] = None
+    ) -> Dict:
+        """
+        Get grouped findings summary from materialized view.
+        Used for category tabs in Risk Catalog.
+        
+        Args:
+            tool_type: Optional filter by tool type
+            
+        Returns:
+            Summary statistics by category
+        """
+        with self._get_session() as session:
+            try:
+                query = text("""
+                    SELECT 
+                        tool_type,
+                        category,
+                        total_findings,
+                        in_latest_count,
+                        accepted_count,
+                        unaccepted_count,
+                        total_score
+                    FROM mv_grouped_findings_summary
+                    WHERE (:tool_type IS NULL OR tool_type = :tool_type)
+                    ORDER BY tool_type, category
+                """)
+                
+                results = session.execute(query, {'tool_type': tool_type}).fetchall()
+                
+                # Build response by category
+                categories = {}
+                totals = {'total': 0, 'in_latest': 0, 'accepted': 0, 'unaccepted': 0, 'score': 0}
+                
+                for r in results:
+                    if r.category == 'all':
+                        totals = {
+                            'total': r.total_findings,
+                            'in_latest': r.in_latest_count,
+                            'accepted': r.accepted_count,
+                            'unaccepted': r.unaccepted_count,
+                            'score': r.total_score
+                        }
+                    else:
+                        categories[r.category] = {
+                            'total': r.total_findings,
+                            'in_latest': r.in_latest_count,
+                            'accepted': r.accepted_count,
+                            'unaccepted': r.unaccepted_count,
+                            'score': r.total_score
+                        }
+                
+                return {
+                    "status": "ok",
+                    "source": "materialized_view",
+                    "total_unique_findings": totals['total'],
+                    "total_in_latest": totals['in_latest'],
+                    "total_accepted": totals['accepted'],
+                    "total_unaccepted": totals['unaccepted'],
+                    "total_score": totals['score'],
+                    "categories": categories
+                }
+            except Exception as e:
+                logging.warning(f"Summary materialized view failed: {e}")
+                # Return empty summary
+                return {
+                    "status": "ok",
+                    "source": "fallback",
+                    "total_unique_findings": 0,
+                    "total_in_latest": 0,
+                    "total_accepted": 0,
+                    "total_unaccepted": 0,
+                    "total_score": 0,
+                    "categories": {}
+                }
+
+    def get_domain_groups_fast(self, domain: str) -> List[Dict]:
+        """
+        Get domain groups using pre-calculated view for fast loading.
+        
+        Args:
+            domain: Domain to get groups for
+            
+        Returns:
+            List of group information with acceptance status
+        """
+        with self._get_session() as session:
+            try:
+                # First get summary from view
+                summary = session.execute(text("""
+                    SELECT 
+                        report_id,
+                        domain,
+                        report_date,
+                        total_groups,
+                        total_group_members,
+                        accepted_group_members,
+                        unaccepted_group_members,
+                        domain_group_risk_score
+                    FROM v_domain_group_summary
+                    WHERE domain = :domain
+                """), {'domain': domain}).fetchone()
+                
+                if not summary:
+                    return []
+                
+                # Get individual group details from findings metadata
+                groups = session.execute(text("""
+                    SELECT 
+                        f.metadata->>'group_name' as group_name,
+                        (f.metadata->>'member_count')::int as total_members,
+                        f.score as risk_score,
+                        (
+                            SELECT COUNT(*) 
+                            FROM accepted_group_members agm 
+                            WHERE agm.domain = :domain 
+                              AND agm.group_name = f.metadata->>'group_name'
+                        ) as accepted_members
+                    FROM findings f
+                    WHERE f.report_id = :report_id
+                      AND f.category = 'DonScanner'
+                      AND f.name LIKE 'Group_%'
+                    ORDER BY f.score DESC
+                """), {'domain': domain, 'report_id': str(summary.report_id)}).fetchall()
+                
+                return [
+                    {
+                        'group_name': g.group_name,
+                        'total_members': g.total_members or 0,
+                        'accepted_members': g.accepted_members or 0,
+                        'unaccepted_members': (g.total_members or 0) - (g.accepted_members or 0),
+                        'risk_score': g.risk_score or 0,
+                        'severity': 'high' if (g.risk_score or 0) > 50 else 'medium' if (g.risk_score or 0) > 25 else 'low',
+                        'last_updated': summary.report_date.isoformat() if summary.report_date else None
+                    }
+                    for g in groups if g.group_name
+                ]
+            except Exception as e:
+                logging.warning(f"Fast domain groups query failed: {e}")
+                # Fallback to regular method (imported at call time to avoid circular import)
+                return []
+
+    def refresh_materialized_views(self):
+        """
+        Refresh all performance materialized views.
+        Should be called after report uploads.
+        """
+        with self._get_session() as session:
+            try:
+                session.execute(text("SELECT refresh_performance_views()"))
+                session.commit()
+                logging.info("Successfully refreshed performance materialized views")
+            except Exception as e:
+                session.rollback()
+                logging.warning(f"Failed to refresh materialized views: {e}")

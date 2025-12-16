@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FileText, Calendar, ExternalLink, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useReportsPaginated } from '../hooks/useApi'
+import { ReportsListSkeleton } from '../components'
 import { clsx } from 'clsx'
 import { format } from 'date-fns'
 
@@ -45,11 +46,14 @@ export function Reports() {
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-cyber-accent-cyan border-t-transparent rounded-full mx-auto" />
-          <p className="mt-4 text-cyber-text-secondary">Loading reports...</p>
+      <div className="space-y-6">
+        {/* Filters skeleton */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="h-4 w-16 bg-cyber-bg-tertiary rounded animate-pulse" />
+          <div className="h-10 w-32 bg-cyber-bg-tertiary rounded animate-pulse" />
+          <div className="h-10 w-32 bg-cyber-bg-tertiary rounded animate-pulse" />
         </div>
+        <ReportsListSkeleton rows={5} />
       </div>
     )
   }
