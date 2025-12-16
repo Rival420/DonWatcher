@@ -1754,7 +1754,14 @@ class PostgresReportStorage:
     def get_dashboard_kpis(self, domain: Optional[str] = None) -> Dict:
         """
         Get dashboard KPIs optimized for fast loading.
-        Returns latest KPIs for the specified domain or all domains.
+        
+        Uses the composite view v_dashboard_composite which fetches:
+        - PingCastle scores from the latest PingCastle report
+        - Domain Group metrics from the latest domain_analysis report
+        - Merged infrastructure data from whichever has it
+        
+        This prevents PingCastle scores from being overwritten when
+        a domain_analysis report is uploaded after a PingCastle report.
         
         Args:
             domain: Optional domain filter. If None, returns KPIs for latest domain.
@@ -1764,122 +1771,256 @@ class PostgresReportStorage:
         """
         with self._get_session() as session:
             try:
-                if domain:
-                    # Get latest KPIs for specific domain
-                    query = text("""
-                        SELECT 
-                            rk.id,
-                            rk.report_id,
-                            rk.tool_type,
-                            rk.domain,
-                            rk.report_date,
-                            rk.global_score,
-                            rk.stale_objects_score,
-                            rk.privileged_accounts_score,
-                            rk.trusts_score,
-                            rk.anomalies_score,
-                            rk.user_count,
-                            rk.computer_count,
-                            rk.dc_count,
-                            rk.total_findings,
-                            rk.high_severity_findings,
-                            rk.medium_severity_findings,
-                            rk.low_severity_findings,
-                            rk.total_groups,
-                            rk.total_group_members,
-                            rk.accepted_group_members,
-                            rk.unaccepted_group_members,
-                            rk.domain_group_risk_score,
-                            r.domain_sid,
-                            r.domain_functional_level,
-                            r.forest_functional_level,
-                            r.maturity_level
-                        FROM reports_kpis rk
-                        JOIN reports r ON rk.report_id = r.id
-                        WHERE rk.domain = :domain
-                        ORDER BY rk.report_date DESC
-                        LIMIT 1
-                    """)
-                    result = session.execute(query, {'domain': domain}).fetchone()
-                else:
-                    # Get latest KPIs across all domains
-                    query = text("""
-                        SELECT 
-                            rk.id,
-                            rk.report_id,
-                            rk.tool_type,
-                            rk.domain,
-                            rk.report_date,
-                            rk.global_score,
-                            rk.stale_objects_score,
-                            rk.privileged_accounts_score,
-                            rk.trusts_score,
-                            rk.anomalies_score,
-                            rk.user_count,
-                            rk.computer_count,
-                            rk.dc_count,
-                            rk.total_findings,
-                            rk.high_severity_findings,
-                            rk.medium_severity_findings,
-                            rk.low_severity_findings,
-                            rk.total_groups,
-                            rk.total_group_members,
-                            rk.accepted_group_members,
-                            rk.unaccepted_group_members,
-                            rk.domain_group_risk_score,
-                            r.domain_sid,
-                            r.domain_functional_level,
-                            r.forest_functional_level,
-                            r.maturity_level
-                        FROM reports_kpis rk
-                        JOIN reports r ON rk.report_id = r.id
-                        ORDER BY rk.report_date DESC
-                        LIMIT 1
-                    """)
-                    result = session.execute(query).fetchone()
-                
-                if not result:
-                    return {
-                        'status': 'no_data',
-                        'message': 'No reports found'
-                    }
-                
-                return {
-                    'status': 'ok',
-                    'kpis': {
-                        'id': str(result.id),
-                        'report_id': str(result.report_id),
-                        'tool_type': result.tool_type,
-                        'domain': result.domain,
-                        'report_date': result.report_date.isoformat(),
-                        'domain_sid': result.domain_sid,
-                        'domain_functional_level': result.domain_functional_level,
-                        'forest_functional_level': result.forest_functional_level,
-                        'maturity_level': result.maturity_level,
-                        'global_score': result.global_score,
-                        'stale_objects_score': result.stale_objects_score,
-                        'privileged_accounts_score': result.privileged_accounts_score,
-                        'trusts_score': result.trusts_score,
-                        'anomalies_score': result.anomalies_score,
-                        'user_count': result.user_count,
-                        'computer_count': result.computer_count,
-                        'dc_count': result.dc_count,
-                        'total_findings': result.total_findings,
-                        'high_severity_findings': result.high_severity_findings,
-                        'medium_severity_findings': result.medium_severity_findings,
-                        'low_severity_findings': result.low_severity_findings,
-                        'total_groups': result.total_groups,
-                        'total_group_members': result.total_group_members,
-                        'accepted_group_members': result.accepted_group_members,
-                        'unaccepted_group_members': result.unaccepted_group_members,
-                        'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0
-                    }
-                }
-                
+                # Try using the composite view first (migration_008)
+                return self._get_dashboard_kpis_composite(session, domain)
             except Exception as e:
-                logging.error(f"Failed to get dashboard KPIs: {e}")
-                # Fallback: return basic data from reports table
-                return self._get_fallback_dashboard_kpis(session, domain)
+                logging.warning(f"Composite view query failed, using fallback: {e}")
+                # Fallback to old method if composite view doesn't exist
+                return self._get_dashboard_kpis_legacy(session, domain)
+    
+    def _get_dashboard_kpis_composite(self, session, domain: Optional[str] = None) -> Dict:
+        """
+        Get dashboard KPIs using the composite view.
+        
+        This view properly separates PingCastle scores from domain_analysis metrics,
+        ensuring that uploading a domain_analysis report doesn't overwrite PingCastle scores.
+        """
+        if domain:
+            query = text("""
+                SELECT 
+                    dc.domain,
+                    dc.pingcastle_global_score,
+                    dc.stale_objects_score,
+                    dc.privileged_accounts_score,
+                    dc.trusts_score,
+                    dc.anomalies_score,
+                    dc.pingcastle_report_date,
+                    dc.pingcastle_report_id,
+                    dc.total_groups,
+                    dc.total_group_members,
+                    dc.accepted_group_members,
+                    dc.unaccepted_group_members,
+                    dc.domain_group_risk_score,
+                    dc.domain_analysis_report_date,
+                    dc.total_findings,
+                    dc.high_severity_findings,
+                    dc.medium_severity_findings,
+                    dc.low_severity_findings,
+                    dc.user_count,
+                    dc.computer_count,
+                    dc.dc_count,
+                    dc.latest_report_date,
+                    dc.data_sources,
+                    -- Get domain metadata from the PingCastle report if available
+                    r.domain_sid,
+                    r.domain_functional_level,
+                    r.forest_functional_level,
+                    r.maturity_level
+                FROM v_dashboard_composite dc
+                LEFT JOIN reports r ON dc.pingcastle_report_id = r.id
+                WHERE dc.domain = :domain
+            """)
+            result = session.execute(query, {'domain': domain}).fetchone()
+        else:
+            # Get latest domain based on most recent report
+            query = text("""
+                SELECT 
+                    dc.domain,
+                    dc.pingcastle_global_score,
+                    dc.stale_objects_score,
+                    dc.privileged_accounts_score,
+                    dc.trusts_score,
+                    dc.anomalies_score,
+                    dc.pingcastle_report_date,
+                    dc.pingcastle_report_id,
+                    dc.total_groups,
+                    dc.total_group_members,
+                    dc.accepted_group_members,
+                    dc.unaccepted_group_members,
+                    dc.domain_group_risk_score,
+                    dc.domain_analysis_report_date,
+                    dc.total_findings,
+                    dc.high_severity_findings,
+                    dc.medium_severity_findings,
+                    dc.low_severity_findings,
+                    dc.user_count,
+                    dc.computer_count,
+                    dc.dc_count,
+                    dc.latest_report_date,
+                    dc.data_sources,
+                    r.domain_sid,
+                    r.domain_functional_level,
+                    r.forest_functional_level,
+                    r.maturity_level
+                FROM v_dashboard_composite dc
+                LEFT JOIN reports r ON dc.pingcastle_report_id = r.id
+                ORDER BY dc.latest_report_date DESC NULLS LAST
+                LIMIT 1
+            """)
+            result = session.execute(query).fetchone()
+        
+        if not result:
+            return {
+                'status': 'no_data',
+                'message': 'No reports found'
+            }
+        
+        return {
+            'status': 'ok',
+            'kpis': {
+                'domain': result.domain,
+                'report_date': result.latest_report_date.isoformat() if result.latest_report_date else None,
+                'domain_sid': result.domain_sid,
+                'domain_functional_level': result.domain_functional_level,
+                'forest_functional_level': result.forest_functional_level,
+                'maturity_level': result.maturity_level,
+                # PingCastle scores (from PingCastle report only)
+                'global_score': result.pingcastle_global_score or 0,
+                'stale_objects_score': result.stale_objects_score or 0,
+                'privileged_accounts_score': result.privileged_accounts_score or 0,
+                'trusts_score': result.trusts_score or 0,
+                'anomalies_score': result.anomalies_score or 0,
+                'pingcastle_report_date': result.pingcastle_report_date.isoformat() if result.pingcastle_report_date else None,
+                # Domain Group metrics (from domain_analysis report only)
+                'total_groups': result.total_groups or 0,
+                'total_group_members': result.total_group_members or 0,
+                'accepted_group_members': result.accepted_group_members or 0,
+                'unaccepted_group_members': result.unaccepted_group_members or 0,
+                'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0,
+                'domain_analysis_report_date': result.domain_analysis_report_date.isoformat() if result.domain_analysis_report_date else None,
+                # Findings (from PingCastle)
+                'total_findings': result.total_findings or 0,
+                'high_severity_findings': result.high_severity_findings or 0,
+                'medium_severity_findings': result.medium_severity_findings or 0,
+                'low_severity_findings': result.low_severity_findings or 0,
+                # Infrastructure metrics (merged)
+                'user_count': result.user_count or 0,
+                'computer_count': result.computer_count or 0,
+                'dc_count': result.dc_count or 0,
+                # Metadata
+                'data_sources': result.data_sources
+            }
+        }
+    
+    def _get_dashboard_kpis_legacy(self, session, domain: Optional[str] = None) -> Dict:
+        """
+        Legacy method for dashboard KPIs (before composite view).
+        Used as fallback if v_dashboard_composite doesn't exist.
+        """
+        try:
+            if domain:
+                query = text("""
+                    SELECT 
+                        rk.id,
+                        rk.report_id,
+                        rk.tool_type,
+                        rk.domain,
+                        rk.report_date,
+                        rk.global_score,
+                        rk.stale_objects_score,
+                        rk.privileged_accounts_score,
+                        rk.trusts_score,
+                        rk.anomalies_score,
+                        rk.user_count,
+                        rk.computer_count,
+                        rk.dc_count,
+                        rk.total_findings,
+                        rk.high_severity_findings,
+                        rk.medium_severity_findings,
+                        rk.low_severity_findings,
+                        rk.total_groups,
+                        rk.total_group_members,
+                        rk.accepted_group_members,
+                        rk.unaccepted_group_members,
+                        rk.domain_group_risk_score,
+                        r.domain_sid,
+                        r.domain_functional_level,
+                        r.forest_functional_level,
+                        r.maturity_level
+                    FROM reports_kpis rk
+                    JOIN reports r ON rk.report_id = r.id
+                    WHERE rk.domain = :domain
+                    ORDER BY rk.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query, {'domain': domain}).fetchone()
+            else:
+                query = text("""
+                    SELECT 
+                        rk.id,
+                        rk.report_id,
+                        rk.tool_type,
+                        rk.domain,
+                        rk.report_date,
+                        rk.global_score,
+                        rk.stale_objects_score,
+                        rk.privileged_accounts_score,
+                        rk.trusts_score,
+                        rk.anomalies_score,
+                        rk.user_count,
+                        rk.computer_count,
+                        rk.dc_count,
+                        rk.total_findings,
+                        rk.high_severity_findings,
+                        rk.medium_severity_findings,
+                        rk.low_severity_findings,
+                        rk.total_groups,
+                        rk.total_group_members,
+                        rk.accepted_group_members,
+                        rk.unaccepted_group_members,
+                        rk.domain_group_risk_score,
+                        r.domain_sid,
+                        r.domain_functional_level,
+                        r.forest_functional_level,
+                        r.maturity_level
+                    FROM reports_kpis rk
+                    JOIN reports r ON rk.report_id = r.id
+                    ORDER BY rk.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query).fetchone()
+            
+            if not result:
+                return {
+                    'status': 'no_data',
+                    'message': 'No reports found'
+                }
+            
+            return {
+                'status': 'ok',
+                'kpis': {
+                    'id': str(result.id),
+                    'report_id': str(result.report_id),
+                    'tool_type': result.tool_type,
+                    'domain': result.domain,
+                    'report_date': result.report_date.isoformat(),
+                    'domain_sid': result.domain_sid,
+                    'domain_functional_level': result.domain_functional_level,
+                    'forest_functional_level': result.forest_functional_level,
+                    'maturity_level': result.maturity_level,
+                    'global_score': result.global_score,
+                    'stale_objects_score': result.stale_objects_score,
+                    'privileged_accounts_score': result.privileged_accounts_score,
+                    'trusts_score': result.trusts_score,
+                    'anomalies_score': result.anomalies_score,
+                    'user_count': result.user_count,
+                    'computer_count': result.computer_count,
+                    'dc_count': result.dc_count,
+                    'total_findings': result.total_findings,
+                    'high_severity_findings': result.high_severity_findings,
+                    'medium_severity_findings': result.medium_severity_findings,
+                    'low_severity_findings': result.low_severity_findings,
+                    'total_groups': result.total_groups,
+                    'total_group_members': result.total_group_members,
+                    'accepted_group_members': result.accepted_group_members,
+                    'unaccepted_group_members': result.unaccepted_group_members,
+                    'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0
+                }
+            }
+            
+        except Exception as e:
+            logging.error(f"Legacy dashboard KPIs failed: {e}")
+            return self._get_fallback_dashboard_kpis(session, domain)
 
     def _get_fallback_dashboard_kpis(self, session, domain: Optional[str] = None) -> Dict:
         """Fallback method if reports_kpis table doesn't exist yet."""
@@ -1953,21 +2094,25 @@ class PostgresReportStorage:
         self, 
         domain: str, 
         limit: int = 10,
-        tool_type: Optional[str] = None
+        tool_type: Optional[str] = 'pingcastle'
     ) -> List[Dict]:
         """
         Get historical KPIs for trend charts.
         
+        Defaults to PingCastle reports only since the dashboard trend charts
+        show PingCastle-specific scores (global_score, stale_objects, etc.)
+        
         Args:
             domain: Domain to get history for
             limit: Maximum number of historical points
-            tool_type: Optional filter by tool type
+            tool_type: Filter by tool type (default: 'pingcastle')
             
         Returns:
             List of historical KPI data points
         """
         with self._get_session() as session:
             try:
+                # Default to pingcastle for trend charts (they show PingCastle scores)
                 query = text("""
                     SELECT 
                         report_date,
