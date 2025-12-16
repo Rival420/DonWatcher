@@ -244,7 +244,8 @@ LEFT JOIN latest_domain_analysis da ON ad.domain = da.domain;
    - `get_dashboard_kpis()` - Now tries composite view first, falls back to legacy
    - `_get_dashboard_kpis_composite()` - New method using the view
    - `_get_dashboard_kpis_legacy()` - Old logic preserved as fallback
-   - `get_dashboard_kpis_history()` - Now defaults to `tool_type='pingcastle'`
+   - `get_dashboard_kpis_history()` - **Fixed**: Now properly defaults to `'pingcastle'` at runtime
+     even when `None` is passed explicitly from the API (which overrode parameter default)
 
 3. **Frontend**: No changes needed - API response structure is compatible
 

@@ -2094,7 +2094,7 @@ class PostgresReportStorage:
         self, 
         domain: str, 
         limit: int = 10,
-        tool_type: Optional[str] = 'pingcastle'
+        tool_type: Optional[str] = None
     ) -> List[Dict]:
         """
         Get historical KPIs for trend charts.
@@ -2105,14 +2105,19 @@ class PostgresReportStorage:
         Args:
             domain: Domain to get history for
             limit: Maximum number of historical points
-            tool_type: Filter by tool type (default: 'pingcastle')
+            tool_type: Filter by tool type. If None, defaults to 'pingcastle'
+                       since the dashboard charts show PingCastle-specific scores.
             
         Returns:
             List of historical KPI data points
         """
         with self._get_session() as session:
             try:
-                # Default to pingcastle for trend charts (they show PingCastle scores)
+                # IMPORTANT: Default to 'pingcastle' when tool_type is None
+                # This ensures dashboard trend charts only show PingCastle scores
+                # and are not affected by domain_analysis report uploads
+                effective_tool_type = tool_type if tool_type is not None else 'pingcastle'
+                
                 query = text("""
                     SELECT 
                         report_date,
@@ -2126,14 +2131,16 @@ class PostgresReportStorage:
                         domain_group_risk_score
                     FROM reports_kpis
                     WHERE domain = :domain
-                    """ + (" AND tool_type = :tool_type" if tool_type else "") + """
+                    AND tool_type = :tool_type
                     ORDER BY report_date DESC
                     LIMIT :limit
                 """)
                 
-                params = {'domain': domain, 'limit': limit}
-                if tool_type:
-                    params['tool_type'] = tool_type
+                params = {
+                    'domain': domain, 
+                    'limit': limit,
+                    'tool_type': effective_tool_type
+                }
                 
                 results = session.execute(query, params).fetchall()
                 
