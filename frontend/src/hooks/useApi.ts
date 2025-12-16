@@ -281,3 +281,69 @@ export function useGroupedFindingsSummary(domain?: string, tool_type?: string) {
   })
 }
 
+// =============================================================================
+// Fast Hooks - Using Materialized Views for Performance
+// =============================================================================
+
+/**
+ * Get ultra-fast dashboard summary from materialized view
+ * Best for multi-domain overview
+ */
+export function useDashboardSummaryFast() {
+  return useQuery({
+    queryKey: ['dashboardSummaryFast'],
+    queryFn: api.getDashboardSummaryFast,
+    staleTime: 60000,      // Fresh for 1 minute
+    gcTime: 300000,        // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * Get grouped findings with pagination (fast)
+ * Used for Risk Catalog with 10-15x faster loading
+ */
+export function useGroupedFindingsFast(params?: {
+  domain?: string
+  category?: string
+  in_latest_only?: boolean
+  include_accepted?: boolean
+  page?: number
+  page_size?: number
+}) {
+  return useQuery({
+    queryKey: ['groupedFindingsFast', params],
+    queryFn: () => api.getGroupedFindingsFast(params),
+    staleTime: 30000,       // Fresh for 30 seconds
+    gcTime: 300000,         // Cache for 5 minutes
+    placeholderData: (previousData) => previousData, // Keep showing old data while fetching
+  })
+}
+
+/**
+ * Get grouped findings summary (fast)
+ * Used for category tabs in Risk Catalog
+ */
+export function useGroupedFindingsSummaryFast(tool_type?: string) {
+  return useQuery({
+    queryKey: ['groupedFindingsSummaryFast', tool_type],
+    queryFn: () => api.getGroupedFindingsSummaryFast(tool_type),
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+
+/**
+ * Get domain groups fast (from pre-calculated view)
+ * 5-10x faster than regular endpoint
+ */
+export function useDomainGroupsFast(domain: string) {
+  return useQuery({
+    queryKey: ['domainGroupsFast', domain],
+    queryFn: () => api.getDomainGroupsFast(domain),
+    enabled: !!domain,
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+

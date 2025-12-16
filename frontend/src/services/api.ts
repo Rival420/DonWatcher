@@ -265,6 +265,130 @@ export async function getAllDomainsKPIs(): Promise<AllDomainsKPIResponse> {
   return fetchJSON<AllDomainsKPIResponse>(`${API_BASE}/dashboard/kpis/all-domains`)
 }
 
+// =============================================================================
+// Fast Endpoints - Using Materialized Views for Performance
+// =============================================================================
+
+/**
+ * Get ultra-fast dashboard summary from materialized view
+ */
+export async function getDashboardSummaryFast(): Promise<{
+  status: string
+  source: string
+  domains: Array<{
+    domain: string
+    tool_type: string
+    latest_report_date: string | null
+    report_count: number
+    latest_global_score: number
+    latest_total_findings: number
+    latest_high_severity: number
+    latest_medium_severity: number
+    latest_low_severity: number
+    latest_unaccepted_members: number
+    total_groups: number
+    total_group_members: number
+    user_count: number
+    computer_count: number
+    dc_count: number
+    stale_objects_score: number
+    privileged_accounts_score: number
+    trusts_score: number
+    anomalies_score: number
+    domain_group_risk_score: number
+  }>
+}> {
+  return fetchJSON(`${API_BASE}/dashboard/summary`)
+}
+
+/**
+ * Get grouped findings with pagination (fast, from materialized view)
+ */
+export interface GroupedFindingsFastResponse {
+  status: string
+  source: string
+  page: number
+  page_size: number
+  total_count: number
+  total_pages: number
+  findings: Array<{
+    tool_type: string
+    category: string
+    name: string
+    max_score: number
+    avg_score: number
+    occurrence_count: number
+    first_seen: string | null
+    last_seen: string | null
+    domains: string[]
+    in_latest_report: boolean
+    is_accepted: boolean
+    accepted_reason: string | null
+    accepted_by: string | null
+    accepted_at: string | null
+    expires_at: string | null
+    description: string
+    recommendation: string
+    severity: string
+  }>
+}
+
+export async function getGroupedFindingsFast(params?: {
+  domain?: string
+  category?: string
+  in_latest_only?: boolean
+  include_accepted?: boolean
+  page?: number
+  page_size?: number
+}): Promise<GroupedFindingsFastResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.domain) searchParams.append('domain', params.domain)
+  if (params?.category) searchParams.append('category', params.category)
+  if (params?.in_latest_only) searchParams.append('in_latest_only', 'true')
+  if (params?.include_accepted !== undefined) {
+    searchParams.append('include_accepted', String(params.include_accepted))
+  }
+  if (params?.page) searchParams.append('page', String(params.page))
+  if (params?.page_size) searchParams.append('page_size', String(params.page_size))
+  
+  const query = searchParams.toString()
+  return fetchJSON(`${API_BASE}/findings/grouped/fast${query ? `?${query}` : ''}`)
+}
+
+/**
+ * Get grouped findings summary (fast, from materialized view)
+ */
+export interface GroupedFindingsSummaryFastResponse {
+  status: string
+  source: string
+  total_unique_findings: number
+  total_in_latest: number
+  total_accepted: number
+  total_unaccepted: number
+  total_score: number
+  categories: Record<string, {
+    total: number
+    in_latest: number
+    accepted: number
+    unaccepted: number
+    score: number
+  }>
+}
+
+export async function getGroupedFindingsSummaryFast(
+  tool_type?: string
+): Promise<GroupedFindingsSummaryFastResponse> {
+  const query = tool_type ? `?tool_type=${tool_type}` : ''
+  return fetchJSON(`${API_BASE}/findings/grouped/fast/summary${query}`)
+}
+
+/**
+ * Get domain groups fast (from pre-calculated view)
+ */
+export async function getDomainGroupsFast(domain: string): Promise<DomainGroup[]> {
+  return fetchJSON<DomainGroup[]>(`${API_BASE}/domain_groups/${encodeURIComponent(domain)}/fast`)
+}
+
 // Findings (Risk Catalog)
 export async function getFindings(params?: {
   domain?: string
