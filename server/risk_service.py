@@ -76,7 +76,7 @@ class RiskIntegrationService:
     
     async def calculate_and_store_global_risk(self, domain: str) -> GlobalRiskScore:
         """
-        Calculate global risk score combining PingCastle and domain group risks
+        Calculate global risk score combining PingCastle, domain group risks, and Hoxhunt scores
         
         Args:
             domain: Domain name to assess
@@ -99,15 +99,19 @@ class RiskIntegrationService:
             domain_assessment = await self.calculate_and_store_domain_risk(domain)
             domain_group_score = domain_assessment.domain_group_score
             
+            # Get latest Hoxhunt security awareness score
+            hoxhunt_score = self._get_latest_hoxhunt_score(domain)
+            
             # Get historical scores for trend analysis
             historical_scores = self._get_historical_global_scores(domain, days=30)
             
-            # Calculate global risk score
+            # Calculate global risk score (now includes Hoxhunt)
             global_risk = self.risk_calculator.calculate_global_risk(
                 domain=domain,
                 pingcastle_score=pingcastle_score,
                 domain_group_score=domain_group_score,
-                historical_scores=historical_scores
+                historical_scores=historical_scores,
+                hoxhunt_score=hoxhunt_score
             )
             
             # Store global risk score
@@ -120,9 +124,11 @@ class RiskIntegrationService:
                 'assessment_date': global_risk.assessment_date,
                 'pingcastle_score': global_risk.pingcastle_score,
                 'domain_group_score': global_risk.domain_group_score,
+                'hoxhunt_score': global_risk.hoxhunt_score,
                 'global_score': global_risk.global_score,
                 'pingcastle_contribution': global_risk.pingcastle_contribution,
                 'domain_group_contribution': global_risk.domain_group_contribution,
+                'hoxhunt_contribution': global_risk.hoxhunt_contribution,
                 'trend_direction': global_risk.trend_direction,
                 'trend_percentage': global_risk.trend_percentage
             })
@@ -464,6 +470,28 @@ class RiskIntegrationService:
             self.logger.error(f"Failed to get PingCastle score for {domain}: {e}")
             return None
     
+    def _get_latest_hoxhunt_score(self, domain: str) -> Optional[float]:
+        """
+        Get latest Hoxhunt security awareness score for domain
+        
+        Args:
+            domain: Domain name
+            
+        Returns:
+            Hoxhunt overall score (0-100) or None if not available
+        """
+        try:
+            latest_score = self.storage.get_latest_hoxhunt_score(domain)
+            
+            if not latest_score:
+                return None
+            
+            return float(latest_score.get('overall_score', 0))
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get Hoxhunt score for {domain}: {e}")
+            return None
+    
     def _get_historical_global_scores(self, domain: str, days: int = 30) -> List[Tuple[datetime, float]]:
         """Get historical global scores for trend analysis"""
         try:
@@ -616,9 +644,11 @@ class RiskIntegrationService:
                         UPDATE global_risk_scores SET
                             pingcastle_score = :pingcastle_score,
                             domain_group_score = :domain_group_score,
+                            hoxhunt_score = :hoxhunt_score,
                             global_score = :global_score,
                             pingcastle_contribution = :pingcastle_contribution,
                             domain_group_contribution = :domain_group_contribution,
+                            hoxhunt_contribution = :hoxhunt_contribution,
                             trend_direction = :trend_direction,
                             trend_percentage = :trend_percentage,
                             domain_assessment_id = :domain_assessment_id
@@ -629,9 +659,11 @@ class RiskIntegrationService:
                         "id": existing.id,
                         "pingcastle_score": global_risk.pingcastle_score,
                         "domain_group_score": global_risk.domain_group_score,
+                        "hoxhunt_score": global_risk.hoxhunt_score,
                         "global_score": global_risk.global_score,
                         "pingcastle_contribution": global_risk.pingcastle_contribution,
                         "domain_group_contribution": global_risk.domain_group_contribution,
+                        "hoxhunt_contribution": global_risk.hoxhunt_contribution,
                         "trend_direction": global_risk.trend_direction,
                         "trend_percentage": global_risk.trend_percentage,
                         "domain_assessment_id": domain_assessment_id
@@ -641,11 +673,13 @@ class RiskIntegrationService:
                     query = text("""
                         INSERT INTO global_risk_scores (
                             domain, assessment_date, pingcastle_score, domain_group_score,
-                            global_score, pingcastle_contribution, domain_group_contribution,
+                            hoxhunt_score, global_score, pingcastle_contribution, 
+                            domain_group_contribution, hoxhunt_contribution,
                             trend_direction, trend_percentage, domain_assessment_id
                         ) VALUES (
                             :domain, :assessment_date, :pingcastle_score, :domain_group_score,
-                            :global_score, :pingcastle_contribution, :domain_group_contribution,
+                            :hoxhunt_score, :global_score, :pingcastle_contribution, 
+                            :domain_group_contribution, :hoxhunt_contribution,
                             :trend_direction, :trend_percentage, :domain_assessment_id
                         )
                         RETURNING id
@@ -655,9 +689,11 @@ class RiskIntegrationService:
                         "assessment_date": global_risk.assessment_date,
                         "pingcastle_score": global_risk.pingcastle_score,
                         "domain_group_score": global_risk.domain_group_score,
+                        "hoxhunt_score": global_risk.hoxhunt_score,
                         "global_score": global_risk.global_score,
                         "pingcastle_contribution": global_risk.pingcastle_contribution,
                         "domain_group_contribution": global_risk.domain_group_contribution,
+                        "hoxhunt_contribution": global_risk.hoxhunt_contribution,
                         "trend_direction": global_risk.trend_direction,
                         "trend_percentage": global_risk.trend_percentage,
                         "domain_assessment_id": domain_assessment_id

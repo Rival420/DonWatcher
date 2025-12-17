@@ -22,7 +22,13 @@ import type {
   APIDomainMetadata,
   DashboardKPIResponse,
   DashboardKPIHistoryResponse,
-  AllDomainsKPIResponse
+  AllDomainsKPIResponse,
+  HoxhuntScoreInput,
+  HoxhuntScoresResponse,
+  HoxhuntLatestResponse,
+  HoxhuntHistoryResponse,
+  HoxhuntDashboardResponse,
+  HoxhuntSaveResponse
 } from '../types'
 
 const API_BASE = '/api'
@@ -560,5 +566,56 @@ export async function uploadFindingsAPI(
  */
 export async function getUploadAPIHealth(): Promise<{ status: string; module: string; endpoints: string[] }> {
   return fetchJSON(`${API_BASE}/upload/health`)
+}
+
+// =============================================================================
+// Hoxhunt Security Awareness API
+// =============================================================================
+
+/**
+ * Get all Hoxhunt scores for a domain
+ */
+export async function getHoxhuntScores(domain: string, limit: number = 12): Promise<HoxhuntScoresResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}?limit=${limit}`)
+}
+
+/**
+ * Get the latest Hoxhunt score for a domain
+ */
+export async function getLatestHoxhuntScore(domain: string): Promise<HoxhuntLatestResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}/latest`)
+}
+
+/**
+ * Get historical Hoxhunt scores for trend charts
+ */
+export async function getHoxhuntHistory(domain: string, limit: number = 12): Promise<HoxhuntHistoryResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}/history?limit=${limit}`)
+}
+
+/**
+ * Save a new Hoxhunt score entry (manual data entry)
+ */
+export async function saveHoxhuntScore(score: HoxhuntScoreInput): Promise<HoxhuntSaveResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores`, {
+    method: 'POST',
+    body: JSON.stringify(score),
+  })
+}
+
+/**
+ * Delete a Hoxhunt score entry
+ */
+export async function deleteHoxhuntScore(scoreId: string): Promise<{ status: string; message: string }> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(scoreId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * Get Hoxhunt dashboard summary across all domains
+ */
+export async function getHoxhuntDashboard(): Promise<HoxhuntDashboardResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/dashboard`)
 }
 

@@ -15,7 +15,8 @@ from typing import List, Optional
 
 from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
-    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig
+    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig,
+    HoxhuntScoreInput, HoxhuntScore
 )
 from server.risk_service import get_risk_service
 from server.storage_postgres import PostgresReportStorage, get_storage
@@ -1609,6 +1610,203 @@ def delete_all_data(storage: PostgresReportStorage = Depends(get_storage)):
     except Exception as e:
         logging.exception("Failed to delete all data")
         raise HTTPException(status_code=500, detail=f"Failed to delete all data: {e}")
+
+
+# =============================================================================
+# Hoxhunt Security Awareness Endpoints
+# =============================================================================
+
+@app.post("/api/hoxhunt/scores")
+def save_hoxhunt_score(
+    score: HoxhuntScoreInput,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Create or update a Hoxhunt security awareness score entry.
+    
+    Scores are typically entered monthly from the Hoxhunt platform.
+    Category scores and overall score are calculated automatically.
+    
+    If an entry already exists for the same domain and assessment_date,
+    it will be updated (UPSERT behavior).
+    """
+    try:
+        score_id = storage.save_hoxhunt_score(score)
+        calculated = score.calculate_category_scores()
+        
+        return {
+            "status": "ok",
+            "score_id": score_id,
+            "domain": score.domain,
+            "assessment_date": score.assessment_date.isoformat(),
+            "calculated_scores": calculated,
+            "message": f"Successfully saved Hoxhunt score for {score.domain}"
+        }
+    except Exception as e:
+        logging.exception(f"Failed to save Hoxhunt score for {score.domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to save Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}")
+def get_hoxhunt_scores(
+    domain: str,
+    limit: int = 12,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get all Hoxhunt scores for a domain.
+    
+    Path parameters:
+    - domain: Domain to get scores for
+    
+    Query parameters:
+    - limit: Maximum number of records to return (default: 12 = 1 year monthly)
+    
+    Returns scores ordered by assessment_date descending (newest first).
+    """
+    try:
+        scores = storage.get_hoxhunt_scores(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(scores),
+            "scores": scores
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt scores for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt scores: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}/latest")
+def get_latest_hoxhunt_score(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get the most recent Hoxhunt score for a domain.
+    
+    Path parameters:
+    - domain: Domain to get latest score for
+    
+    Returns the latest score or null if no scores exist.
+    """
+    try:
+        score = storage.get_latest_hoxhunt_score(domain)
+        return {
+            "status": "ok" if score else "no_data",
+            "domain": domain,
+            "score": score
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get latest Hoxhunt score for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get latest Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}/history")
+def get_hoxhunt_history(
+    domain: str,
+    limit: int = 12,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get historical Hoxhunt scores for trend charts.
+    
+    Path parameters:
+    - domain: Domain to get history for
+    
+    Query parameters:
+    - limit: Maximum number of data points (default: 12 = 1 year monthly)
+    
+    Returns scores ordered by assessment_date ascending (oldest first)
+    for easy chart rendering.
+    """
+    try:
+        history = storage.get_hoxhunt_history(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(history),
+            "history": history
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt history for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt history: {e}")
+
+
+@app.delete("/api/hoxhunt/scores/{score_id}")
+def delete_hoxhunt_score(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Delete a Hoxhunt score entry.
+    
+    Path parameters:
+    - score_id: UUID of the score record to delete
+    """
+    try:
+        deleted = storage.delete_hoxhunt_score(score_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "message": f"Successfully deleted Hoxhunt score {score_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to delete Hoxhunt score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/dashboard")
+def get_hoxhunt_dashboard(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get Hoxhunt dashboard summary across all domains.
+    
+    Returns latest scores per domain with trend information,
+    awareness level classification, and score changes.
+    """
+    try:
+        dashboard = storage.get_hoxhunt_dashboard()
+        return {
+            "status": "ok",
+            "count": len(dashboard),
+            "domains": dashboard
+        }
+    except Exception as e:
+        logging.exception("Failed to get Hoxhunt dashboard")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt dashboard: {e}")
+
+
+@app.get("/api/hoxhunt/scores/id/{score_id}")
+def get_hoxhunt_score_by_id(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get a specific Hoxhunt score by ID.
+    
+    Path parameters:
+    - score_id: UUID of the score record
+    """
+    try:
+        score = storage.get_hoxhunt_score_by_id(score_id)
+        if not score:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "score": score
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt score: {e}")
 
 
 # Enhanced debug endpoint with risk information

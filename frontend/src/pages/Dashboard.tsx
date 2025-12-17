@@ -7,7 +7,11 @@ import {
   Zap,
   Lock,
   Copy,
-  Check
+  Check,
+  GraduationCap,
+  TrendingUp,
+  TrendingDown,
+  Minus
 } from 'lucide-react'
 import { 
   LineChart, 
@@ -27,7 +31,8 @@ import {
   useDashboardKPIs, 
   useDashboardKPIHistory, 
   useDomains, 
-  useDomainGroupsFast 
+  useDomainGroupsFast,
+  useLatestHoxhuntScore
 } from '../hooks/useApi'
 import { RiskGauge, StatsCard, DashboardSkeleton } from '../components'
 import { clsx } from 'clsx'
@@ -47,6 +52,10 @@ export function Dashboard() {
   
   // Domain groups for the groups preview section (using fast endpoint)
   const { data: domainGroups } = useDomainGroupsFast(latestDomain || '')
+  
+  // Hoxhunt security awareness data
+  const { data: hoxhuntResponse } = useLatestHoxhuntScore(latestDomain || '')
+  const hoxhuntScore = hoxhuntResponse?.score
   
   // Extract KPIs from response
   const kpis = kpiResponse?.status === 'ok' ? kpiResponse.kpis : null
@@ -446,6 +455,114 @@ export function Dashboard() {
           </div>
         </motion.section>
       )}
+      
+      {/* Hoxhunt Security Awareness */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
+        className="cyber-card"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-sm font-medium text-cyber-text-secondary">Security Awareness (Hoxhunt)</h3>
+          </div>
+          <a href="/risk-catalog" className="text-sm text-cyber-accent-cyan hover:underline">
+            View Details →
+          </a>
+        </div>
+        
+        {hoxhuntScore ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Overall Score */}
+            <div className={clsx(
+              'p-4 rounded-lg border flex flex-col items-center justify-center',
+              'bg-cyber-bg-secondary',
+              hoxhuntScore.overall_score >= 80 ? 'border-green-500/50' :
+              hoxhuntScore.overall_score >= 60 ? 'border-yellow-500/50' :
+              hoxhuntScore.overall_score >= 40 ? 'border-orange-500/50' :
+              'border-red-500/50'
+            )}>
+              <div className="text-xs text-cyber-text-muted mb-1">Overall Score</div>
+              <div className={clsx(
+                'text-3xl font-bold font-mono',
+                hoxhuntScore.overall_score >= 80 ? 'text-green-400' :
+                hoxhuntScore.overall_score >= 60 ? 'text-yellow-400' :
+                hoxhuntScore.overall_score >= 40 ? 'text-orange-400' :
+                'text-red-400'
+              )}>
+                {Math.round(hoxhuntScore.overall_score)}
+              </div>
+              <div className="text-xs text-cyber-text-muted mt-1">
+                {new Date(hoxhuntScore.assessment_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              </div>
+            </div>
+            
+            {/* Culture & Engagement */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-cyber-text-muted">Culture & Engagement</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-cyan-400">
+                {Math.round(hoxhuntScore.culture_engagement_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.culture_engagement_score}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Competence */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <GraduationCap className="w-4 h-4 text-purple-400" />
+                <span className="text-xs text-cyber-text-muted">Competence</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-purple-400">
+                {Math.round(hoxhuntScore.competence_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.competence_score}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Real Threat Detection */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                <span className="text-xs text-cyber-text-muted">Threat Detection</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-yellow-400">
+                {Math.round(hoxhuntScore.real_threat_detection_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.real_threat_detection_score}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-cyber-text-muted">
+            <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No Hoxhunt data available</p>
+            <a 
+              href="/risk-catalog" 
+              className="text-sm text-cyber-accent-cyan hover:underline mt-2 inline-block"
+            >
+              Add your first assessment →
+            </a>
+          </div>
+        )}
+      </motion.section>
     </div>
   )
 }

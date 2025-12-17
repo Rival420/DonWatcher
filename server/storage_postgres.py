@@ -2640,3 +2640,395 @@ class PostgresReportStorage:
             except Exception as e:
                 session.rollback()
                 logging.warning(f"Failed to refresh materialized views: {e}")
+
+    # =========================================================================
+    # Hoxhunt Security Awareness Score Methods
+    # =========================================================================
+
+    def save_hoxhunt_score(self, score_input) -> str:
+        """
+        Save a Hoxhunt security awareness score entry.
+        
+        Calculates category scores and overall score automatically.
+        Uses UPSERT to allow updating existing entries for the same domain/date.
+        
+        Args:
+            score_input: HoxhuntScoreInput model with all metrics
+            
+        Returns:
+            UUID of the created/updated score record
+        """
+        from server.models import HoxhuntScoreInput
+        
+        # Calculate derived scores
+        calculated = score_input.calculate_category_scores()
+        
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    INSERT INTO hoxhunt_scores (
+                        domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed, 
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by
+                    ) VALUES (
+                        :domain, :assessment_date,
+                        :overall_score, :culture_engagement_score, :competence_score, :real_threat_detection_score,
+                        :ce_onboarding_rate, :ce_simulations_reported, :ce_simulations_misses, :ce_threat_indicators,
+                        :comp_simulations_fails, :comp_simulations_reported, :comp_quiz_score, :comp_threat_detection_accuracy,
+                        :rtd_simulations_reported, :rtd_simulations_misses, :rtd_reporting_speed,
+                        :rtd_threat_reporting_activity, :rtd_threat_detection_accuracy,
+                        :notes, :entered_by
+                    )
+                    ON CONFLICT (domain, assessment_date) DO UPDATE SET
+                        overall_score = EXCLUDED.overall_score,
+                        culture_engagement_score = EXCLUDED.culture_engagement_score,
+                        competence_score = EXCLUDED.competence_score,
+                        real_threat_detection_score = EXCLUDED.real_threat_detection_score,
+                        ce_onboarding_rate = EXCLUDED.ce_onboarding_rate,
+                        ce_simulations_reported = EXCLUDED.ce_simulations_reported,
+                        ce_simulations_misses = EXCLUDED.ce_simulations_misses,
+                        ce_threat_indicators = EXCLUDED.ce_threat_indicators,
+                        comp_simulations_fails = EXCLUDED.comp_simulations_fails,
+                        comp_simulations_reported = EXCLUDED.comp_simulations_reported,
+                        comp_quiz_score = EXCLUDED.comp_quiz_score,
+                        comp_threat_detection_accuracy = EXCLUDED.comp_threat_detection_accuracy,
+                        rtd_simulations_reported = EXCLUDED.rtd_simulations_reported,
+                        rtd_simulations_misses = EXCLUDED.rtd_simulations_misses,
+                        rtd_reporting_speed = EXCLUDED.rtd_reporting_speed,
+                        rtd_threat_reporting_activity = EXCLUDED.rtd_threat_reporting_activity,
+                        rtd_threat_detection_accuracy = EXCLUDED.rtd_threat_detection_accuracy,
+                        notes = EXCLUDED.notes,
+                        entered_by = EXCLUDED.entered_by,
+                        updated_at = NOW()
+                    RETURNING id
+                """), {
+                    'domain': score_input.domain,
+                    'assessment_date': score_input.assessment_date,
+                    'overall_score': calculated['overall_score'],
+                    'culture_engagement_score': calculated['culture_engagement_score'],
+                    'competence_score': calculated['competence_score'],
+                    'real_threat_detection_score': calculated['real_threat_detection_score'],
+                    'ce_onboarding_rate': score_input.ce_onboarding_rate,
+                    'ce_simulations_reported': score_input.ce_simulations_reported,
+                    'ce_simulations_misses': score_input.ce_simulations_misses,
+                    'ce_threat_indicators': score_input.ce_threat_indicators,
+                    'comp_simulations_fails': score_input.comp_simulations_fails,
+                    'comp_simulations_reported': score_input.comp_simulations_reported,
+                    'comp_quiz_score': score_input.comp_quiz_score,
+                    'comp_threat_detection_accuracy': score_input.comp_threat_detection_accuracy,
+                    'rtd_simulations_reported': score_input.rtd_simulations_reported,
+                    'rtd_simulations_misses': score_input.rtd_simulations_misses,
+                    'rtd_reporting_speed': score_input.rtd_reporting_speed,
+                    'rtd_threat_reporting_activity': score_input.rtd_threat_reporting_activity,
+                    'rtd_threat_detection_accuracy': score_input.rtd_threat_detection_accuracy,
+                    'notes': score_input.notes,
+                    'entered_by': score_input.entered_by
+                })
+                
+                score_id = str(result.fetchone()[0])
+                session.commit()
+                logging.info(f"Saved Hoxhunt score for {score_input.domain} ({score_input.assessment_date}): {score_id}")
+                return score_id
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to save Hoxhunt score: {e}")
+                raise
+
+    def get_hoxhunt_scores(self, domain: str, limit: int = 12) -> List[Dict]:
+        """
+        Get all Hoxhunt scores for a domain, ordered by date descending.
+        
+        Args:
+            domain: Domain to get scores for
+            limit: Maximum number of records to return (default 12 = 1 year monthly)
+            
+        Returns:
+            List of score records
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM hoxhunt_scores
+                    WHERE domain = :domain
+                    ORDER BY assessment_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                return [
+                    {
+                        'id': str(r.id),
+                        'domain': r.domain,
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score),
+                        'ce_onboarding_rate': float(r.ce_onboarding_rate),
+                        'ce_simulations_reported': float(r.ce_simulations_reported),
+                        'ce_simulations_misses': float(r.ce_simulations_misses),
+                        'ce_threat_indicators': float(r.ce_threat_indicators),
+                        'comp_simulations_fails': float(r.comp_simulations_fails),
+                        'comp_simulations_reported': float(r.comp_simulations_reported),
+                        'comp_quiz_score': float(r.comp_quiz_score),
+                        'comp_threat_detection_accuracy': float(r.comp_threat_detection_accuracy),
+                        'rtd_simulations_reported': float(r.rtd_simulations_reported),
+                        'rtd_simulations_misses': float(r.rtd_simulations_misses),
+                        'rtd_reporting_speed': float(r.rtd_reporting_speed),
+                        'rtd_threat_reporting_activity': float(r.rtd_threat_reporting_activity),
+                        'rtd_threat_detection_accuracy': float(r.rtd_threat_detection_accuracy),
+                        'notes': r.notes,
+                        'entered_by': r.entered_by,
+                        'created_at': r.created_at.isoformat() if r.created_at else None,
+                        'updated_at': r.updated_at.isoformat() if r.updated_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt scores for {domain}: {e}")
+                return []
+
+    def get_latest_hoxhunt_score(self, domain: str) -> Optional[Dict]:
+        """
+        Get the most recent Hoxhunt score for a domain.
+        
+        Args:
+            domain: Domain to get latest score for
+            
+        Returns:
+            Latest score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM v_latest_hoxhunt_scores
+                    WHERE domain = :domain
+                """), {'domain': domain}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'assessment_date': result.assessment_date.isoformat() if result.assessment_date else None,
+                    'overall_score': float(result.overall_score),
+                    'culture_engagement_score': float(result.culture_engagement_score),
+                    'competence_score': float(result.competence_score),
+                    'real_threat_detection_score': float(result.real_threat_detection_score),
+                    'ce_onboarding_rate': float(result.ce_onboarding_rate),
+                    'ce_simulations_reported': float(result.ce_simulations_reported),
+                    'ce_simulations_misses': float(result.ce_simulations_misses),
+                    'ce_threat_indicators': float(result.ce_threat_indicators),
+                    'comp_simulations_fails': float(result.comp_simulations_fails),
+                    'comp_simulations_reported': float(result.comp_simulations_reported),
+                    'comp_quiz_score': float(result.comp_quiz_score),
+                    'comp_threat_detection_accuracy': float(result.comp_threat_detection_accuracy),
+                    'rtd_simulations_reported': float(result.rtd_simulations_reported),
+                    'rtd_simulations_misses': float(result.rtd_simulations_misses),
+                    'rtd_reporting_speed': float(result.rtd_reporting_speed),
+                    'rtd_threat_reporting_activity': float(result.rtd_threat_reporting_activity),
+                    'rtd_threat_detection_accuracy': float(result.rtd_threat_detection_accuracy),
+                    'notes': result.notes,
+                    'entered_by': result.entered_by,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get latest Hoxhunt score for {domain}: {e}")
+                return None
+
+    def get_hoxhunt_history(self, domain: str, limit: int = 12) -> List[Dict]:
+        """
+        Get historical Hoxhunt scores for trend charts.
+        
+        Args:
+            domain: Domain to get history for
+            limit: Maximum number of records (default 12 = 1 year monthly)
+            
+        Returns:
+            List of historical score data points, ordered oldest to newest for charts
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        assessment_date,
+                        overall_score,
+                        culture_engagement_score,
+                        competence_score,
+                        real_threat_detection_score
+                    FROM hoxhunt_scores
+                    WHERE domain = :domain
+                    ORDER BY assessment_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                # Reverse to get oldest first for chart display
+                return [
+                    {
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score)
+                    }
+                    for r in reversed(results)
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt history for {domain}: {e}")
+                return []
+
+    def delete_hoxhunt_score(self, score_id: str) -> bool:
+        """
+        Delete a Hoxhunt score entry.
+        
+        Args:
+            score_id: UUID of the score record to delete
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    DELETE FROM hoxhunt_scores
+                    WHERE id = :id
+                    RETURNING id
+                """), {'id': score_id})
+                
+                deleted = result.fetchone() is not None
+                session.commit()
+                
+                if deleted:
+                    logging.info(f"Deleted Hoxhunt score: {score_id}")
+                return deleted
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to delete Hoxhunt score {score_id}: {e}")
+                return False
+
+    def get_hoxhunt_dashboard(self) -> List[Dict]:
+        """
+        Get Hoxhunt dashboard summary for all domains.
+        
+        Returns:
+            List of latest scores per domain with trend information
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        domain,
+                        assessment_date,
+                        overall_score,
+                        culture_engagement_score,
+                        competence_score,
+                        real_threat_detection_score,
+                        awareness_level,
+                        previous_score,
+                        score_change,
+                        entered_by,
+                        created_at
+                    FROM v_hoxhunt_dashboard
+                    ORDER BY domain
+                """)).fetchall()
+                
+                return [
+                    {
+                        'domain': r.domain,
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score),
+                        'awareness_level': r.awareness_level,
+                        'previous_score': float(r.previous_score) if r.previous_score else None,
+                        'score_change': float(r.score_change) if r.score_change else None,
+                        'entered_by': r.entered_by,
+                        'created_at': r.created_at.isoformat() if r.created_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt dashboard: {e}")
+                return []
+
+    def get_hoxhunt_score_by_id(self, score_id: str) -> Optional[Dict]:
+        """
+        Get a specific Hoxhunt score by ID.
+        
+        Args:
+            score_id: UUID of the score record
+            
+        Returns:
+            Score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM hoxhunt_scores
+                    WHERE id = :id
+                """), {'id': score_id}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'assessment_date': result.assessment_date.isoformat() if result.assessment_date else None,
+                    'overall_score': float(result.overall_score),
+                    'culture_engagement_score': float(result.culture_engagement_score),
+                    'competence_score': float(result.competence_score),
+                    'real_threat_detection_score': float(result.real_threat_detection_score),
+                    'ce_onboarding_rate': float(result.ce_onboarding_rate),
+                    'ce_simulations_reported': float(result.ce_simulations_reported),
+                    'ce_simulations_misses': float(result.ce_simulations_misses),
+                    'ce_threat_indicators': float(result.ce_threat_indicators),
+                    'comp_simulations_fails': float(result.comp_simulations_fails),
+                    'comp_simulations_reported': float(result.comp_simulations_reported),
+                    'comp_quiz_score': float(result.comp_quiz_score),
+                    'comp_threat_detection_accuracy': float(result.comp_threat_detection_accuracy),
+                    'rtd_simulations_reported': float(result.rtd_simulations_reported),
+                    'rtd_simulations_misses': float(result.rtd_simulations_misses),
+                    'rtd_reporting_speed': float(result.rtd_reporting_speed),
+                    'rtd_threat_reporting_activity': float(result.rtd_threat_reporting_activity),
+                    'rtd_threat_detection_accuracy': float(result.rtd_threat_detection_accuracy),
+                    'notes': result.notes,
+                    'entered_by': result.entered_by,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt score {score_id}: {e}")
+                return None
