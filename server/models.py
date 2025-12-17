@@ -439,67 +439,54 @@ class HoxhuntScoreInput(BaseModel):
     Input model for manual Hoxhunt security awareness score entry.
     
     All score fields are 0-100 values representing percentages.
-    Category scores (culture_engagement, competence, real_threat_detection)
-    and overall_score are calculated automatically on save.
+    
+    The main scores (overall, category scores) are entered manually by the user
+    as they appear in the Hoxhunt platform - Hoxhunt uses internal weights that
+    we cannot replicate.
+    
+    Individual metrics are optional and stored for reference/detail tracking.
     """
     domain: str = Field(..., description="Domain name (e.g., CORP.LOCAL)")
     assessment_date: datetime = Field(..., description="Month/date of assessment (typically 1st of month)")
     
-    # Culture & Engagement metrics
+    # ==========================================================================
+    # Main scores - manually entered from Hoxhunt platform
+    # ==========================================================================
+    overall_score: float = Field(..., ge=0, le=100, description="Overall Hoxhunt score as shown in platform")
+    culture_engagement_score: float = Field(..., ge=0, le=100, description="Culture & Engagement score from platform")
+    competence_score: float = Field(..., ge=0, le=100, description="Competence score from platform")
+    real_threat_detection_score: float = Field(..., ge=0, le=100, description="Real Threat Detection score from platform")
+    
+    # ==========================================================================
+    # Culture & Engagement detailed metrics (optional - for reference)
+    # ==========================================================================
     ce_onboarding_rate: float = Field(0, ge=0, le=100, description="User onboarding completion rate")
     ce_simulations_reported: float = Field(0, ge=0, le=100, description="Phishing simulations correctly reported")
     ce_simulations_misses: float = Field(0, ge=0, le=100, description="Phishing simulations missed (inverse metric)")
     ce_threat_indicators: float = Field(0, ge=0, le=100, description="Threat indicator recognition score")
     
-    # Competence metrics
+    # ==========================================================================
+    # Competence detailed metrics (optional - for reference)
+    # ==========================================================================
     comp_simulations_fails: float = Field(0, ge=0, le=100, description="Simulations failed (inverse metric)")
     comp_simulations_reported: float = Field(0, ge=0, le=100, description="Simulations correctly reported")
     comp_quiz_score: float = Field(0, ge=0, le=100, description="Training quiz average score")
     comp_threat_detection_accuracy: float = Field(0, ge=0, le=100, description="Threat detection accuracy")
     
-    # Real Threat Detection metrics
+    # ==========================================================================
+    # Real Threat Detection detailed metrics (optional - for reference)
+    # ==========================================================================
     rtd_simulations_reported: float = Field(0, ge=0, le=100, description="Real threat simulations reported")
     rtd_simulations_misses: float = Field(0, ge=0, le=100, description="Real threat simulations missed")
     rtd_reporting_speed: float = Field(0, ge=0, le=100, description="Speed of threat reporting")
     rtd_threat_reporting_activity: float = Field(0, ge=0, le=100, description="Overall reporting activity level")
     rtd_threat_detection_accuracy: float = Field(0, ge=0, le=100, description="Accuracy in detecting real threats")
     
+    # ==========================================================================
     # Optional metadata
+    # ==========================================================================
     notes: Optional[str] = Field(None, description="Additional notes about this assessment")
     entered_by: Optional[str] = Field(None, description="User who entered the scores")
-    
-    def calculate_category_scores(self) -> Dict[str, float]:
-        """Calculate category scores as averages of their sub-metrics."""
-        culture_engagement = (
-            self.ce_onboarding_rate +
-            self.ce_simulations_reported +
-            self.ce_simulations_misses +
-            self.ce_threat_indicators
-        ) / 4
-        
-        competence = (
-            self.comp_simulations_fails +
-            self.comp_simulations_reported +
-            self.comp_quiz_score +
-            self.comp_threat_detection_accuracy
-        ) / 4
-        
-        real_threat_detection = (
-            self.rtd_simulations_reported +
-            self.rtd_simulations_misses +
-            self.rtd_reporting_speed +
-            self.rtd_threat_reporting_activity +
-            self.rtd_threat_detection_accuracy
-        ) / 5
-        
-        overall = (culture_engagement + competence + real_threat_detection) / 3
-        
-        return {
-            'culture_engagement_score': round(culture_engagement, 2),
-            'competence_score': round(competence, 2),
-            'real_threat_detection_score': round(real_threat_detection, 2),
-            'overall_score': round(overall, 2)
-        }
 
 
 class HoxhuntScore(BaseModel):

@@ -1625,21 +1625,26 @@ def save_hoxhunt_score(
     Create or update a Hoxhunt security awareness score entry.
     
     Scores are typically entered monthly from the Hoxhunt platform.
-    Category scores and overall score are calculated automatically.
+    Main scores (overall, category scores) are entered manually by the user
+    as Hoxhunt uses internal weights that cannot be replicated.
     
     If an entry already exists for the same domain and assessment_date,
     it will be updated (UPSERT behavior).
     """
     try:
         score_id = storage.save_hoxhunt_score(score)
-        calculated = score.calculate_category_scores()
         
         return {
             "status": "ok",
             "score_id": score_id,
             "domain": score.domain,
             "assessment_date": score.assessment_date.isoformat(),
-            "calculated_scores": calculated,
+            "scores": {
+                "overall_score": score.overall_score,
+                "culture_engagement_score": score.culture_engagement_score,
+                "competence_score": score.competence_score,
+                "real_threat_detection_score": score.real_threat_detection_score
+            },
             "message": f"Successfully saved Hoxhunt score for {score.domain}"
         }
     except Exception as e:

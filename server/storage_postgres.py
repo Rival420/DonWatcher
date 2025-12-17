@@ -2649,7 +2649,10 @@ class PostgresReportStorage:
         """
         Save a Hoxhunt security awareness score entry.
         
-        Calculates category scores and overall score automatically.
+        Main scores (overall, category scores) are provided by the user as they
+        appear in the Hoxhunt platform - Hoxhunt uses internal weights that we
+        cannot replicate. Individual metrics are optional for reference.
+        
         Uses UPSERT to allow updating existing entries for the same domain/date.
         
         Args:
@@ -2658,11 +2661,6 @@ class PostgresReportStorage:
         Returns:
             UUID of the created/updated score record
         """
-        from server.models import HoxhuntScoreInput
-        
-        # Calculate derived scores
-        calculated = score_input.calculate_category_scores()
-        
         with self._get_session() as session:
             try:
                 result = session.execute(text("""
@@ -2708,10 +2706,10 @@ class PostgresReportStorage:
                 """), {
                     'domain': score_input.domain,
                     'assessment_date': score_input.assessment_date,
-                    'overall_score': calculated['overall_score'],
-                    'culture_engagement_score': calculated['culture_engagement_score'],
-                    'competence_score': calculated['competence_score'],
-                    'real_threat_detection_score': calculated['real_threat_detection_score'],
+                    'overall_score': score_input.overall_score,
+                    'culture_engagement_score': score_input.culture_engagement_score,
+                    'competence_score': score_input.competence_score,
+                    'real_threat_detection_score': score_input.real_threat_detection_score,
                     'ce_onboarding_rate': score_input.ce_onboarding_rate,
                     'ce_simulations_reported': score_input.ce_simulations_reported,
                     'ce_simulations_misses': score_input.ce_simulations_misses,

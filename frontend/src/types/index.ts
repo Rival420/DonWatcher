@@ -415,24 +415,30 @@ export interface HoxhuntScoreInput {
   domain: string
   assessment_date: string
   
-  // Culture & Engagement metrics
-  ce_onboarding_rate: number
-  ce_simulations_reported: number
-  ce_simulations_misses: number
-  ce_threat_indicators: number
+  // Main scores - manually entered from Hoxhunt platform (required)
+  overall_score: number
+  culture_engagement_score: number
+  competence_score: number
+  real_threat_detection_score: number
   
-  // Competence metrics
-  comp_simulations_fails: number
-  comp_simulations_reported: number
-  comp_quiz_score: number
-  comp_threat_detection_accuracy: number
+  // Culture & Engagement detailed metrics (optional - for reference)
+  ce_onboarding_rate?: number
+  ce_simulations_reported?: number
+  ce_simulations_misses?: number
+  ce_threat_indicators?: number
   
-  // Real Threat Detection metrics
-  rtd_simulations_reported: number
-  rtd_simulations_misses: number
-  rtd_reporting_speed: number
-  rtd_threat_reporting_activity: number
-  rtd_threat_detection_accuracy: number
+  // Competence detailed metrics (optional - for reference)
+  comp_simulations_fails?: number
+  comp_simulations_reported?: number
+  comp_quiz_score?: number
+  comp_threat_detection_accuracy?: number
+  
+  // Real Threat Detection detailed metrics (optional - for reference)
+  rtd_simulations_reported?: number
+  rtd_simulations_misses?: number
+  rtd_reporting_speed?: number
+  rtd_threat_reporting_activity?: number
+  rtd_threat_detection_accuracy?: number
   
   // Optional metadata
   notes?: string
@@ -492,11 +498,11 @@ export interface HoxhuntSaveResponse {
   score_id: string
   domain: string
   assessment_date: string
-  calculated_scores: {
+  scores: {
+    overall_score: number
     culture_engagement_score: number
     competence_score: number
     real_threat_detection_score: number
-    overall_score: number
   }
   message: string
 }
