@@ -2334,6 +2334,7 @@ class PostgresReportStorage:
         self,
         domain: Optional[str] = None,
         category: Optional[str] = None,
+        tool_type: Optional[str] = 'pingcastle',
         in_latest_only: bool = False,
         include_accepted: bool = True,
         page: int = 1,
@@ -2342,15 +2343,17 @@ class PostgresReportStorage:
         """
         Get grouped findings from materialized view with pagination.
         Much faster than runtime aggregation for Risk Catalog.
-        
+
         Args:
             domain: Optional filter by domain
             category: Optional filter by category
+            tool_type: Filter by tool type (default: 'pingcastle')
+                       This ensures PingCastle tab only shows PingCastle findings.
             in_latest_only: Only show findings in the latest report
             include_accepted: Include accepted findings
             page: Page number (1-indexed)
             page_size: Number of items per page
-            
+
         Returns:
             Paginated grouped findings with metadata
         """
@@ -2359,18 +2362,24 @@ class PostgresReportStorage:
                 # Build query dynamically
                 where_clauses = ["1=1"]
                 params = {}
-                
+
+                # IMPORTANT: Filter by tool_type to ensure proper data separation
+                # PingCastle tab should only show PingCastle findings
+                if tool_type:
+                    where_clauses.append("tool_type = :tool_type")
+                    params['tool_type'] = tool_type
+
                 if domain:
                     where_clauses.append(":domain = ANY(domains)")
                     params['domain'] = domain
-                
+
                 if category and category != 'all':
                     where_clauses.append("category = :category")
                     params['category'] = category
-                
+
                 if in_latest_only:
                     where_clauses.append("in_latest_report = true")
-                
+
                 if not include_accepted:
                     where_clauses.append("is_accepted = false")
                 
@@ -2447,10 +2456,11 @@ class PostgresReportStorage:
             except Exception as e:
                 logging.warning(f"Materialized view query failed, using fallback: {e}")
                 # Fallback to regular grouped findings
+                # Use the tool_type parameter (defaults to 'pingcastle')
                 findings = self.get_grouped_findings(
                     domain=domain,
                     category=category if category != 'all' else None,
-                    tool_type='pingcastle',
+                    tool_type=tool_type or 'pingcastle',
                     include_accepted=include_accepted
                 )
                 # Apply in_latest filter if needed
@@ -2474,15 +2484,16 @@ class PostgresReportStorage:
 
     def get_grouped_findings_summary_fast(
         self,
-        tool_type: Optional[str] = None
+        tool_type: Optional[str] = 'pingcastle'
     ) -> Dict:
         """
         Get grouped findings summary from materialized view.
         Used for category tabs in Risk Catalog.
-        
+
         Args:
-            tool_type: Optional filter by tool type
-            
+            tool_type: Filter by tool type (default: 'pingcastle')
+                       Ensures PingCastle tab shows PingCastle-only counts.
+
         Returns:
             Summary statistics by category
         """

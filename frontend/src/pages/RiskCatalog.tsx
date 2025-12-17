@@ -598,8 +598,10 @@ function PingCastleSection({ domain }: { domain: string }) {
   const pageSize = 50
   
   // Use fast endpoint with pagination for 10-15x faster loading
+  // IMPORTANT: tool_type: 'pingcastle' ensures only PingCastle findings are shown
   const { data: findingsResponse, isLoading, isFetching } = useGroupedFindingsFast({
     domain: domain || undefined,
+    tool_type: 'pingcastle',
     category: selectedCategory !== 'all' ? selectedCategory : undefined,
     in_latest_only: latestFilter === 'in_latest',
     include_accepted: showAccepted,

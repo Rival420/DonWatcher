@@ -306,6 +306,7 @@ export function useDashboardSummaryFast() {
 export function useGroupedFindingsFast(params?: {
   domain?: string
   category?: string
+  tool_type?: string
   in_latest_only?: boolean
   include_accepted?: boolean
   page?: number

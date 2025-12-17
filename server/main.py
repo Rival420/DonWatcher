@@ -1430,6 +1430,7 @@ def get_dashboard_summary_fast(
 def get_grouped_findings_fast(
     domain: Optional[str] = None,
     category: Optional[str] = None,
+    tool_type: Optional[str] = 'pingcastle',
     in_latest_only: bool = False,
     include_accepted: bool = True,
     page: int = 1,
@@ -1438,27 +1439,30 @@ def get_grouped_findings_fast(
 ):
     """
     Fast grouped findings using materialized view with pagination.
-    
+
     Uses mv_grouped_findings for 10-15x faster response times.
-    
+
     Query parameters:
     - domain: Optional filter by domain
     - category: Optional filter by category (all, PrivilegedAccounts, StaleObjects, Trusts, Anomalies)
+    - tool_type: Filter by tool type (default: 'pingcastle')
+                 This ensures PingCastle tab only shows PingCastle findings.
     - in_latest_only: Only show findings in the latest report
     - include_accepted: Include accepted findings (default: True)
     - page: Page number (default: 1)
     - page_size: Items per page (default: 50, max: 100)
-    
+
     Returns:
         Paginated grouped findings with metadata
     """
     try:
         # Limit page size to prevent abuse
         page_size = min(page_size, 100)
-        
+
         return storage.get_grouped_findings_from_mv(
             domain=domain,
             category=category,
+            tool_type=tool_type,
             in_latest_only=in_latest_only,
             include_accepted=include_accepted,
             page=page,
@@ -1471,17 +1475,18 @@ def get_grouped_findings_fast(
 
 @app.get("/api/findings/grouped/fast/summary")
 def get_grouped_findings_summary_fast(
-    tool_type: Optional[str] = None,
+    tool_type: Optional[str] = 'pingcastle',
     storage: PostgresReportStorage = Depends(get_storage)
 ):
     """
     Fast grouped findings summary using materialized view.
-    
+
     Returns summary statistics by category for Risk Catalog tabs.
-    
+
     Query parameters:
-    - tool_type: Optional filter by tool type (default: all)
-    
+    - tool_type: Filter by tool type (default: 'pingcastle')
+                 Ensures PingCastle tab shows PingCastle-only counts.
+
     Returns:
         Summary statistics with totals and per-category breakdowns
     """

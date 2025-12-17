@@ -336,6 +336,7 @@ export interface GroupedFindingsFastResponse {
 export async function getGroupedFindingsFast(params?: {
   domain?: string
   category?: string
+  tool_type?: string
   in_latest_only?: boolean
   include_accepted?: boolean
   page?: number
@@ -344,13 +345,15 @@ export async function getGroupedFindingsFast(params?: {
   const searchParams = new URLSearchParams()
   if (params?.domain) searchParams.append('domain', params.domain)
   if (params?.category) searchParams.append('category', params.category)
+  // tool_type filter to ensure PingCastle tab only shows PingCastle findings
+  if (params?.tool_type) searchParams.append('tool_type', params.tool_type)
   if (params?.in_latest_only) searchParams.append('in_latest_only', 'true')
   if (params?.include_accepted !== undefined) {
     searchParams.append('include_accepted', String(params.include_accepted))
   }
   if (params?.page) searchParams.append('page', String(params.page))
   if (params?.page_size) searchParams.append('page_size', String(params.page_size))
-  
+
   const query = searchParams.toString()
   return fetchJSON(`${API_BASE}/findings/grouped/fast${query ? `?${query}` : ''}`)
 }
