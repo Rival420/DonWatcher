@@ -1349,30 +1349,77 @@ def get_dashboard_kpis(
 def get_dashboard_kpis_history(
     domain: str,
     limit: int = 10,
+    days: Optional[int] = None,
+    aggregation: Optional[str] = None,
     tool_type: Optional[str] = None,
     storage: PostgresReportStorage = Depends(get_storage)
 ):
     """
-    Get historical KPI data for trend charts.
+    Get historical KPI data for trend charts with flexible date ranges.
+    
+    Supports server-side aggregation for large date ranges to keep
+    responses fast and frontend lightweight.
     
     Path parameters:
     - domain: Domain to get history for
     
     Query parameters:
     - limit: Maximum number of historical points (default: 10)
-    - tool_type: Optional filter by tool type
+    - days: Optional filter to last N days (e.g., 30, 90, 365)
+    - aggregation: Optional aggregation level: 'weekly' or 'monthly'
+                   Recommended for large date ranges to reduce data points
+    - tool_type: Optional filter by tool type (default: 'pingcastle')
+    
+    Performance notes:
+    - For < 30 days: use aggregation='none' (default)
+    - For 30-90 days: use aggregation='weekly' (reduces ~90 points to ~13)
+    - For > 90 days: use aggregation='monthly' (reduces ~365 points to ~12)
     
     Returns:
     - List of historical KPI data points for trend visualization
+    - Aggregated data includes averaged scores per period
     """
     try:
-        history = storage.get_dashboard_kpis_history(domain, limit, tool_type)
-        return {
+        # Validate aggregation parameter
+        valid_aggregations = [None, 'none', 'weekly', 'monthly']
+        if aggregation not in valid_aggregations:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid aggregation. Must be one of: {valid_aggregations}"
+            )
+        
+        # Convert 'none' string to None for backend
+        effective_aggregation = None if aggregation in [None, 'none'] else aggregation
+        
+        history = storage.get_dashboard_kpis_history(
+            domain=domain, 
+            limit=limit, 
+            days=days,
+            aggregation=effective_aggregation,
+            tool_type=tool_type
+        )
+        
+        response = {
             "status": "ok",
             "domain": domain,
             "count": len(history),
-            "history": history
+            "history": history,
+            "aggregation": aggregation or 'none'
         }
+        
+        # Add date range info if days filter was applied
+        if days:
+            from datetime import datetime, timedelta
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            response["date_range"] = {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat()
+            }
+        
+        return response
+    except HTTPException:
+        raise
     except Exception as e:
         logging.exception(f"Failed to get KPI history for {domain}")
         raise HTTPException(status_code=500, detail=f"Failed to get KPI history: {e}")

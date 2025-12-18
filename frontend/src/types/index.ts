@@ -241,13 +241,24 @@ export interface DashboardKPIHistoryPoint {
   unaccepted_group_members: number
   total_findings: number
   domain_group_risk_score: number
+  // Aggregation metadata (only present when aggregation is applied)
+  data_points?: number  // Number of data points aggregated into this period
 }
+
+// Aggregation options for historical trend data
+export type HistoryAggregation = 'none' | 'weekly' | 'monthly'
 
 export interface DashboardKPIHistoryResponse {
   status: 'ok' | 'error'
   domain: string
   count: number
   history: DashboardKPIHistoryPoint[]
+  // Metadata about the query
+  aggregation?: HistoryAggregation
+  date_range?: {
+    start: string
+    end: string
+  }
 }
 
 export interface DomainKPISummary {

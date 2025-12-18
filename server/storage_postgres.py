@@ -2094,71 +2094,131 @@ class PostgresReportStorage:
         self, 
         domain: str, 
         limit: int = 10,
+        days: Optional[int] = None,
+        aggregation: Optional[str] = None,
         tool_type: Optional[str] = None
     ) -> List[Dict]:
         """
-        Get historical KPIs for trend charts.
+        Get historical KPIs for trend charts with flexible date ranges and aggregation.
         
-        Defaults to PingCastle reports only since the dashboard trend charts
-        show PingCastle-specific scores (global_score, stale_objects, etc.)
+        Supports server-side aggregation for large date ranges to keep responses
+        fast and reduce frontend processing.
         
         Args:
             domain: Domain to get history for
             limit: Maximum number of historical points
+            days: Optional filter to last N days
+            aggregation: Optional aggregation level: 'weekly' or 'monthly'
+                        Uses PostgreSQL DATE_TRUNC for efficient grouping
             tool_type: Filter by tool type. If None, defaults to 'pingcastle'
-                       since the dashboard charts show PingCastle-specific scores.
             
         Returns:
-            List of historical KPI data points
+            List of historical KPI data points (aggregated if requested)
         """
         with self._get_session() as session:
             try:
                 # IMPORTANT: Default to 'pingcastle' when tool_type is None
-                # This ensures dashboard trend charts only show PingCastle scores
-                # and are not affected by domain_analysis report uploads
                 effective_tool_type = tool_type if tool_type is not None else 'pingcastle'
                 
-                query = text("""
-                    SELECT 
-                        report_date,
-                        global_score,
-                        stale_objects_score,
-                        privileged_accounts_score,
-                        trusts_score,
-                        anomalies_score,
-                        unaccepted_group_members,
-                        total_findings,
-                        domain_group_risk_score
-                    FROM reports_kpis
-                    WHERE domain = :domain
-                    AND tool_type = :tool_type
-                    ORDER BY report_date DESC
-                    LIMIT :limit
-                """)
-                
-                params = {
-                    'domain': domain, 
-                    'limit': limit,
-                    'tool_type': effective_tool_type
-                }
-                
-                results = session.execute(query, params).fetchall()
-                
-                # Return in chronological order (oldest first)
-                return [
-                    {
-                        'date': r.report_date.isoformat(),
-                        'global_score': r.global_score,
-                        'stale_objects_score': r.stale_objects_score,
-                        'privileged_accounts_score': r.privileged_accounts_score,
-                        'trusts_score': r.trusts_score,
-                        'anomalies_score': r.anomalies_score,
-                        'unaccepted_group_members': r.unaccepted_group_members,
-                        'total_findings': r.total_findings,
-                        'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                # Build the query based on aggregation level
+                if aggregation in ('weekly', 'monthly'):
+                    # Use DATE_TRUNC for efficient server-side aggregation
+                    trunc_period = 'week' if aggregation == 'weekly' else 'month'
+                    
+                    query = text(f"""
+                        SELECT 
+                            DATE_TRUNC(:trunc_period, report_date) as period_date,
+                            ROUND(AVG(global_score))::INTEGER as global_score,
+                            ROUND(AVG(stale_objects_score))::INTEGER as stale_objects_score,
+                            ROUND(AVG(privileged_accounts_score))::INTEGER as privileged_accounts_score,
+                            ROUND(AVG(trusts_score))::INTEGER as trusts_score,
+                            ROUND(AVG(anomalies_score))::INTEGER as anomalies_score,
+                            ROUND(AVG(unaccepted_group_members))::INTEGER as unaccepted_group_members,
+                            ROUND(AVG(total_findings))::INTEGER as total_findings,
+                            ROUND(AVG(domain_group_risk_score)::NUMERIC, 2) as domain_group_risk_score,
+                            COUNT(*) as data_points
+                        FROM reports_kpis
+                        WHERE domain = :domain
+                        AND tool_type = :tool_type
+                        {"AND report_date >= NOW() - INTERVAL '" + str(days) + " days'" if days else ""}
+                        GROUP BY DATE_TRUNC(:trunc_period, report_date)
+                        ORDER BY period_date DESC
+                        LIMIT :limit
+                    """)
+                    
+                    params = {
+                        'domain': domain, 
+                        'limit': limit,
+                        'tool_type': effective_tool_type,
+                        'trunc_period': trunc_period
                     }
-                    for r in reversed(results)
-                ]
+                    
+                    results = session.execute(query, params).fetchall()
+                    
+                    # Return in chronological order with aggregation metadata
+                    return [
+                        {
+                            'date': r.period_date.isoformat(),
+                            'global_score': r.global_score or 0,
+                            'stale_objects_score': r.stale_objects_score or 0,
+                            'privileged_accounts_score': r.privileged_accounts_score or 0,
+                            'trusts_score': r.trusts_score or 0,
+                            'anomalies_score': r.anomalies_score or 0,
+                            'unaccepted_group_members': r.unaccepted_group_members or 0,
+                            'total_findings': r.total_findings or 0,
+                            'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0,
+                            'data_points': r.data_points
+                        }
+                        for r in reversed(results)
+                    ]
+                else:
+                    # No aggregation - return individual data points
+                    date_filter = ""
+                    if days:
+                        date_filter = f"AND report_date >= NOW() - INTERVAL '{days} days'"
+                    
+                    query = text(f"""
+                        SELECT 
+                            report_date,
+                            global_score,
+                            stale_objects_score,
+                            privileged_accounts_score,
+                            trusts_score,
+                            anomalies_score,
+                            unaccepted_group_members,
+                            total_findings,
+                            domain_group_risk_score
+                        FROM reports_kpis
+                        WHERE domain = :domain
+                        AND tool_type = :tool_type
+                        {date_filter}
+                        ORDER BY report_date DESC
+                        LIMIT :limit
+                    """)
+                    
+                    params = {
+                        'domain': domain, 
+                        'limit': limit,
+                        'tool_type': effective_tool_type
+                    }
+                    
+                    results = session.execute(query, params).fetchall()
+                    
+                    # Return in chronological order (oldest first)
+                    return [
+                        {
+                            'date': r.report_date.isoformat(),
+                            'global_score': r.global_score or 0,
+                            'stale_objects_score': r.stale_objects_score or 0,
+                            'privileged_accounts_score': r.privileged_accounts_score or 0,
+                            'trusts_score': r.trusts_score or 0,
+                            'anomalies_score': r.anomalies_score or 0,
+                            'unaccepted_group_members': r.unaccepted_group_members or 0,
+                            'total_findings': r.total_findings or 0,
+                            'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                        }
+                        for r in reversed(results)
+                    ]
                 
             except Exception as e:
                 logging.error(f"Failed to get KPI history: {e}")

@@ -249,14 +249,25 @@ export async function getDashboardKPIs(domain?: string): Promise<DashboardKPIRes
 
 /**
  * Get historical KPI data for trend charts
+ * Supports flexible date ranges with server-side aggregation for performance
+ * 
+ * @param domain - Domain to get history for
+ * @param limit - Maximum number of data points (default: 10)
+ * @param days - Optional: Filter to last N days
+ * @param aggregation - Optional: 'none' | 'weekly' | 'monthly' - aggregates data points for large ranges
+ * @param toolType - Optional: Filter by tool type (default: pingcastle)
  */
 export async function getDashboardKPIHistory(
   domain: string, 
   limit: number = 10,
+  days?: number,
+  aggregation?: 'none' | 'weekly' | 'monthly',
   toolType?: string
 ): Promise<DashboardKPIHistoryResponse> {
   const params = new URLSearchParams()
   params.append('limit', String(limit))
+  if (days !== undefined) params.append('days', String(days))
+  if (aggregation && aggregation !== 'none') params.append('aggregation', aggregation)
   if (toolType) params.append('tool_type', toolType)
   
   return fetchJSON<DashboardKPIHistoryResponse>(

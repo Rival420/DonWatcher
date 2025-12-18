@@ -19,13 +19,21 @@ export function useDashboardKPIs(domain?: string) {
 
 /**
  * Get historical KPI data for trend charts
+ * Supports flexible date ranges with server-side aggregation for performance
  */
-export function useDashboardKPIHistory(domain: string, limit: number = 10, toolType?: string) {
+export function useDashboardKPIHistory(
+  domain: string, 
+  limit: number = 10, 
+  days?: number,
+  aggregation?: 'none' | 'weekly' | 'monthly',
+  toolType?: string
+) {
   return useQuery({
-    queryKey: ['dashboardKPIHistory', domain, limit, toolType],
-    queryFn: () => api.getDashboardKPIHistory(domain, limit, toolType),
+    queryKey: ['dashboardKPIHistory', domain, limit, days, aggregation, toolType],
+    queryFn: () => api.getDashboardKPIHistory(domain, limit, days, aggregation, toolType),
     enabled: !!domain,
     staleTime: 60000, // Cache for 1 minute
+    placeholderData: (previousData) => previousData, // Keep showing old data while fetching
   })
 }
 
