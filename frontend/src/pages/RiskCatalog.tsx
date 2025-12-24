@@ -38,7 +38,7 @@ import {
   useAcceptMember,
   useDenyMember
 } from '../hooks/useApi'
-import { FindingsListSkeleton, DomainGroupsSkeleton, SummaryCardsSkeleton, HoxhuntSection } from '../components'
+import { FindingsListSkeleton, DomainGroupsSkeleton, SummaryCardsSkeleton, HoxhuntSection, VulnerabilitySection } from '../components'
 import { clsx } from 'clsx'
 import type { GroupedFinding } from '../types'
 
@@ -864,6 +864,7 @@ function PingCastleSection({ domain }: { domain: string }) {
 const TABS = [
   { id: 'pingcastle', label: 'PingCastle Findings', icon: Castle },
   { id: 'domaingroups', label: 'Domain Group Analysis', icon: Users },
+  { id: 'vulnerability', label: 'Vulnerability Analysis', icon: Bug },
   { id: 'hoxhunt', label: 'Security Awareness', icon: GraduationCap }
 ] as const
 
@@ -939,6 +940,7 @@ export function RiskCatalog() {
         >
           {activeTab === 'pingcastle' && <PingCastleSection domain={domain} />}
           {activeTab === 'domaingroups' && <DomainGroupsSection domain={domain} />}
+          {activeTab === 'vulnerability' && <VulnerabilitySection domain={domain} />}
           {activeTab === 'hoxhunt' && <HoxhuntSection domain={domain} />}
         </motion.div>
       </AnimatePresence>
