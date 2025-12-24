@@ -518,3 +518,122 @@ export interface HoxhuntSaveResponse {
   message: string
 }
 
+// =============================================================================
+// Vulnerability Analysis Types (Outpost24)
+// =============================================================================
+
+export interface VulnerabilityScore {
+  id: string
+  domain: string
+  scan_date: string
+  
+  // Vulnerability counts
+  // total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+  // high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
+  total_vulnerabilities: number
+  high_vulnerabilities: number
+  medium_vulnerabilities: number
+  low_vulnerabilities: number
+  
+  // Trends (change since last scan)
+  high_trend: number
+  medium_trend: number
+  low_trend: number
+  
+  // Calculated risk score (0-100, higher = worse)
+  risk_score: number
+  
+  // Metadata
+  source_timestamp: string | null
+  scanner_name: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface VulnerabilityScoreInput {
+  domain: string
+  scan_date?: string
+  
+  // Vulnerability counts
+  // total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+  // high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
+  total_vulnerabilities: number
+  high_vulnerabilities: number
+  medium_vulnerabilities: number
+  low_vulnerabilities: number
+  
+  // Trends
+  high_trend: number
+  medium_trend: number
+  low_trend: number
+  
+  // Optional metadata
+  source_timestamp?: string
+  scanner_name?: string
+}
+
+export interface VulnerabilityHistoryPoint {
+  scan_date: string
+  total_vulnerabilities: number
+  high_vulnerabilities: number
+  medium_vulnerabilities: number
+  low_vulnerabilities: number
+  risk_score: number
+}
+
+export interface VulnerabilityDashboardSummary {
+  domain: string
+  scan_date: string
+  total_vulnerabilities: number
+  high_vulnerabilities: number
+  medium_vulnerabilities: number
+  low_vulnerabilities: number
+  high_trend: number
+  medium_trend: number
+  low_trend: number
+  risk_score: number
+  risk_level: 'critical' | 'high' | 'medium' | 'low'
+  trend_direction: 'increasing' | 'decreasing' | 'stable'
+  created_at: string | null
+}
+
+export interface VulnerabilityScoresResponse {
+  status: string
+  domain: string
+  count: number
+  scores: VulnerabilityScore[]
+}
+
+export interface VulnerabilityLatestResponse {
+  status: 'ok' | 'no_data'
+  domain: string
+  score: VulnerabilityScore | null
+}
+
+export interface VulnerabilityHistoryResponse {
+  status: string
+  domain: string
+  count: number
+  history: VulnerabilityHistoryPoint[]
+}
+
+export interface VulnerabilityDashboardResponse {
+  status: string
+  count: number
+  domains: VulnerabilityDashboardSummary[]
+}
+
+export interface VulnerabilitySaveResponse {
+  status: string
+  score_id: string
+  domain: string
+  scan_date: string
+  vulnerabilities: {
+    total: number
+    high: number
+    medium: number
+    low: number
+  }
+  message: string
+}
+

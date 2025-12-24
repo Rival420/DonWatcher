@@ -8,6 +8,7 @@ class SecurityToolType(str, Enum):
     LOCKSMITH = "locksmith"
     DOMAIN_ANALYSIS = "domain_analysis"
     DOMAIN_GROUP_MEMBERS = "domain_group_members"
+    VULNERABILITY_ANALYSIS = "vulnerability_analysis"
     CUSTOM = "custom"
 
 class FindingStatus(str, Enum):
@@ -556,3 +557,128 @@ class HoxhuntDashboardSummary(BaseModel):
     previous_score: Optional[float] = None
     score_change: Optional[float] = None
     entered_by: Optional[str] = None
+
+
+# =============================================================================
+# Vulnerability Analysis Models (Outpost24)
+# =============================================================================
+
+class VulnerabilityScoreInput(BaseModel):
+    """
+    Input model for vulnerability scan data from Outpost24 Outscan.
+    
+    Data is collected via PowerShell script calling the Outpost24 XML API:
+    - DASHBOARD_TOPGROUPS: Total vulnerability count (via "Agents in sync" metric)
+    - DASHBOARD_RISKSUMMARY: Vulnerability breakdown by severity with trends
+    """
+    domain: str = Field(..., description="Domain name (e.g., CORP.LOCAL)")
+    scan_date: Optional[datetime] = Field(None, description="Scan date (defaults to now)")
+    
+    # ==========================================================================
+    # Vulnerability Counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
+    # ==========================================================================
+    total_vulnerabilities: int = Field(0, ge=0, description="Total vulnerability count (from DASHBOARD_TOPGROUPS)")
+    high_vulnerabilities: int = Field(0, ge=0, description="High severity vulnerabilities")
+    medium_vulnerabilities: int = Field(0, ge=0, description="Medium severity vulnerabilities")
+    low_vulnerabilities: int = Field(0, ge=0, description="Low severity vulnerabilities")
+    
+    # ==========================================================================
+    # Trend Information (from DASHBOARD_RISKSUMMARY)
+    # ==========================================================================
+    high_trend: int = Field(0, description="Change in high severity since last scan")
+    medium_trend: int = Field(0, description="Change in medium severity since last scan")
+    low_trend: int = Field(0, description="Change in low severity since last scan")
+    
+    # ==========================================================================
+    # Source Metadata
+    # ==========================================================================
+    source_timestamp: Optional[str] = Field(None, description="Original timestamp from Outpost24")
+    scanner_name: str = Field("outpost24", description="Scanner identifier")
+
+
+class VulnerabilityScore(BaseModel):
+    """
+    Full vulnerability score record including calculated risk score.
+    Returned from database queries.
+    """
+    id: Optional[str] = None
+    domain: str
+    scan_date: datetime
+    
+    # Vulnerability counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
+    total_vulnerabilities: int = 0
+    high_vulnerabilities: int = 0
+    medium_vulnerabilities: int = 0
+    low_vulnerabilities: int = 0
+    
+    # Trends (change since last scan)
+    high_trend: int = 0
+    medium_trend: int = 0
+    low_trend: int = 0
+    
+    # Calculated risk score (0-100, higher = worse)
+    risk_score: float = 0.0
+    
+    # Metadata
+    source_timestamp: Optional[str] = None
+    scanner_name: str = "outpost24"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class VulnerabilityScoreHistory(BaseModel):
+    """Historical vulnerability data point for trend charts."""
+    scan_date: datetime
+    total_vulnerabilities: int
+    high_vulnerabilities: int
+    medium_vulnerabilities: int
+    low_vulnerabilities: int
+    risk_score: float
+
+
+class VulnerabilityDashboardSummary(BaseModel):
+    """
+    Dashboard summary for vulnerability scores.
+    Used for the main dashboard overview widget.
+    """
+    domain: str
+    scan_date: datetime
+    total_vulnerabilities: int
+    high_vulnerabilities: int
+    medium_vulnerabilities: int
+    low_vulnerabilities: int
+    high_trend: int
+    medium_trend: int
+    low_trend: int
+    risk_score: float
+    risk_level: str  # 'critical', 'high', 'medium', 'low'
+    trend_direction: str  # 'increasing', 'decreasing', 'stable'
+
+
+class APIVulnerabilityUpload(BaseModel):
+    """
+    API request model for uploading vulnerability scan data.
+    Used by the PowerShell scanner.
+    """
+    domain: str = Field(..., description="Domain name")
+    
+    # Vulnerability counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
+    total_vulnerabilities: int = Field(0, ge=0)
+    high_vulnerabilities: int = Field(0, ge=0)
+    medium_vulnerabilities: int = Field(0, ge=0)
+    low_vulnerabilities: int = Field(0, ge=0)
+    
+    # Trends
+    high_trend: int = Field(0)
+    medium_trend: int = Field(0)
+    low_trend: int = Field(0)
+    
+    # Optional metadata
+    source_timestamp: Optional[str] = None
+    scan_date: Optional[datetime] = None

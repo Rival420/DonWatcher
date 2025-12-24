@@ -16,7 +16,8 @@ from typing import List, Optional
 from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
     UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig,
-    HoxhuntScoreInput, HoxhuntScore
+    HoxhuntScoreInput, HoxhuntScore,
+    VulnerabilityScoreInput, VulnerabilityScore
 )
 from server.risk_service import get_risk_service
 from server.storage_postgres import PostgresReportStorage, get_storage
@@ -1859,6 +1860,206 @@ def get_hoxhunt_score_by_id(
     except Exception as e:
         logging.exception(f"Failed to get Hoxhunt score {score_id}")
         raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt score: {e}")
+
+
+# =============================================================================
+# Vulnerability Analysis Endpoints (Outpost24)
+# =============================================================================
+
+@app.post("/api/vulnerability/scores")
+def save_vulnerability_score(
+    score: VulnerabilityScoreInput,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Create or update a vulnerability scan score entry.
+    
+    Scores are collected via PowerShell script from Outpost24 Outscan API.
+    
+    If an entry already exists for the same domain and scan_date,
+    it will be updated (UPSERT behavior).
+    """
+    try:
+        score_id = storage.save_vulnerability_score(score)
+        
+        return {
+            "status": "ok",
+            "score_id": score_id,
+            "domain": score.domain,
+            "scan_date": score.scan_date.isoformat() if score.scan_date else datetime.utcnow().isoformat(),
+            "vulnerabilities": {
+                "total": score.total_vulnerabilities,
+                "high": score.high_vulnerabilities,
+                "medium": score.medium_vulnerabilities,
+                "low": score.low_vulnerabilities
+            },
+            "message": f"Successfully saved vulnerability score for {score.domain}"
+        }
+    except Exception as e:
+        logging.exception(f"Failed to save vulnerability score for {score.domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to save vulnerability score: {e}")
+
+
+@app.get("/api/vulnerability/scores/{domain}")
+def get_vulnerability_scores(
+    domain: str,
+    limit: int = 30,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get all vulnerability scores for a domain.
+    
+    Path parameters:
+    - domain: Domain to get scores for
+    
+    Query parameters:
+    - limit: Maximum number of records to return (default: 30)
+    
+    Returns scores ordered by scan_date descending (newest first).
+    """
+    try:
+        scores = storage.get_vulnerability_scores(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(scores),
+            "scores": scores
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get vulnerability scores for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get vulnerability scores: {e}")
+
+
+@app.get("/api/vulnerability/scores/{domain}/latest")
+def get_latest_vulnerability_score(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get the most recent vulnerability score for a domain.
+    
+    Path parameters:
+    - domain: Domain to get latest score for
+    
+    Returns the latest score or null if no scores exist.
+    """
+    try:
+        score = storage.get_latest_vulnerability_score(domain)
+        return {
+            "status": "ok" if score else "no_data",
+            "domain": domain,
+            "score": score
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get latest vulnerability score for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get latest vulnerability score: {e}")
+
+
+@app.get("/api/vulnerability/scores/{domain}/history")
+def get_vulnerability_history(
+    domain: str,
+    limit: int = 30,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get historical vulnerability scores for trend charts.
+    
+    Path parameters:
+    - domain: Domain to get history for
+    
+    Query parameters:
+    - limit: Maximum number of data points (default: 30)
+    
+    Returns scores ordered by scan_date ascending (oldest first)
+    for easy chart rendering.
+    """
+    try:
+        history = storage.get_vulnerability_history(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(history),
+            "history": history
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get vulnerability history for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get vulnerability history: {e}")
+
+
+@app.delete("/api/vulnerability/scores/{score_id}")
+def delete_vulnerability_score(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Delete a vulnerability score entry.
+    
+    Path parameters:
+    - score_id: UUID of the score record to delete
+    """
+    try:
+        deleted = storage.delete_vulnerability_score(score_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "message": f"Successfully deleted vulnerability score {score_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to delete vulnerability score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete vulnerability score: {e}")
+
+
+@app.get("/api/vulnerability/dashboard")
+def get_vulnerability_dashboard(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get vulnerability dashboard summary across all domains.
+    
+    Returns latest scores per domain with trend information,
+    risk level classification, and trend direction.
+    """
+    try:
+        dashboard = storage.get_vulnerability_dashboard()
+        return {
+            "status": "ok",
+            "count": len(dashboard),
+            "domains": dashboard
+        }
+    except Exception as e:
+        logging.exception("Failed to get vulnerability dashboard")
+        raise HTTPException(status_code=500, detail=f"Failed to get vulnerability dashboard: {e}")
+
+
+@app.get("/api/vulnerability/scores/id/{score_id}")
+def get_vulnerability_score_by_id(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get a specific vulnerability score by ID.
+    
+    Path parameters:
+    - score_id: UUID of the score record
+    """
+    try:
+        score = storage.get_vulnerability_score_by_id(score_id)
+        if not score:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "score": score
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to get vulnerability score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to get vulnerability score: {e}")
 
 
 # Enhanced debug endpoint with risk information
