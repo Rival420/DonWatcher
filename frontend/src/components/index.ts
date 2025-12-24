@@ -12,3 +12,5 @@ export {
   TableSkeleton,
   CategoryTabsSkeleton
 } from './SkeletonLoaders'
+export { HoxhuntEntryModal } from './HoxhuntEntryModal'
+export { HoxhuntSection } from './HoxhuntSection'

@@ -19,13 +19,21 @@ export function useDashboardKPIs(domain?: string) {
 
 /**
  * Get historical KPI data for trend charts
+ * Supports flexible date ranges with server-side aggregation for performance
  */
-export function useDashboardKPIHistory(domain: string, limit: number = 10, toolType?: string) {
+export function useDashboardKPIHistory(
+  domain: string, 
+  limit: number = 10, 
+  days?: number,
+  aggregation?: 'none' | 'weekly' | 'monthly',
+  toolType?: string
+) {
   return useQuery({
-    queryKey: ['dashboardKPIHistory', domain, limit, toolType],
-    queryFn: () => api.getDashboardKPIHistory(domain, limit, toolType),
+    queryKey: ['dashboardKPIHistory', domain, limit, days, aggregation, toolType],
+    queryFn: () => api.getDashboardKPIHistory(domain, limit, days, aggregation, toolType),
     enabled: !!domain,
     staleTime: 60000, // Cache for 1 minute
+    placeholderData: (previousData) => previousData, // Keep showing old data while fetching
   })
 }
 
@@ -306,6 +314,7 @@ export function useDashboardSummaryFast() {
 export function useGroupedFindingsFast(params?: {
   domain?: string
   category?: string
+  tool_type?: string
   in_latest_only?: boolean
   include_accepted?: boolean
   page?: number
@@ -344,6 +353,93 @@ export function useDomainGroupsFast(domain: string) {
     enabled: !!domain,
     staleTime: 30000,
     gcTime: 300000,
+  })
+}
+
+// =============================================================================
+// Hoxhunt Security Awareness Hooks
+// =============================================================================
+
+/**
+ * Get all Hoxhunt scores for a domain
+ */
+export function useHoxhuntScores(domain: string, limit: number = 12) {
+  return useQuery({
+    queryKey: ['hoxhuntScores', domain, limit],
+    queryFn: () => api.getHoxhuntScores(domain, limit),
+    enabled: !!domain,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+/**
+ * Get the latest Hoxhunt score for a domain
+ */
+export function useLatestHoxhuntScore(domain: string) {
+  return useQuery({
+    queryKey: ['hoxhuntLatest', domain],
+    queryFn: () => api.getLatestHoxhuntScore(domain),
+    enabled: !!domain,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Get historical Hoxhunt scores for trend charts
+ */
+export function useHoxhuntHistory(domain: string, limit: number = 12) {
+  return useQuery({
+    queryKey: ['hoxhuntHistory', domain, limit],
+    queryFn: () => api.getHoxhuntHistory(domain, limit),
+    enabled: !!domain,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Get Hoxhunt dashboard summary across all domains
+ */
+export function useHoxhuntDashboard() {
+  return useQuery({
+    queryKey: ['hoxhuntDashboard'],
+    queryFn: api.getHoxhuntDashboard,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Save a Hoxhunt score (mutation)
+ */
+export function useSaveHoxhuntScore() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.saveHoxhuntScore,
+    onSuccess: (_, variables) => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntScores', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntLatest', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntHistory', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntDashboard'] })
+    },
+  })
+}
+
+/**
+ * Delete a Hoxhunt score (mutation)
+ */
+export function useDeleteHoxhuntScore() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.deleteHoxhuntScore,
+    onSuccess: () => {
+      // Invalidate all Hoxhunt queries since we don't know which domain
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntScores'] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntLatest'] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntHistory'] })
+      queryClient.invalidateQueries({ queryKey: ['hoxhuntDashboard'] })
+    },
   })
 }
 

@@ -241,13 +241,24 @@ export interface DashboardKPIHistoryPoint {
   unaccepted_group_members: number
   total_findings: number
   domain_group_risk_score: number
+  // Aggregation metadata (only present when aggregation is applied)
+  data_points?: number  // Number of data points aggregated into this period
 }
+
+// Aggregation options for historical trend data
+export type HistoryAggregation = 'none' | 'weekly' | 'monthly'
 
 export interface DashboardKPIHistoryResponse {
   status: 'ok' | 'error'
   domain: string
   count: number
   history: DashboardKPIHistoryPoint[]
+  // Metadata about the query
+  aggregation?: HistoryAggregation
+  date_range?: {
+    start: string
+    end: string
+  }
 }
 
 export interface DomainKPISummary {
@@ -368,5 +379,142 @@ export interface NavItem {
   label: string
   path: string
   icon: React.ReactNode
+}
+
+// =============================================================================
+// Hoxhunt Security Awareness Types
+// =============================================================================
+
+export interface HoxhuntScore {
+  id: string
+  domain: string
+  assessment_date: string
+  
+  // Calculated scores
+  overall_score: number
+  culture_engagement_score: number
+  competence_score: number
+  real_threat_detection_score: number
+  
+  // Culture & Engagement metrics (0-100)
+  ce_onboarding_rate: number
+  ce_simulations_reported: number
+  ce_simulations_misses: number
+  ce_threat_indicators: number
+  
+  // Competence metrics (0-100)
+  comp_simulations_fails: number
+  comp_simulations_reported: number
+  comp_quiz_score: number
+  comp_threat_detection_accuracy: number
+  
+  // Real Threat Detection metrics (0-100)
+  rtd_simulations_reported: number
+  rtd_simulations_misses: number
+  rtd_reporting_speed: number
+  rtd_threat_reporting_activity: number
+  rtd_threat_detection_accuracy: number
+  
+  // Metadata
+  notes: string | null
+  entered_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface HoxhuntScoreInput {
+  domain: string
+  assessment_date: string
+  
+  // Main scores - manually entered from Hoxhunt platform (required)
+  overall_score: number
+  culture_engagement_score: number
+  competence_score: number
+  real_threat_detection_score: number
+  
+  // Culture & Engagement detailed metrics (optional - for reference)
+  ce_onboarding_rate?: number
+  ce_simulations_reported?: number
+  ce_simulations_misses?: number
+  ce_threat_indicators?: number
+  
+  // Competence detailed metrics (optional - for reference)
+  comp_simulations_fails?: number
+  comp_simulations_reported?: number
+  comp_quiz_score?: number
+  comp_threat_detection_accuracy?: number
+  
+  // Real Threat Detection detailed metrics (optional - for reference)
+  rtd_simulations_reported?: number
+  rtd_simulations_misses?: number
+  rtd_reporting_speed?: number
+  rtd_threat_reporting_activity?: number
+  rtd_threat_detection_accuracy?: number
+  
+  // Optional metadata
+  notes?: string
+  entered_by?: string
+}
+
+export interface HoxhuntHistoryPoint {
+  assessment_date: string
+  overall_score: number
+  culture_engagement_score: number
+  competence_score: number
+  real_threat_detection_score: number
+}
+
+export interface HoxhuntDashboardSummary {
+  domain: string
+  assessment_date: string
+  overall_score: number
+  culture_engagement_score: number
+  competence_score: number
+  real_threat_detection_score: number
+  awareness_level: 'critical' | 'high' | 'medium' | 'low'
+  previous_score: number | null
+  score_change: number | null
+  entered_by: string | null
+  created_at: string | null
+}
+
+export interface HoxhuntScoresResponse {
+  status: string
+  domain: string
+  count: number
+  scores: HoxhuntScore[]
+}
+
+export interface HoxhuntLatestResponse {
+  status: 'ok' | 'no_data'
+  domain: string
+  score: HoxhuntScore | null
+}
+
+export interface HoxhuntHistoryResponse {
+  status: string
+  domain: string
+  count: number
+  history: HoxhuntHistoryPoint[]
+}
+
+export interface HoxhuntDashboardResponse {
+  status: string
+  count: number
+  domains: HoxhuntDashboardSummary[]
+}
+
+export interface HoxhuntSaveResponse {
+  status: string
+  score_id: string
+  domain: string
+  assessment_date: string
+  scores: {
+    overall_score: number
+    culture_engagement_score: number
+    competence_score: number
+    real_threat_detection_score: number
+  }
+  message: string
 }
 

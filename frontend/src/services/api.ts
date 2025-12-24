@@ -22,7 +22,13 @@ import type {
   APIDomainMetadata,
   DashboardKPIResponse,
   DashboardKPIHistoryResponse,
-  AllDomainsKPIResponse
+  AllDomainsKPIResponse,
+  HoxhuntScoreInput,
+  HoxhuntScoresResponse,
+  HoxhuntLatestResponse,
+  HoxhuntHistoryResponse,
+  HoxhuntDashboardResponse,
+  HoxhuntSaveResponse
 } from '../types'
 
 const API_BASE = '/api'
@@ -243,14 +249,25 @@ export async function getDashboardKPIs(domain?: string): Promise<DashboardKPIRes
 
 /**
  * Get historical KPI data for trend charts
+ * Supports flexible date ranges with server-side aggregation for performance
+ * 
+ * @param domain - Domain to get history for
+ * @param limit - Maximum number of data points (default: 10)
+ * @param days - Optional: Filter to last N days
+ * @param aggregation - Optional: 'none' | 'weekly' | 'monthly' - aggregates data points for large ranges
+ * @param toolType - Optional: Filter by tool type (default: pingcastle)
  */
 export async function getDashboardKPIHistory(
   domain: string, 
   limit: number = 10,
+  days?: number,
+  aggregation?: 'none' | 'weekly' | 'monthly',
   toolType?: string
 ): Promise<DashboardKPIHistoryResponse> {
   const params = new URLSearchParams()
   params.append('limit', String(limit))
+  if (days !== undefined) params.append('days', String(days))
+  if (aggregation && aggregation !== 'none') params.append('aggregation', aggregation)
   if (toolType) params.append('tool_type', toolType)
   
   return fetchJSON<DashboardKPIHistoryResponse>(
@@ -336,6 +353,7 @@ export interface GroupedFindingsFastResponse {
 export async function getGroupedFindingsFast(params?: {
   domain?: string
   category?: string
+  tool_type?: string
   in_latest_only?: boolean
   include_accepted?: boolean
   page?: number
@@ -344,13 +362,15 @@ export async function getGroupedFindingsFast(params?: {
   const searchParams = new URLSearchParams()
   if (params?.domain) searchParams.append('domain', params.domain)
   if (params?.category) searchParams.append('category', params.category)
+  // tool_type filter to ensure PingCastle tab only shows PingCastle findings
+  if (params?.tool_type) searchParams.append('tool_type', params.tool_type)
   if (params?.in_latest_only) searchParams.append('in_latest_only', 'true')
   if (params?.include_accepted !== undefined) {
     searchParams.append('include_accepted', String(params.include_accepted))
   }
   if (params?.page) searchParams.append('page', String(params.page))
   if (params?.page_size) searchParams.append('page_size', String(params.page_size))
-  
+
   const query = searchParams.toString()
   return fetchJSON(`${API_BASE}/findings/grouped/fast${query ? `?${query}` : ''}`)
 }
@@ -557,5 +577,56 @@ export async function uploadFindingsAPI(
  */
 export async function getUploadAPIHealth(): Promise<{ status: string; module: string; endpoints: string[] }> {
   return fetchJSON(`${API_BASE}/upload/health`)
+}
+
+// =============================================================================
+// Hoxhunt Security Awareness API
+// =============================================================================
+
+/**
+ * Get all Hoxhunt scores for a domain
+ */
+export async function getHoxhuntScores(domain: string, limit: number = 12): Promise<HoxhuntScoresResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}?limit=${limit}`)
+}
+
+/**
+ * Get the latest Hoxhunt score for a domain
+ */
+export async function getLatestHoxhuntScore(domain: string): Promise<HoxhuntLatestResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}/latest`)
+}
+
+/**
+ * Get historical Hoxhunt scores for trend charts
+ */
+export async function getHoxhuntHistory(domain: string, limit: number = 12): Promise<HoxhuntHistoryResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(domain)}/history?limit=${limit}`)
+}
+
+/**
+ * Save a new Hoxhunt score entry (manual data entry)
+ */
+export async function saveHoxhuntScore(score: HoxhuntScoreInput): Promise<HoxhuntSaveResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores`, {
+    method: 'POST',
+    body: JSON.stringify(score),
+  })
+}
+
+/**
+ * Delete a Hoxhunt score entry
+ */
+export async function deleteHoxhuntScore(scoreId: string): Promise<{ status: string; message: string }> {
+  return fetchJSON(`${API_BASE}/hoxhunt/scores/${encodeURIComponent(scoreId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * Get Hoxhunt dashboard summary across all domains
+ */
+export async function getHoxhuntDashboard(): Promise<HoxhuntDashboardResponse> {
+  return fetchJSON(`${API_BASE}/hoxhunt/dashboard`)
 }
 

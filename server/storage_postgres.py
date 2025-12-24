@@ -1754,7 +1754,14 @@ class PostgresReportStorage:
     def get_dashboard_kpis(self, domain: Optional[str] = None) -> Dict:
         """
         Get dashboard KPIs optimized for fast loading.
-        Returns latest KPIs for the specified domain or all domains.
+        
+        Uses the composite view v_dashboard_composite which fetches:
+        - PingCastle scores from the latest PingCastle report
+        - Domain Group metrics from the latest domain_analysis report
+        - Merged infrastructure data from whichever has it
+        
+        This prevents PingCastle scores from being overwritten when
+        a domain_analysis report is uploaded after a PingCastle report.
         
         Args:
             domain: Optional domain filter. If None, returns KPIs for latest domain.
@@ -1764,122 +1771,256 @@ class PostgresReportStorage:
         """
         with self._get_session() as session:
             try:
-                if domain:
-                    # Get latest KPIs for specific domain
-                    query = text("""
-                        SELECT 
-                            rk.id,
-                            rk.report_id,
-                            rk.tool_type,
-                            rk.domain,
-                            rk.report_date,
-                            rk.global_score,
-                            rk.stale_objects_score,
-                            rk.privileged_accounts_score,
-                            rk.trusts_score,
-                            rk.anomalies_score,
-                            rk.user_count,
-                            rk.computer_count,
-                            rk.dc_count,
-                            rk.total_findings,
-                            rk.high_severity_findings,
-                            rk.medium_severity_findings,
-                            rk.low_severity_findings,
-                            rk.total_groups,
-                            rk.total_group_members,
-                            rk.accepted_group_members,
-                            rk.unaccepted_group_members,
-                            rk.domain_group_risk_score,
-                            r.domain_sid,
-                            r.domain_functional_level,
-                            r.forest_functional_level,
-                            r.maturity_level
-                        FROM reports_kpis rk
-                        JOIN reports r ON rk.report_id = r.id
-                        WHERE rk.domain = :domain
-                        ORDER BY rk.report_date DESC
-                        LIMIT 1
-                    """)
-                    result = session.execute(query, {'domain': domain}).fetchone()
-                else:
-                    # Get latest KPIs across all domains
-                    query = text("""
-                        SELECT 
-                            rk.id,
-                            rk.report_id,
-                            rk.tool_type,
-                            rk.domain,
-                            rk.report_date,
-                            rk.global_score,
-                            rk.stale_objects_score,
-                            rk.privileged_accounts_score,
-                            rk.trusts_score,
-                            rk.anomalies_score,
-                            rk.user_count,
-                            rk.computer_count,
-                            rk.dc_count,
-                            rk.total_findings,
-                            rk.high_severity_findings,
-                            rk.medium_severity_findings,
-                            rk.low_severity_findings,
-                            rk.total_groups,
-                            rk.total_group_members,
-                            rk.accepted_group_members,
-                            rk.unaccepted_group_members,
-                            rk.domain_group_risk_score,
-                            r.domain_sid,
-                            r.domain_functional_level,
-                            r.forest_functional_level,
-                            r.maturity_level
-                        FROM reports_kpis rk
-                        JOIN reports r ON rk.report_id = r.id
-                        ORDER BY rk.report_date DESC
-                        LIMIT 1
-                    """)
-                    result = session.execute(query).fetchone()
-                
-                if not result:
-                    return {
-                        'status': 'no_data',
-                        'message': 'No reports found'
-                    }
-                
-                return {
-                    'status': 'ok',
-                    'kpis': {
-                        'id': str(result.id),
-                        'report_id': str(result.report_id),
-                        'tool_type': result.tool_type,
-                        'domain': result.domain,
-                        'report_date': result.report_date.isoformat(),
-                        'domain_sid': result.domain_sid,
-                        'domain_functional_level': result.domain_functional_level,
-                        'forest_functional_level': result.forest_functional_level,
-                        'maturity_level': result.maturity_level,
-                        'global_score': result.global_score,
-                        'stale_objects_score': result.stale_objects_score,
-                        'privileged_accounts_score': result.privileged_accounts_score,
-                        'trusts_score': result.trusts_score,
-                        'anomalies_score': result.anomalies_score,
-                        'user_count': result.user_count,
-                        'computer_count': result.computer_count,
-                        'dc_count': result.dc_count,
-                        'total_findings': result.total_findings,
-                        'high_severity_findings': result.high_severity_findings,
-                        'medium_severity_findings': result.medium_severity_findings,
-                        'low_severity_findings': result.low_severity_findings,
-                        'total_groups': result.total_groups,
-                        'total_group_members': result.total_group_members,
-                        'accepted_group_members': result.accepted_group_members,
-                        'unaccepted_group_members': result.unaccepted_group_members,
-                        'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0
-                    }
-                }
-                
+                # Try using the composite view first (migration_008)
+                return self._get_dashboard_kpis_composite(session, domain)
             except Exception as e:
-                logging.error(f"Failed to get dashboard KPIs: {e}")
-                # Fallback: return basic data from reports table
-                return self._get_fallback_dashboard_kpis(session, domain)
+                logging.warning(f"Composite view query failed, using fallback: {e}")
+                # Fallback to old method if composite view doesn't exist
+                return self._get_dashboard_kpis_legacy(session, domain)
+    
+    def _get_dashboard_kpis_composite(self, session, domain: Optional[str] = None) -> Dict:
+        """
+        Get dashboard KPIs using the composite view.
+        
+        This view properly separates PingCastle scores from domain_analysis metrics,
+        ensuring that uploading a domain_analysis report doesn't overwrite PingCastle scores.
+        """
+        if domain:
+            query = text("""
+                SELECT 
+                    dc.domain,
+                    dc.pingcastle_global_score,
+                    dc.stale_objects_score,
+                    dc.privileged_accounts_score,
+                    dc.trusts_score,
+                    dc.anomalies_score,
+                    dc.pingcastle_report_date,
+                    dc.pingcastle_report_id,
+                    dc.total_groups,
+                    dc.total_group_members,
+                    dc.accepted_group_members,
+                    dc.unaccepted_group_members,
+                    dc.domain_group_risk_score,
+                    dc.domain_analysis_report_date,
+                    dc.total_findings,
+                    dc.high_severity_findings,
+                    dc.medium_severity_findings,
+                    dc.low_severity_findings,
+                    dc.user_count,
+                    dc.computer_count,
+                    dc.dc_count,
+                    dc.latest_report_date,
+                    dc.data_sources,
+                    -- Get domain metadata from the PingCastle report if available
+                    r.domain_sid,
+                    r.domain_functional_level,
+                    r.forest_functional_level,
+                    r.maturity_level
+                FROM v_dashboard_composite dc
+                LEFT JOIN reports r ON dc.pingcastle_report_id = r.id
+                WHERE dc.domain = :domain
+            """)
+            result = session.execute(query, {'domain': domain}).fetchone()
+        else:
+            # Get latest domain based on most recent report
+            query = text("""
+                SELECT 
+                    dc.domain,
+                    dc.pingcastle_global_score,
+                    dc.stale_objects_score,
+                    dc.privileged_accounts_score,
+                    dc.trusts_score,
+                    dc.anomalies_score,
+                    dc.pingcastle_report_date,
+                    dc.pingcastle_report_id,
+                    dc.total_groups,
+                    dc.total_group_members,
+                    dc.accepted_group_members,
+                    dc.unaccepted_group_members,
+                    dc.domain_group_risk_score,
+                    dc.domain_analysis_report_date,
+                    dc.total_findings,
+                    dc.high_severity_findings,
+                    dc.medium_severity_findings,
+                    dc.low_severity_findings,
+                    dc.user_count,
+                    dc.computer_count,
+                    dc.dc_count,
+                    dc.latest_report_date,
+                    dc.data_sources,
+                    r.domain_sid,
+                    r.domain_functional_level,
+                    r.forest_functional_level,
+                    r.maturity_level
+                FROM v_dashboard_composite dc
+                LEFT JOIN reports r ON dc.pingcastle_report_id = r.id
+                ORDER BY dc.latest_report_date DESC NULLS LAST
+                LIMIT 1
+            """)
+            result = session.execute(query).fetchone()
+        
+        if not result:
+            return {
+                'status': 'no_data',
+                'message': 'No reports found'
+            }
+        
+        return {
+            'status': 'ok',
+            'kpis': {
+                'domain': result.domain,
+                'report_date': result.latest_report_date.isoformat() if result.latest_report_date else None,
+                'domain_sid': result.domain_sid,
+                'domain_functional_level': result.domain_functional_level,
+                'forest_functional_level': result.forest_functional_level,
+                'maturity_level': result.maturity_level,
+                # PingCastle scores (from PingCastle report only)
+                'global_score': result.pingcastle_global_score or 0,
+                'stale_objects_score': result.stale_objects_score or 0,
+                'privileged_accounts_score': result.privileged_accounts_score or 0,
+                'trusts_score': result.trusts_score or 0,
+                'anomalies_score': result.anomalies_score or 0,
+                'pingcastle_report_date': result.pingcastle_report_date.isoformat() if result.pingcastle_report_date else None,
+                # Domain Group metrics (from domain_analysis report only)
+                'total_groups': result.total_groups or 0,
+                'total_group_members': result.total_group_members or 0,
+                'accepted_group_members': result.accepted_group_members or 0,
+                'unaccepted_group_members': result.unaccepted_group_members or 0,
+                'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0,
+                'domain_analysis_report_date': result.domain_analysis_report_date.isoformat() if result.domain_analysis_report_date else None,
+                # Findings (from PingCastle)
+                'total_findings': result.total_findings or 0,
+                'high_severity_findings': result.high_severity_findings or 0,
+                'medium_severity_findings': result.medium_severity_findings or 0,
+                'low_severity_findings': result.low_severity_findings or 0,
+                # Infrastructure metrics (merged)
+                'user_count': result.user_count or 0,
+                'computer_count': result.computer_count or 0,
+                'dc_count': result.dc_count or 0,
+                # Metadata
+                'data_sources': result.data_sources
+            }
+        }
+    
+    def _get_dashboard_kpis_legacy(self, session, domain: Optional[str] = None) -> Dict:
+        """
+        Legacy method for dashboard KPIs (before composite view).
+        Used as fallback if v_dashboard_composite doesn't exist.
+        """
+        try:
+            if domain:
+                query = text("""
+                    SELECT 
+                        rk.id,
+                        rk.report_id,
+                        rk.tool_type,
+                        rk.domain,
+                        rk.report_date,
+                        rk.global_score,
+                        rk.stale_objects_score,
+                        rk.privileged_accounts_score,
+                        rk.trusts_score,
+                        rk.anomalies_score,
+                        rk.user_count,
+                        rk.computer_count,
+                        rk.dc_count,
+                        rk.total_findings,
+                        rk.high_severity_findings,
+                        rk.medium_severity_findings,
+                        rk.low_severity_findings,
+                        rk.total_groups,
+                        rk.total_group_members,
+                        rk.accepted_group_members,
+                        rk.unaccepted_group_members,
+                        rk.domain_group_risk_score,
+                        r.domain_sid,
+                        r.domain_functional_level,
+                        r.forest_functional_level,
+                        r.maturity_level
+                    FROM reports_kpis rk
+                    JOIN reports r ON rk.report_id = r.id
+                    WHERE rk.domain = :domain
+                    ORDER BY rk.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query, {'domain': domain}).fetchone()
+            else:
+                query = text("""
+                    SELECT 
+                        rk.id,
+                        rk.report_id,
+                        rk.tool_type,
+                        rk.domain,
+                        rk.report_date,
+                        rk.global_score,
+                        rk.stale_objects_score,
+                        rk.privileged_accounts_score,
+                        rk.trusts_score,
+                        rk.anomalies_score,
+                        rk.user_count,
+                        rk.computer_count,
+                        rk.dc_count,
+                        rk.total_findings,
+                        rk.high_severity_findings,
+                        rk.medium_severity_findings,
+                        rk.low_severity_findings,
+                        rk.total_groups,
+                        rk.total_group_members,
+                        rk.accepted_group_members,
+                        rk.unaccepted_group_members,
+                        rk.domain_group_risk_score,
+                        r.domain_sid,
+                        r.domain_functional_level,
+                        r.forest_functional_level,
+                        r.maturity_level
+                    FROM reports_kpis rk
+                    JOIN reports r ON rk.report_id = r.id
+                    ORDER BY rk.report_date DESC
+                    LIMIT 1
+                """)
+                result = session.execute(query).fetchone()
+            
+            if not result:
+                return {
+                    'status': 'no_data',
+                    'message': 'No reports found'
+                }
+            
+            return {
+                'status': 'ok',
+                'kpis': {
+                    'id': str(result.id),
+                    'report_id': str(result.report_id),
+                    'tool_type': result.tool_type,
+                    'domain': result.domain,
+                    'report_date': result.report_date.isoformat(),
+                    'domain_sid': result.domain_sid,
+                    'domain_functional_level': result.domain_functional_level,
+                    'forest_functional_level': result.forest_functional_level,
+                    'maturity_level': result.maturity_level,
+                    'global_score': result.global_score,
+                    'stale_objects_score': result.stale_objects_score,
+                    'privileged_accounts_score': result.privileged_accounts_score,
+                    'trusts_score': result.trusts_score,
+                    'anomalies_score': result.anomalies_score,
+                    'user_count': result.user_count,
+                    'computer_count': result.computer_count,
+                    'dc_count': result.dc_count,
+                    'total_findings': result.total_findings,
+                    'high_severity_findings': result.high_severity_findings,
+                    'medium_severity_findings': result.medium_severity_findings,
+                    'low_severity_findings': result.low_severity_findings,
+                    'total_groups': result.total_groups,
+                    'total_group_members': result.total_group_members,
+                    'accepted_group_members': result.accepted_group_members,
+                    'unaccepted_group_members': result.unaccepted_group_members,
+                    'domain_group_risk_score': float(result.domain_group_risk_score) if result.domain_group_risk_score else 0.0
+                }
+            }
+            
+        except Exception as e:
+            logging.error(f"Legacy dashboard KPIs failed: {e}")
+            return self._get_fallback_dashboard_kpis(session, domain)
 
     def _get_fallback_dashboard_kpis(self, session, domain: Optional[str] = None) -> Dict:
         """Fallback method if reports_kpis table doesn't exist yet."""
@@ -1953,60 +2094,131 @@ class PostgresReportStorage:
         self, 
         domain: str, 
         limit: int = 10,
+        days: Optional[int] = None,
+        aggregation: Optional[str] = None,
         tool_type: Optional[str] = None
     ) -> List[Dict]:
         """
-        Get historical KPIs for trend charts.
+        Get historical KPIs for trend charts with flexible date ranges and aggregation.
+        
+        Supports server-side aggregation for large date ranges to keep responses
+        fast and reduce frontend processing.
         
         Args:
             domain: Domain to get history for
             limit: Maximum number of historical points
-            tool_type: Optional filter by tool type
+            days: Optional filter to last N days
+            aggregation: Optional aggregation level: 'weekly' or 'monthly'
+                        Uses PostgreSQL DATE_TRUNC for efficient grouping
+            tool_type: Filter by tool type. If None, defaults to 'pingcastle'
             
         Returns:
-            List of historical KPI data points
+            List of historical KPI data points (aggregated if requested)
         """
         with self._get_session() as session:
             try:
-                query = text("""
-                    SELECT 
-                        report_date,
-                        global_score,
-                        stale_objects_score,
-                        privileged_accounts_score,
-                        trusts_score,
-                        anomalies_score,
-                        unaccepted_group_members,
-                        total_findings,
-                        domain_group_risk_score
-                    FROM reports_kpis
-                    WHERE domain = :domain
-                    """ + (" AND tool_type = :tool_type" if tool_type else "") + """
-                    ORDER BY report_date DESC
-                    LIMIT :limit
-                """)
+                # IMPORTANT: Default to 'pingcastle' when tool_type is None
+                effective_tool_type = tool_type if tool_type is not None else 'pingcastle'
                 
-                params = {'domain': domain, 'limit': limit}
-                if tool_type:
-                    params['tool_type'] = tool_type
-                
-                results = session.execute(query, params).fetchall()
-                
-                # Return in chronological order (oldest first)
-                return [
-                    {
-                        'date': r.report_date.isoformat(),
-                        'global_score': r.global_score,
-                        'stale_objects_score': r.stale_objects_score,
-                        'privileged_accounts_score': r.privileged_accounts_score,
-                        'trusts_score': r.trusts_score,
-                        'anomalies_score': r.anomalies_score,
-                        'unaccepted_group_members': r.unaccepted_group_members,
-                        'total_findings': r.total_findings,
-                        'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                # Build the query based on aggregation level
+                if aggregation in ('weekly', 'monthly'):
+                    # Use DATE_TRUNC for efficient server-side aggregation
+                    trunc_period = 'week' if aggregation == 'weekly' else 'month'
+                    
+                    query = text(f"""
+                        SELECT 
+                            DATE_TRUNC(:trunc_period, report_date) as period_date,
+                            ROUND(AVG(global_score))::INTEGER as global_score,
+                            ROUND(AVG(stale_objects_score))::INTEGER as stale_objects_score,
+                            ROUND(AVG(privileged_accounts_score))::INTEGER as privileged_accounts_score,
+                            ROUND(AVG(trusts_score))::INTEGER as trusts_score,
+                            ROUND(AVG(anomalies_score))::INTEGER as anomalies_score,
+                            ROUND(AVG(unaccepted_group_members))::INTEGER as unaccepted_group_members,
+                            ROUND(AVG(total_findings))::INTEGER as total_findings,
+                            ROUND(AVG(domain_group_risk_score)::NUMERIC, 2) as domain_group_risk_score,
+                            COUNT(*) as data_points
+                        FROM reports_kpis
+                        WHERE domain = :domain
+                        AND tool_type = :tool_type
+                        {"AND report_date >= NOW() - INTERVAL '" + str(days) + " days'" if days else ""}
+                        GROUP BY DATE_TRUNC(:trunc_period, report_date)
+                        ORDER BY period_date DESC
+                        LIMIT :limit
+                    """)
+                    
+                    params = {
+                        'domain': domain, 
+                        'limit': limit,
+                        'tool_type': effective_tool_type,
+                        'trunc_period': trunc_period
                     }
-                    for r in reversed(results)
-                ]
+                    
+                    results = session.execute(query, params).fetchall()
+                    
+                    # Return in chronological order with aggregation metadata
+                    return [
+                        {
+                            'date': r.period_date.isoformat(),
+                            'global_score': r.global_score or 0,
+                            'stale_objects_score': r.stale_objects_score or 0,
+                            'privileged_accounts_score': r.privileged_accounts_score or 0,
+                            'trusts_score': r.trusts_score or 0,
+                            'anomalies_score': r.anomalies_score or 0,
+                            'unaccepted_group_members': r.unaccepted_group_members or 0,
+                            'total_findings': r.total_findings or 0,
+                            'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0,
+                            'data_points': r.data_points
+                        }
+                        for r in reversed(results)
+                    ]
+                else:
+                    # No aggregation - return individual data points
+                    date_filter = ""
+                    if days:
+                        date_filter = f"AND report_date >= NOW() - INTERVAL '{days} days'"
+                    
+                    query = text(f"""
+                        SELECT 
+                            report_date,
+                            global_score,
+                            stale_objects_score,
+                            privileged_accounts_score,
+                            trusts_score,
+                            anomalies_score,
+                            unaccepted_group_members,
+                            total_findings,
+                            domain_group_risk_score
+                        FROM reports_kpis
+                        WHERE domain = :domain
+                        AND tool_type = :tool_type
+                        {date_filter}
+                        ORDER BY report_date DESC
+                        LIMIT :limit
+                    """)
+                    
+                    params = {
+                        'domain': domain, 
+                        'limit': limit,
+                        'tool_type': effective_tool_type
+                    }
+                    
+                    results = session.execute(query, params).fetchall()
+                    
+                    # Return in chronological order (oldest first)
+                    return [
+                        {
+                            'date': r.report_date.isoformat(),
+                            'global_score': r.global_score or 0,
+                            'stale_objects_score': r.stale_objects_score or 0,
+                            'privileged_accounts_score': r.privileged_accounts_score or 0,
+                            'trusts_score': r.trusts_score or 0,
+                            'anomalies_score': r.anomalies_score or 0,
+                            'unaccepted_group_members': r.unaccepted_group_members or 0,
+                            'total_findings': r.total_findings or 0,
+                            'domain_group_risk_score': float(r.domain_group_risk_score) if r.domain_group_risk_score else 0.0
+                        }
+                        for r in reversed(results)
+                    ]
                 
             except Exception as e:
                 logging.error(f"Failed to get KPI history: {e}")
@@ -2182,6 +2394,7 @@ class PostgresReportStorage:
         self,
         domain: Optional[str] = None,
         category: Optional[str] = None,
+        tool_type: Optional[str] = 'pingcastle',
         in_latest_only: bool = False,
         include_accepted: bool = True,
         page: int = 1,
@@ -2190,15 +2403,17 @@ class PostgresReportStorage:
         """
         Get grouped findings from materialized view with pagination.
         Much faster than runtime aggregation for Risk Catalog.
-        
+
         Args:
             domain: Optional filter by domain
             category: Optional filter by category
+            tool_type: Filter by tool type (default: 'pingcastle')
+                       This ensures PingCastle tab only shows PingCastle findings.
             in_latest_only: Only show findings in the latest report
             include_accepted: Include accepted findings
             page: Page number (1-indexed)
             page_size: Number of items per page
-            
+
         Returns:
             Paginated grouped findings with metadata
         """
@@ -2207,18 +2422,24 @@ class PostgresReportStorage:
                 # Build query dynamically
                 where_clauses = ["1=1"]
                 params = {}
-                
+
+                # IMPORTANT: Filter by tool_type to ensure proper data separation
+                # PingCastle tab should only show PingCastle findings
+                if tool_type:
+                    where_clauses.append("tool_type = :tool_type")
+                    params['tool_type'] = tool_type
+
                 if domain:
                     where_clauses.append(":domain = ANY(domains)")
                     params['domain'] = domain
-                
+
                 if category and category != 'all':
                     where_clauses.append("category = :category")
                     params['category'] = category
-                
+
                 if in_latest_only:
                     where_clauses.append("in_latest_report = true")
-                
+
                 if not include_accepted:
                     where_clauses.append("is_accepted = false")
                 
@@ -2295,10 +2516,11 @@ class PostgresReportStorage:
             except Exception as e:
                 logging.warning(f"Materialized view query failed, using fallback: {e}")
                 # Fallback to regular grouped findings
+                # Use the tool_type parameter (defaults to 'pingcastle')
                 findings = self.get_grouped_findings(
                     domain=domain,
                     category=category if category != 'all' else None,
-                    tool_type='pingcastle',
+                    tool_type=tool_type or 'pingcastle',
                     include_accepted=include_accepted
                 )
                 # Apply in_latest filter if needed
@@ -2322,15 +2544,16 @@ class PostgresReportStorage:
 
     def get_grouped_findings_summary_fast(
         self,
-        tool_type: Optional[str] = None
+        tool_type: Optional[str] = 'pingcastle'
     ) -> Dict:
         """
         Get grouped findings summary from materialized view.
         Used for category tabs in Risk Catalog.
-        
+
         Args:
-            tool_type: Optional filter by tool type
-            
+            tool_type: Filter by tool type (default: 'pingcastle')
+                       Ensures PingCastle tab shows PingCastle-only counts.
+
         Returns:
             Summary statistics by category
         """
@@ -2477,3 +2700,393 @@ class PostgresReportStorage:
             except Exception as e:
                 session.rollback()
                 logging.warning(f"Failed to refresh materialized views: {e}")
+
+    # =========================================================================
+    # Hoxhunt Security Awareness Score Methods
+    # =========================================================================
+
+    def save_hoxhunt_score(self, score_input) -> str:
+        """
+        Save a Hoxhunt security awareness score entry.
+        
+        Main scores (overall, category scores) are provided by the user as they
+        appear in the Hoxhunt platform - Hoxhunt uses internal weights that we
+        cannot replicate. Individual metrics are optional for reference.
+        
+        Uses UPSERT to allow updating existing entries for the same domain/date.
+        
+        Args:
+            score_input: HoxhuntScoreInput model with all metrics
+            
+        Returns:
+            UUID of the created/updated score record
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    INSERT INTO hoxhunt_scores (
+                        domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed, 
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by
+                    ) VALUES (
+                        :domain, :assessment_date,
+                        :overall_score, :culture_engagement_score, :competence_score, :real_threat_detection_score,
+                        :ce_onboarding_rate, :ce_simulations_reported, :ce_simulations_misses, :ce_threat_indicators,
+                        :comp_simulations_fails, :comp_simulations_reported, :comp_quiz_score, :comp_threat_detection_accuracy,
+                        :rtd_simulations_reported, :rtd_simulations_misses, :rtd_reporting_speed,
+                        :rtd_threat_reporting_activity, :rtd_threat_detection_accuracy,
+                        :notes, :entered_by
+                    )
+                    ON CONFLICT (domain, assessment_date) DO UPDATE SET
+                        overall_score = EXCLUDED.overall_score,
+                        culture_engagement_score = EXCLUDED.culture_engagement_score,
+                        competence_score = EXCLUDED.competence_score,
+                        real_threat_detection_score = EXCLUDED.real_threat_detection_score,
+                        ce_onboarding_rate = EXCLUDED.ce_onboarding_rate,
+                        ce_simulations_reported = EXCLUDED.ce_simulations_reported,
+                        ce_simulations_misses = EXCLUDED.ce_simulations_misses,
+                        ce_threat_indicators = EXCLUDED.ce_threat_indicators,
+                        comp_simulations_fails = EXCLUDED.comp_simulations_fails,
+                        comp_simulations_reported = EXCLUDED.comp_simulations_reported,
+                        comp_quiz_score = EXCLUDED.comp_quiz_score,
+                        comp_threat_detection_accuracy = EXCLUDED.comp_threat_detection_accuracy,
+                        rtd_simulations_reported = EXCLUDED.rtd_simulations_reported,
+                        rtd_simulations_misses = EXCLUDED.rtd_simulations_misses,
+                        rtd_reporting_speed = EXCLUDED.rtd_reporting_speed,
+                        rtd_threat_reporting_activity = EXCLUDED.rtd_threat_reporting_activity,
+                        rtd_threat_detection_accuracy = EXCLUDED.rtd_threat_detection_accuracy,
+                        notes = EXCLUDED.notes,
+                        entered_by = EXCLUDED.entered_by,
+                        updated_at = NOW()
+                    RETURNING id
+                """), {
+                    'domain': score_input.domain,
+                    'assessment_date': score_input.assessment_date,
+                    'overall_score': score_input.overall_score,
+                    'culture_engagement_score': score_input.culture_engagement_score,
+                    'competence_score': score_input.competence_score,
+                    'real_threat_detection_score': score_input.real_threat_detection_score,
+                    'ce_onboarding_rate': score_input.ce_onboarding_rate,
+                    'ce_simulations_reported': score_input.ce_simulations_reported,
+                    'ce_simulations_misses': score_input.ce_simulations_misses,
+                    'ce_threat_indicators': score_input.ce_threat_indicators,
+                    'comp_simulations_fails': score_input.comp_simulations_fails,
+                    'comp_simulations_reported': score_input.comp_simulations_reported,
+                    'comp_quiz_score': score_input.comp_quiz_score,
+                    'comp_threat_detection_accuracy': score_input.comp_threat_detection_accuracy,
+                    'rtd_simulations_reported': score_input.rtd_simulations_reported,
+                    'rtd_simulations_misses': score_input.rtd_simulations_misses,
+                    'rtd_reporting_speed': score_input.rtd_reporting_speed,
+                    'rtd_threat_reporting_activity': score_input.rtd_threat_reporting_activity,
+                    'rtd_threat_detection_accuracy': score_input.rtd_threat_detection_accuracy,
+                    'notes': score_input.notes,
+                    'entered_by': score_input.entered_by
+                })
+                
+                score_id = str(result.fetchone()[0])
+                session.commit()
+                logging.info(f"Saved Hoxhunt score for {score_input.domain} ({score_input.assessment_date}): {score_id}")
+                return score_id
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to save Hoxhunt score: {e}")
+                raise
+
+    def get_hoxhunt_scores(self, domain: str, limit: int = 12) -> List[Dict]:
+        """
+        Get all Hoxhunt scores for a domain, ordered by date descending.
+        
+        Args:
+            domain: Domain to get scores for
+            limit: Maximum number of records to return (default 12 = 1 year monthly)
+            
+        Returns:
+            List of score records
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM hoxhunt_scores
+                    WHERE domain = :domain
+                    ORDER BY assessment_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                return [
+                    {
+                        'id': str(r.id),
+                        'domain': r.domain,
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score),
+                        'ce_onboarding_rate': float(r.ce_onboarding_rate),
+                        'ce_simulations_reported': float(r.ce_simulations_reported),
+                        'ce_simulations_misses': float(r.ce_simulations_misses),
+                        'ce_threat_indicators': float(r.ce_threat_indicators),
+                        'comp_simulations_fails': float(r.comp_simulations_fails),
+                        'comp_simulations_reported': float(r.comp_simulations_reported),
+                        'comp_quiz_score': float(r.comp_quiz_score),
+                        'comp_threat_detection_accuracy': float(r.comp_threat_detection_accuracy),
+                        'rtd_simulations_reported': float(r.rtd_simulations_reported),
+                        'rtd_simulations_misses': float(r.rtd_simulations_misses),
+                        'rtd_reporting_speed': float(r.rtd_reporting_speed),
+                        'rtd_threat_reporting_activity': float(r.rtd_threat_reporting_activity),
+                        'rtd_threat_detection_accuracy': float(r.rtd_threat_detection_accuracy),
+                        'notes': r.notes,
+                        'entered_by': r.entered_by,
+                        'created_at': r.created_at.isoformat() if r.created_at else None,
+                        'updated_at': r.updated_at.isoformat() if r.updated_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt scores for {domain}: {e}")
+                return []
+
+    def get_latest_hoxhunt_score(self, domain: str) -> Optional[Dict]:
+        """
+        Get the most recent Hoxhunt score for a domain.
+        
+        Args:
+            domain: Domain to get latest score for
+            
+        Returns:
+            Latest score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM v_latest_hoxhunt_scores
+                    WHERE domain = :domain
+                """), {'domain': domain}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'assessment_date': result.assessment_date.isoformat() if result.assessment_date else None,
+                    'overall_score': float(result.overall_score),
+                    'culture_engagement_score': float(result.culture_engagement_score),
+                    'competence_score': float(result.competence_score),
+                    'real_threat_detection_score': float(result.real_threat_detection_score),
+                    'ce_onboarding_rate': float(result.ce_onboarding_rate),
+                    'ce_simulations_reported': float(result.ce_simulations_reported),
+                    'ce_simulations_misses': float(result.ce_simulations_misses),
+                    'ce_threat_indicators': float(result.ce_threat_indicators),
+                    'comp_simulations_fails': float(result.comp_simulations_fails),
+                    'comp_simulations_reported': float(result.comp_simulations_reported),
+                    'comp_quiz_score': float(result.comp_quiz_score),
+                    'comp_threat_detection_accuracy': float(result.comp_threat_detection_accuracy),
+                    'rtd_simulations_reported': float(result.rtd_simulations_reported),
+                    'rtd_simulations_misses': float(result.rtd_simulations_misses),
+                    'rtd_reporting_speed': float(result.rtd_reporting_speed),
+                    'rtd_threat_reporting_activity': float(result.rtd_threat_reporting_activity),
+                    'rtd_threat_detection_accuracy': float(result.rtd_threat_detection_accuracy),
+                    'notes': result.notes,
+                    'entered_by': result.entered_by,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get latest Hoxhunt score for {domain}: {e}")
+                return None
+
+    def get_hoxhunt_history(self, domain: str, limit: int = 12) -> List[Dict]:
+        """
+        Get historical Hoxhunt scores for trend charts.
+        
+        Args:
+            domain: Domain to get history for
+            limit: Maximum number of records (default 12 = 1 year monthly)
+            
+        Returns:
+            List of historical score data points, ordered oldest to newest for charts
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        assessment_date,
+                        overall_score,
+                        culture_engagement_score,
+                        competence_score,
+                        real_threat_detection_score
+                    FROM hoxhunt_scores
+                    WHERE domain = :domain
+                    ORDER BY assessment_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                # Reverse to get oldest first for chart display
+                return [
+                    {
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score)
+                    }
+                    for r in reversed(results)
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt history for {domain}: {e}")
+                return []
+
+    def delete_hoxhunt_score(self, score_id: str) -> bool:
+        """
+        Delete a Hoxhunt score entry.
+        
+        Args:
+            score_id: UUID of the score record to delete
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    DELETE FROM hoxhunt_scores
+                    WHERE id = :id
+                    RETURNING id
+                """), {'id': score_id})
+                
+                deleted = result.fetchone() is not None
+                session.commit()
+                
+                if deleted:
+                    logging.info(f"Deleted Hoxhunt score: {score_id}")
+                return deleted
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to delete Hoxhunt score {score_id}: {e}")
+                return False
+
+    def get_hoxhunt_dashboard(self) -> List[Dict]:
+        """
+        Get Hoxhunt dashboard summary for all domains.
+        
+        Returns:
+            List of latest scores per domain with trend information
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        domain,
+                        assessment_date,
+                        overall_score,
+                        culture_engagement_score,
+                        competence_score,
+                        real_threat_detection_score,
+                        awareness_level,
+                        previous_score,
+                        score_change,
+                        entered_by,
+                        created_at
+                    FROM v_hoxhunt_dashboard
+                    ORDER BY domain
+                """)).fetchall()
+                
+                return [
+                    {
+                        'domain': r.domain,
+                        'assessment_date': r.assessment_date.isoformat() if r.assessment_date else None,
+                        'overall_score': float(r.overall_score),
+                        'culture_engagement_score': float(r.culture_engagement_score),
+                        'competence_score': float(r.competence_score),
+                        'real_threat_detection_score': float(r.real_threat_detection_score),
+                        'awareness_level': r.awareness_level,
+                        'previous_score': float(r.previous_score) if r.previous_score else None,
+                        'score_change': float(r.score_change) if r.score_change else None,
+                        'entered_by': r.entered_by,
+                        'created_at': r.created_at.isoformat() if r.created_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt dashboard: {e}")
+                return []
+
+    def get_hoxhunt_score_by_id(self, score_id: str) -> Optional[Dict]:
+        """
+        Get a specific Hoxhunt score by ID.
+        
+        Args:
+            score_id: UUID of the score record
+            
+        Returns:
+            Score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, assessment_date,
+                        overall_score, culture_engagement_score, competence_score, real_threat_detection_score,
+                        ce_onboarding_rate, ce_simulations_reported, ce_simulations_misses, ce_threat_indicators,
+                        comp_simulations_fails, comp_simulations_reported, comp_quiz_score, comp_threat_detection_accuracy,
+                        rtd_simulations_reported, rtd_simulations_misses, rtd_reporting_speed,
+                        rtd_threat_reporting_activity, rtd_threat_detection_accuracy,
+                        notes, entered_by, created_at, updated_at
+                    FROM hoxhunt_scores
+                    WHERE id = :id
+                """), {'id': score_id}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'assessment_date': result.assessment_date.isoformat() if result.assessment_date else None,
+                    'overall_score': float(result.overall_score),
+                    'culture_engagement_score': float(result.culture_engagement_score),
+                    'competence_score': float(result.competence_score),
+                    'real_threat_detection_score': float(result.real_threat_detection_score),
+                    'ce_onboarding_rate': float(result.ce_onboarding_rate),
+                    'ce_simulations_reported': float(result.ce_simulations_reported),
+                    'ce_simulations_misses': float(result.ce_simulations_misses),
+                    'ce_threat_indicators': float(result.ce_threat_indicators),
+                    'comp_simulations_fails': float(result.comp_simulations_fails),
+                    'comp_simulations_reported': float(result.comp_simulations_reported),
+                    'comp_quiz_score': float(result.comp_quiz_score),
+                    'comp_threat_detection_accuracy': float(result.comp_threat_detection_accuracy),
+                    'rtd_simulations_reported': float(result.rtd_simulations_reported),
+                    'rtd_simulations_misses': float(result.rtd_simulations_misses),
+                    'rtd_reporting_speed': float(result.rtd_reporting_speed),
+                    'rtd_threat_reporting_activity': float(result.rtd_threat_reporting_activity),
+                    'rtd_threat_detection_accuracy': float(result.rtd_threat_detection_accuracy),
+                    'notes': result.notes,
+                    'entered_by': result.entered_by,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get Hoxhunt score {score_id}: {e}")
+                return None

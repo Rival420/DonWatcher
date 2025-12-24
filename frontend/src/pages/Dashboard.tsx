@@ -7,7 +7,14 @@ import {
   Zap,
   Lock,
   Copy,
-  Check
+  Check,
+  GraduationCap,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Shield,
+  ChevronDown,
+  Calendar
 } from 'lucide-react'
 import { 
   LineChart, 
@@ -27,13 +34,26 @@ import {
   useDashboardKPIs, 
   useDashboardKPIHistory, 
   useDomains, 
-  useDomainGroupsFast 
+  useDomainGroupsFast,
+  useLatestHoxhuntScore,
+  useGlobalRisk
 } from '../hooks/useApi'
 import { RiskGauge, StatsCard, DashboardSkeleton } from '../components'
 import { clsx } from 'clsx'
 
+// Date range options for historical trend
+const DATE_RANGE_OPTIONS = [
+  { label: 'Last 10 reports', value: 'last10', limit: 10, days: undefined, aggregation: 'none' as const },
+  { label: 'Last 30 days', value: 'last30', limit: 100, days: 30, aggregation: 'none' as const },
+  { label: 'Last 90 days', value: 'last90', limit: 100, days: 90, aggregation: 'weekly' as const },
+  { label: 'Last 6 months', value: 'last180', limit: 100, days: 180, aggregation: 'weekly' as const },
+  { label: 'Last year', value: 'last365', limit: 100, days: 365, aggregation: 'monthly' as const },
+]
+
 export function Dashboard() {
   const [sidCopied, setSidCopied] = useState(false)
+  const [dateRange, setDateRange] = useState(DATE_RANGE_OPTIONS[0])
+  const [dateRangeOpen, setDateRangeOpen] = useState(false)
   
   // Use optimized KPI endpoints instead of fetching all reports
   const { data: domains } = useDomains()
@@ -42,11 +62,23 @@ export function Dashboard() {
   // Main dashboard KPIs - pre-aggregated for fast loading
   const { data: kpiResponse, isLoading: kpisLoading } = useDashboardKPIs(latestDomain)
   
-  // Historical KPIs for trend charts
-  const { data: historyResponse } = useDashboardKPIHistory(latestDomain || '', 10)
+  // Historical KPIs for trend charts with flexible date range
+  const { data: historyResponse, isLoading: historyLoading } = useDashboardKPIHistory(
+    latestDomain || '', 
+    dateRange.limit,
+    dateRange.days,
+    dateRange.aggregation
+  )
+  
+  // Global Risk Score - true combined score (PingCastle + Domain Groups + Hoxhunt)
+  const { data: globalRiskData, isLoading: globalRiskLoading } = useGlobalRisk(latestDomain || '')
   
   // Domain groups for the groups preview section (using fast endpoint)
   const { data: domainGroups } = useDomainGroupsFast(latestDomain || '')
+  
+  // Hoxhunt security awareness data
+  const { data: hoxhuntResponse } = useLatestHoxhuntScore(latestDomain || '')
+  const hoxhuntScore = hoxhuntResponse?.score
   
   // Extract KPIs from response
   const kpis = kpiResponse?.status === 'ok' ? kpiResponse.kpis : null
@@ -56,10 +88,6 @@ export function Dashboard() {
     setSidCopied(true)
     setTimeout(() => setSidCopied(false), 2000)
   }
-  
-  // Get unaccepted members from KPIs (faster) or fallback to domainGroups
-  const unacceptedMembers = kpis?.unaccepted_group_members ?? 
-    domainGroups?.reduce((sum, g) => sum + g.unaccepted_members, 0) ?? 0
   
   // Historical data for charts from KPI history
   const historicalData = historyResponse?.history?.map((h) => ({
@@ -144,7 +172,7 @@ export function Dashboard() {
         </div>
         
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <StatsCard
             title="Total Users"
             value={kpis?.user_count || 0}
@@ -163,26 +191,149 @@ export function Dashboard() {
             icon={<Zap className="w-5 h-5" />}
             color="yellow"
           />
-          <StatsCard
-            title="Unaccepted Members"
-            value={unacceptedMembers}
-            icon={<AlertTriangle className="w-5 h-5" />}
-            color="red"
-            trend={unacceptedMembers > 0 ? 'up' : 'stable'}
-          />
         </div>
       </motion.section>
       
-      {/* Risk Scores Section */}
+      {/* Global Risk Score - True combined risk assessment */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="cyber-card"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-cyber-accent-purple" />
+          <h3 className="text-lg font-display font-semibold text-cyber-text-primary">
+            Global Risk Score
+          </h3>
+          <span className="text-xs text-cyber-text-muted ml-2">
+            Combined assessment from all security sources
+          </span>
+        </div>
+        
+        {globalRiskLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-pulse text-cyber-text-muted">Loading risk assessment...</div>
+          </div>
+        ) : globalRiskData ? (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Main Global Score */}
+            <div className="flex flex-col items-center justify-center">
+              <RiskGauge 
+                value={Math.round(globalRiskData.global_score)} 
+                label="Global Risk" 
+                size="lg" 
+              />
+              <div className="mt-3 flex items-center gap-2">
+                <span className={clsx(
+                  'px-3 py-1 rounded-full text-xs font-medium',
+                  globalRiskData.global_score >= 75 && 'badge-critical',
+                  globalRiskData.global_score >= 50 && globalRiskData.global_score < 75 && 'badge-high',
+                  globalRiskData.global_score >= 25 && globalRiskData.global_score < 50 && 'badge-medium',
+                  globalRiskData.global_score < 25 && 'badge-low',
+                )}>
+                  {globalRiskData.global_score >= 75 ? 'Critical' : 
+                   globalRiskData.global_score >= 50 ? 'High' : 
+                   globalRiskData.global_score >= 25 ? 'Medium' : 'Low'}
+                </span>
+                {globalRiskData.trend_direction && (
+                  <span className={clsx(
+                    'flex items-center gap-1 text-xs',
+                    globalRiskData.trend_direction === 'improving' && 'text-cyber-accent-green',
+                    globalRiskData.trend_direction === 'degrading' && 'text-cyber-accent-red',
+                    globalRiskData.trend_direction === 'stable' && 'text-cyber-text-muted'
+                  )}>
+                    {globalRiskData.trend_direction === 'improving' && <TrendingDown className="w-3 h-3" />}
+                    {globalRiskData.trend_direction === 'degrading' && <TrendingUp className="w-3 h-3" />}
+                    {globalRiskData.trend_direction === 'stable' && <Minus className="w-3 h-3" />}
+                    {globalRiskData.trend_percentage > 0 ? `${globalRiskData.trend_percentage.toFixed(1)}%` : 'Stable'}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* Score Breakdown */}
+            <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* PingCastle Contribution */}
+              <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-cyber-text-muted">PingCastle</span>
+                  <span className="text-xs text-cyber-text-muted">55% weight</span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-cyan-400 mb-2">
+                  {globalRiskData.pingcastle_score !== null ? Math.round(globalRiskData.pingcastle_score) : 'N/A'}
+                </div>
+                <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                    style={{ width: `${globalRiskData.pingcastle_score ?? 0}%` }}
+                  />
+                </div>
+                <div className="text-xs text-cyber-text-muted mt-1">
+                  Contribution: {globalRiskData.pingcastle_contribution?.toFixed(1) ?? 0} pts
+                </div>
+              </div>
+              
+              {/* Domain Groups Contribution */}
+              <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-cyber-text-muted">Domain Groups</span>
+                  <span className="text-xs text-cyber-text-muted">30% weight</span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-purple-400 mb-2">
+                  {Math.round(globalRiskData.domain_group_score)}
+                </div>
+                <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                    style={{ width: `${globalRiskData.domain_group_score}%` }}
+                  />
+                </div>
+                <div className="text-xs text-cyber-text-muted mt-1">
+                  Contribution: {globalRiskData.domain_group_contribution?.toFixed(1) ?? 0} pts
+                </div>
+              </div>
+              
+              {/* Hoxhunt Contribution */}
+              <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-cyber-text-muted">Security Awareness</span>
+                  <span className="text-xs text-cyber-text-muted">15% weight</span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-yellow-400 mb-2">
+                  {hoxhuntScore ? Math.round(hoxhuntScore.overall_score) : 'N/A'}
+                </div>
+                <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                    style={{ width: `${hoxhuntScore?.overall_score ?? 0}%` }}
+                  />
+                </div>
+                <div className="text-xs text-cyber-text-muted mt-1">
+                  {hoxhuntScore ? 'Higher = Better awareness' : 'No data available'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-cyber-text-muted">
+            <Shield className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">Global risk assessment not available</p>
+            <p className="text-xs mt-1">Upload security reports to see combined risk score</p>
+          </div>
+        )}
+      </motion.section>
+      
+      {/* PingCastle Risk Scores Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Risk Gauge */}
+        {/* Main PingCastle Risk Gauge */}
         <motion.section
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
           className="cyber-card flex flex-col items-center justify-center"
         >
-          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">Global Risk Score</h3>
+          <h3 className="text-sm font-medium text-cyber-text-secondary mb-4">PingCastle Risk Score</h3>
           <RiskGauge 
             value={kpis?.global_score || 0} 
             label="Risk" 
@@ -228,16 +379,61 @@ export function Dashboard() {
         </motion.section>
       </div>
       
-      {/* Category Trend Chart - Full Width */}
+      {/* PingCastle Category Trend Chart - Full Width */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
         className="cyber-card"
       >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-cyber-text-secondary">Risk Score Trend by Category</h3>
-          <div className="flex items-center gap-4 text-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-medium text-cyber-text-secondary">PingCastle Risk Score Trend</h3>
+            {/* Date Range Selector */}
+            <div className="relative">
+              <button
+                onClick={() => setDateRangeOpen(!dateRangeOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyber-bg-secondary border border-cyber-border hover:border-cyber-accent-cyan/50 transition-colors text-sm"
+              >
+                <Calendar className="w-4 h-4 text-cyber-accent-cyan" />
+                <span className="text-cyber-text-primary">{dateRange.label}</span>
+                <ChevronDown className={clsx(
+                  "w-4 h-4 text-cyber-text-muted transition-transform",
+                  dateRangeOpen && "rotate-180"
+                )} />
+              </button>
+              {dateRangeOpen && (
+                <div className="absolute top-full left-0 mt-1 w-48 py-1 rounded-lg bg-cyber-bg-secondary border border-cyber-border shadow-lg z-10">
+                  {DATE_RANGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setDateRange(option)
+                        setDateRangeOpen(false)
+                      }}
+                      className={clsx(
+                        "w-full px-3 py-2 text-left text-sm hover:bg-cyber-bg-hover transition-colors",
+                        dateRange.value === option.value 
+                          ? "text-cyber-accent-cyan bg-cyber-accent-cyan/10" 
+                          : "text-cyber-text-primary"
+                      )}
+                    >
+                      {option.label}
+                      {option.aggregation !== 'none' && (
+                        <span className="ml-2 text-xs text-cyber-text-muted">
+                          ({option.aggregation})
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {historyLoading && (
+              <span className="text-xs text-cyber-text-muted animate-pulse">Loading...</span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-xs flex-wrap">
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-full bg-[#00d4ff]" />
               <span className="text-cyber-text-muted">Global</span>
@@ -446,6 +642,114 @@ export function Dashboard() {
           </div>
         </motion.section>
       )}
+      
+      {/* Hoxhunt Security Awareness */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
+        className="cyber-card"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-sm font-medium text-cyber-text-secondary">Security Awareness (Hoxhunt)</h3>
+          </div>
+          <a href="/risk-catalog" className="text-sm text-cyber-accent-cyan hover:underline">
+            View Details →
+          </a>
+        </div>
+        
+        {hoxhuntScore ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Overall Score */}
+            <div className={clsx(
+              'p-4 rounded-lg border flex flex-col items-center justify-center',
+              'bg-cyber-bg-secondary',
+              hoxhuntScore.overall_score >= 80 ? 'border-green-500/50' :
+              hoxhuntScore.overall_score >= 60 ? 'border-yellow-500/50' :
+              hoxhuntScore.overall_score >= 40 ? 'border-orange-500/50' :
+              'border-red-500/50'
+            )}>
+              <div className="text-xs text-cyber-text-muted mb-1">Overall Score</div>
+              <div className={clsx(
+                'text-3xl font-bold font-mono',
+                hoxhuntScore.overall_score >= 80 ? 'text-green-400' :
+                hoxhuntScore.overall_score >= 60 ? 'text-yellow-400' :
+                hoxhuntScore.overall_score >= 40 ? 'text-orange-400' :
+                'text-red-400'
+              )}>
+                {Math.round(hoxhuntScore.overall_score)}
+              </div>
+              <div className="text-xs text-cyber-text-muted mt-1">
+                {new Date(hoxhuntScore.assessment_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              </div>
+            </div>
+            
+            {/* Culture & Engagement */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-cyber-text-muted">Culture & Engagement</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-cyan-400">
+                {Math.round(hoxhuntScore.culture_engagement_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.culture_engagement_score}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Competence */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <GraduationCap className="w-4 h-4 text-purple-400" />
+                <span className="text-xs text-cyber-text-muted">Competence</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-purple-400">
+                {Math.round(hoxhuntScore.competence_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.competence_score}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Real Threat Detection */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                <span className="text-xs text-cyber-text-muted">Threat Detection</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-yellow-400">
+                {Math.round(hoxhuntScore.real_threat_detection_score)}
+              </div>
+              <div className="w-full h-1.5 bg-cyber-bg-tertiary rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                  style={{ width: `${hoxhuntScore.real_threat_detection_score}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-cyber-text-muted">
+            <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No Hoxhunt data available</p>
+            <a 
+              href="/risk-catalog" 
+              className="text-sm text-cyber-accent-cyan hover:underline mt-2 inline-block"
+            >
+              Add your first assessment →
+            </a>
+          </div>
+        )}
+      </motion.section>
     </div>
   )
 }

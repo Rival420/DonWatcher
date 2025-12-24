@@ -84,17 +84,19 @@ class GlobalRiskScore:
     # Component scores
     pingcastle_score: Optional[float]
     domain_group_score: float
+    hoxhunt_score: Optional[float] = None  # Hoxhunt awareness score (0-100, higher = better)
     
     # Combined score
-    global_score: float
+    global_score: float = 0.0
     
-    # Score breakdown
-    pingcastle_contribution: Optional[float]
-    domain_group_contribution: float
+    # Score breakdown (percentages showing contribution to global score)
+    pingcastle_contribution: Optional[float] = None
+    domain_group_contribution: float = 0.0
+    hoxhunt_contribution: Optional[float] = None  # Risk contribution from Hoxhunt (inverted)
     
     # Risk trend
-    trend_direction: str  # "improving", "stable", "degrading"
-    trend_percentage: float
+    trend_direction: str = "stable"  # "improving", "stable", "degrading"
+    trend_percentage: float = 0.0
 
 
 class RiskCalculator:
@@ -302,67 +304,111 @@ class RiskCalculator:
             }
         )
     
-    def calculate_global_risk(self, domain: str, pingcastle_score: Optional[float], 
-                            domain_group_score: float, 
-                            historical_scores: List[Tuple[datetime, float]] = None) -> GlobalRiskScore:
+    def calculate_global_risk(self, domain: str, pingcastle_score: Optional[float],
+                            domain_group_score: float,
+                            historical_scores: List[Tuple[datetime, float]] = None,
+                            hoxhunt_score: Optional[float] = None) -> GlobalRiskScore:
         """
-        Calculate combined global risk score from PingCastle and Domain Group scores
-        
+        Calculate combined global risk score from PingCastle, Domain Group, and Hoxhunt scores
+
         Args:
             domain: Domain name
             pingcastle_score: PingCastle global score (0-100) or None if unavailable
             domain_group_score: Domain group risk score (0-100)
             historical_scores: Optional historical global scores for trend analysis
-            
+            hoxhunt_score: Hoxhunt security awareness score (0-100, higher = better)
+                          Note: This is converted to risk contribution internally
+
         Returns:
             GlobalRiskScore with combined assessment
         """
         assessment_date = datetime.utcnow()
+
+        # Base risk combination weights
+        # These are adjusted dynamically based on data availability
+        BASE_PINGCASTLE_WEIGHT = 0.55  # Infrastructure and configuration security
+        BASE_DOMAIN_GROUP_WEIGHT = 0.30  # Access governance and privilege management
+        BASE_HOXHUNT_WEIGHT = 0.15  # User security awareness (contributes inversely)
+
+        # Convert Hoxhunt awareness score to risk contribution
+        # Higher awareness = lower risk, so we invert it
+        hoxhunt_risk = (100 - hoxhunt_score) if hoxhunt_score is not None else None
         
-        # Risk combination weights
-        PINGCASTLE_WEIGHT = 0.7  # Infrastructure and configuration security
-        DOMAIN_GROUP_WEIGHT = 0.3  # Access governance and privilege management
+        # Determine which data sources are available
+        has_pingcastle = pingcastle_score is not None
+        has_hoxhunt = hoxhunt_risk is not None
         
-        if pingcastle_score is None:
-            # Only domain group data available
-            global_score = domain_group_score
-            pingcastle_contribution = None
-            domain_group_contribution = 100.0  # Full contribution
+        # Calculate weights based on available data
+        if has_pingcastle and has_hoxhunt:
+            # All three data sources available
+            pingcastle_weight = BASE_PINGCASTLE_WEIGHT
+            domain_group_weight = BASE_DOMAIN_GROUP_WEIGHT
+            hoxhunt_weight = BASE_HOXHUNT_WEIGHT
+        elif has_pingcastle and not has_hoxhunt:
+            # PingCastle + Domain Groups only (original behavior)
+            pingcastle_weight = 0.70
+            domain_group_weight = 0.30
+            hoxhunt_weight = 0.0
+        elif not has_pingcastle and has_hoxhunt:
+            # Domain Groups + Hoxhunt only
+            pingcastle_weight = 0.0
+            domain_group_weight = 0.65
+            hoxhunt_weight = 0.35
         else:
-            # Combine both scores
-            global_score = (pingcastle_score * PINGCASTLE_WEIGHT) + (domain_group_score * DOMAIN_GROUP_WEIGHT)
-            pingcastle_contribution = (pingcastle_score * PINGCASTLE_WEIGHT) / global_score * 100
-            domain_group_contribution = (domain_group_score * DOMAIN_GROUP_WEIGHT) / global_score * 100
+            # Only Domain Groups available
+            pingcastle_weight = 0.0
+            domain_group_weight = 1.0
+            hoxhunt_weight = 0.0
         
+        # Calculate global score
+        global_score = 0.0
+        if has_pingcastle:
+            global_score += pingcastle_score * pingcastle_weight
+        global_score += domain_group_score * domain_group_weight
+        if has_hoxhunt:
+            global_score += hoxhunt_risk * hoxhunt_weight
+        
+        # Calculate contribution percentages
+        if global_score > 0:
+            pingcastle_contribution = ((pingcastle_score * pingcastle_weight) / global_score * 100) if has_pingcastle else None
+            domain_group_contribution = (domain_group_score * domain_group_weight) / global_score * 100
+            hoxhunt_contribution = ((hoxhunt_risk * hoxhunt_weight) / global_score * 100) if has_hoxhunt else None
+        else:
+            pingcastle_contribution = None
+            domain_group_contribution = 100.0
+            hoxhunt_contribution = None
+
         # Calculate trend
         trend_direction = "stable"
         trend_percentage = 0.0
-        
+
         if historical_scores and len(historical_scores) >= 2:
             # Compare with previous score
             previous_score = historical_scores[-2][1]
             current_score = global_score
-            
+
             change = current_score - previous_score
             trend_percentage = abs(change)
-            
+
             if change > 5:  # Threshold for significant change
                 trend_direction = "degrading"
             elif change < -5:
                 trend_direction = "improving"
             else:
                 trend_direction = "stable"
-        
+
         return GlobalRiskScore(
             domain=domain,
             assessment_date=assessment_date,
             pingcastle_score=pingcastle_score,
             domain_group_score=domain_group_score,
-            global_score=global_score,
-            pingcastle_contribution=pingcastle_contribution,
-            domain_group_contribution=domain_group_contribution,
+            hoxhunt_score=hoxhunt_score,
+            global_score=round(global_score, 2),
+            pingcastle_contribution=round(pingcastle_contribution, 2) if pingcastle_contribution else None,
+            domain_group_contribution=round(domain_group_contribution, 2),
+            hoxhunt_contribution=round(hoxhunt_contribution, 2) if hoxhunt_contribution else None,
             trend_direction=trend_direction,
-            trend_percentage=trend_percentage
+            trend_percentage=round(trend_percentage, 2)
         )
     
     def _calculate_access_governance_score(self, group_risks: List[DomainGroupRisk]) -> float:

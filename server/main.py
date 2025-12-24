@@ -15,7 +15,8 @@ from typing import List, Optional
 
 from server.models import (
     Report, ReportSummary, AcceptedRisk, MonitoredGroup, Agent, 
-    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig
+    UploadResponse, SecurityToolType, AcceptedGroupMember, GroupRiskConfig,
+    HoxhuntScoreInput, HoxhuntScore
 )
 from server.risk_service import get_risk_service
 from server.storage_postgres import PostgresReportStorage, get_storage
@@ -1348,30 +1349,77 @@ def get_dashboard_kpis(
 def get_dashboard_kpis_history(
     domain: str,
     limit: int = 10,
+    days: Optional[int] = None,
+    aggregation: Optional[str] = None,
     tool_type: Optional[str] = None,
     storage: PostgresReportStorage = Depends(get_storage)
 ):
     """
-    Get historical KPI data for trend charts.
+    Get historical KPI data for trend charts with flexible date ranges.
+    
+    Supports server-side aggregation for large date ranges to keep
+    responses fast and frontend lightweight.
     
     Path parameters:
     - domain: Domain to get history for
     
     Query parameters:
     - limit: Maximum number of historical points (default: 10)
-    - tool_type: Optional filter by tool type
+    - days: Optional filter to last N days (e.g., 30, 90, 365)
+    - aggregation: Optional aggregation level: 'weekly' or 'monthly'
+                   Recommended for large date ranges to reduce data points
+    - tool_type: Optional filter by tool type (default: 'pingcastle')
+    
+    Performance notes:
+    - For < 30 days: use aggregation='none' (default)
+    - For 30-90 days: use aggregation='weekly' (reduces ~90 points to ~13)
+    - For > 90 days: use aggregation='monthly' (reduces ~365 points to ~12)
     
     Returns:
     - List of historical KPI data points for trend visualization
+    - Aggregated data includes averaged scores per period
     """
     try:
-        history = storage.get_dashboard_kpis_history(domain, limit, tool_type)
-        return {
+        # Validate aggregation parameter
+        valid_aggregations = [None, 'none', 'weekly', 'monthly']
+        if aggregation not in valid_aggregations:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid aggregation. Must be one of: {valid_aggregations}"
+            )
+        
+        # Convert 'none' string to None for backend
+        effective_aggregation = None if aggregation in [None, 'none'] else aggregation
+        
+        history = storage.get_dashboard_kpis_history(
+            domain=domain, 
+            limit=limit, 
+            days=days,
+            aggregation=effective_aggregation,
+            tool_type=tool_type
+        )
+        
+        response = {
             "status": "ok",
             "domain": domain,
             "count": len(history),
-            "history": history
+            "history": history,
+            "aggregation": aggregation or 'none'
         }
+        
+        # Add date range info if days filter was applied
+        if days:
+            from datetime import datetime, timedelta
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            response["date_range"] = {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat()
+            }
+        
+        return response
+    except HTTPException:
+        raise
     except Exception as e:
         logging.exception(f"Failed to get KPI history for {domain}")
         raise HTTPException(status_code=500, detail=f"Failed to get KPI history: {e}")
@@ -1430,6 +1478,7 @@ def get_dashboard_summary_fast(
 def get_grouped_findings_fast(
     domain: Optional[str] = None,
     category: Optional[str] = None,
+    tool_type: Optional[str] = 'pingcastle',
     in_latest_only: bool = False,
     include_accepted: bool = True,
     page: int = 1,
@@ -1438,27 +1487,30 @@ def get_grouped_findings_fast(
 ):
     """
     Fast grouped findings using materialized view with pagination.
-    
+
     Uses mv_grouped_findings for 10-15x faster response times.
-    
+
     Query parameters:
     - domain: Optional filter by domain
     - category: Optional filter by category (all, PrivilegedAccounts, StaleObjects, Trusts, Anomalies)
+    - tool_type: Filter by tool type (default: 'pingcastle')
+                 This ensures PingCastle tab only shows PingCastle findings.
     - in_latest_only: Only show findings in the latest report
     - include_accepted: Include accepted findings (default: True)
     - page: Page number (default: 1)
     - page_size: Items per page (default: 50, max: 100)
-    
+
     Returns:
         Paginated grouped findings with metadata
     """
     try:
         # Limit page size to prevent abuse
         page_size = min(page_size, 100)
-        
+
         return storage.get_grouped_findings_from_mv(
             domain=domain,
             category=category,
+            tool_type=tool_type,
             in_latest_only=in_latest_only,
             include_accepted=include_accepted,
             page=page,
@@ -1471,17 +1523,18 @@ def get_grouped_findings_fast(
 
 @app.get("/api/findings/grouped/fast/summary")
 def get_grouped_findings_summary_fast(
-    tool_type: Optional[str] = None,
+    tool_type: Optional[str] = 'pingcastle',
     storage: PostgresReportStorage = Depends(get_storage)
 ):
     """
     Fast grouped findings summary using materialized view.
-    
+
     Returns summary statistics by category for Risk Catalog tabs.
-    
+
     Query parameters:
-    - tool_type: Optional filter by tool type (default: all)
-    
+    - tool_type: Filter by tool type (default: 'pingcastle')
+                 Ensures PingCastle tab shows PingCastle-only counts.
+
     Returns:
         Summary statistics with totals and per-category breakdowns
     """
@@ -1604,6 +1657,208 @@ def delete_all_data(storage: PostgresReportStorage = Depends(get_storage)):
     except Exception as e:
         logging.exception("Failed to delete all data")
         raise HTTPException(status_code=500, detail=f"Failed to delete all data: {e}")
+
+
+# =============================================================================
+# Hoxhunt Security Awareness Endpoints
+# =============================================================================
+
+@app.post("/api/hoxhunt/scores")
+def save_hoxhunt_score(
+    score: HoxhuntScoreInput,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Create or update a Hoxhunt security awareness score entry.
+    
+    Scores are typically entered monthly from the Hoxhunt platform.
+    Main scores (overall, category scores) are entered manually by the user
+    as Hoxhunt uses internal weights that cannot be replicated.
+    
+    If an entry already exists for the same domain and assessment_date,
+    it will be updated (UPSERT behavior).
+    """
+    try:
+        score_id = storage.save_hoxhunt_score(score)
+        
+        return {
+            "status": "ok",
+            "score_id": score_id,
+            "domain": score.domain,
+            "assessment_date": score.assessment_date.isoformat(),
+            "scores": {
+                "overall_score": score.overall_score,
+                "culture_engagement_score": score.culture_engagement_score,
+                "competence_score": score.competence_score,
+                "real_threat_detection_score": score.real_threat_detection_score
+            },
+            "message": f"Successfully saved Hoxhunt score for {score.domain}"
+        }
+    except Exception as e:
+        logging.exception(f"Failed to save Hoxhunt score for {score.domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to save Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}")
+def get_hoxhunt_scores(
+    domain: str,
+    limit: int = 12,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get all Hoxhunt scores for a domain.
+    
+    Path parameters:
+    - domain: Domain to get scores for
+    
+    Query parameters:
+    - limit: Maximum number of records to return (default: 12 = 1 year monthly)
+    
+    Returns scores ordered by assessment_date descending (newest first).
+    """
+    try:
+        scores = storage.get_hoxhunt_scores(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(scores),
+            "scores": scores
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt scores for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt scores: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}/latest")
+def get_latest_hoxhunt_score(
+    domain: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get the most recent Hoxhunt score for a domain.
+    
+    Path parameters:
+    - domain: Domain to get latest score for
+    
+    Returns the latest score or null if no scores exist.
+    """
+    try:
+        score = storage.get_latest_hoxhunt_score(domain)
+        return {
+            "status": "ok" if score else "no_data",
+            "domain": domain,
+            "score": score
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get latest Hoxhunt score for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get latest Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/scores/{domain}/history")
+def get_hoxhunt_history(
+    domain: str,
+    limit: int = 12,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get historical Hoxhunt scores for trend charts.
+    
+    Path parameters:
+    - domain: Domain to get history for
+    
+    Query parameters:
+    - limit: Maximum number of data points (default: 12 = 1 year monthly)
+    
+    Returns scores ordered by assessment_date ascending (oldest first)
+    for easy chart rendering.
+    """
+    try:
+        history = storage.get_hoxhunt_history(domain, limit)
+        return {
+            "status": "ok",
+            "domain": domain,
+            "count": len(history),
+            "history": history
+        }
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt history for {domain}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt history: {e}")
+
+
+@app.delete("/api/hoxhunt/scores/{score_id}")
+def delete_hoxhunt_score(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Delete a Hoxhunt score entry.
+    
+    Path parameters:
+    - score_id: UUID of the score record to delete
+    """
+    try:
+        deleted = storage.delete_hoxhunt_score(score_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "message": f"Successfully deleted Hoxhunt score {score_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to delete Hoxhunt score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete Hoxhunt score: {e}")
+
+
+@app.get("/api/hoxhunt/dashboard")
+def get_hoxhunt_dashboard(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get Hoxhunt dashboard summary across all domains.
+    
+    Returns latest scores per domain with trend information,
+    awareness level classification, and score changes.
+    """
+    try:
+        dashboard = storage.get_hoxhunt_dashboard()
+        return {
+            "status": "ok",
+            "count": len(dashboard),
+            "domains": dashboard
+        }
+    except Exception as e:
+        logging.exception("Failed to get Hoxhunt dashboard")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt dashboard: {e}")
+
+
+@app.get("/api/hoxhunt/scores/id/{score_id}")
+def get_hoxhunt_score_by_id(
+    score_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """
+    Get a specific Hoxhunt score by ID.
+    
+    Path parameters:
+    - score_id: UUID of the score record
+    """
+    try:
+        score = storage.get_hoxhunt_score_by_id(score_id)
+        if not score:
+            raise HTTPException(status_code=404, detail="Score not found")
+        
+        return {
+            "status": "ok",
+            "score": score
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception(f"Failed to get Hoxhunt score {score_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Hoxhunt score: {e}")
 
 
 # Enhanced debug endpoint with risk information

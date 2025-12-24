@@ -428,3 +428,131 @@ class APIBulkUploadResponse(BaseModel):
     successful: int = 0
     failed: int = 0
     results: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+# =============================================================================
+# Hoxhunt Security Awareness Models
+# =============================================================================
+
+class HoxhuntScoreInput(BaseModel):
+    """
+    Input model for manual Hoxhunt security awareness score entry.
+    
+    All score fields are 0-100 values representing percentages.
+    
+    The main scores (overall, category scores) are entered manually by the user
+    as they appear in the Hoxhunt platform - Hoxhunt uses internal weights that
+    we cannot replicate.
+    
+    Individual metrics are optional and stored for reference/detail tracking.
+    """
+    domain: str = Field(..., description="Domain name (e.g., CORP.LOCAL)")
+    assessment_date: datetime = Field(..., description="Month/date of assessment (typically 1st of month)")
+    
+    # ==========================================================================
+    # Main scores - manually entered from Hoxhunt platform
+    # ==========================================================================
+    overall_score: float = Field(..., ge=0, le=100, description="Overall Hoxhunt score as shown in platform")
+    culture_engagement_score: float = Field(..., ge=0, le=100, description="Culture & Engagement score from platform")
+    competence_score: float = Field(..., ge=0, le=100, description="Competence score from platform")
+    real_threat_detection_score: float = Field(..., ge=0, le=100, description="Real Threat Detection score from platform")
+    
+    # ==========================================================================
+    # Culture & Engagement detailed metrics (optional - for reference)
+    # ==========================================================================
+    ce_onboarding_rate: float = Field(0, ge=0, le=100, description="User onboarding completion rate")
+    ce_simulations_reported: float = Field(0, ge=0, le=100, description="Phishing simulations correctly reported")
+    ce_simulations_misses: float = Field(0, ge=0, le=100, description="Phishing simulations missed (inverse metric)")
+    ce_threat_indicators: float = Field(0, ge=0, le=100, description="Threat indicator recognition score")
+    
+    # ==========================================================================
+    # Competence detailed metrics (optional - for reference)
+    # ==========================================================================
+    comp_simulations_fails: float = Field(0, ge=0, le=100, description="Simulations failed (inverse metric)")
+    comp_simulations_reported: float = Field(0, ge=0, le=100, description="Simulations correctly reported")
+    comp_quiz_score: float = Field(0, ge=0, le=100, description="Training quiz average score")
+    comp_threat_detection_accuracy: float = Field(0, ge=0, le=100, description="Threat detection accuracy")
+    
+    # ==========================================================================
+    # Real Threat Detection detailed metrics (optional - for reference)
+    # ==========================================================================
+    rtd_simulations_reported: float = Field(0, ge=0, le=100, description="Real threat simulations reported")
+    rtd_simulations_misses: float = Field(0, ge=0, le=100, description="Real threat simulations missed")
+    rtd_reporting_speed: float = Field(0, ge=0, le=100, description="Speed of threat reporting")
+    rtd_threat_reporting_activity: float = Field(0, ge=0, le=100, description="Overall reporting activity level")
+    rtd_threat_detection_accuracy: float = Field(0, ge=0, le=100, description="Accuracy in detecting real threats")
+    
+    # ==========================================================================
+    # Optional metadata
+    # ==========================================================================
+    notes: Optional[str] = Field(None, description="Additional notes about this assessment")
+    entered_by: Optional[str] = Field(None, description="User who entered the scores")
+
+
+class HoxhuntScore(BaseModel):
+    """
+    Full Hoxhunt score record including calculated category scores.
+    
+    This model is returned from the database and includes all
+    calculated scores and metadata.
+    """
+    id: Optional[str] = None
+    domain: str
+    assessment_date: datetime
+    
+    # Calculated scores
+    overall_score: float = 0
+    culture_engagement_score: float = 0
+    competence_score: float = 0
+    real_threat_detection_score: float = 0
+    
+    # Culture & Engagement metrics
+    ce_onboarding_rate: float = 0
+    ce_simulations_reported: float = 0
+    ce_simulations_misses: float = 0
+    ce_threat_indicators: float = 0
+    
+    # Competence metrics
+    comp_simulations_fails: float = 0
+    comp_simulations_reported: float = 0
+    comp_quiz_score: float = 0
+    comp_threat_detection_accuracy: float = 0
+    
+    # Real Threat Detection metrics
+    rtd_simulations_reported: float = 0
+    rtd_simulations_misses: float = 0
+    rtd_reporting_speed: float = 0
+    rtd_threat_reporting_activity: float = 0
+    rtd_threat_detection_accuracy: float = 0
+    
+    # Metadata
+    notes: Optional[str] = None
+    entered_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class HoxhuntScoreHistory(BaseModel):
+    """Historical Hoxhunt score data point for trend charts."""
+    assessment_date: datetime
+    overall_score: float
+    culture_engagement_score: float
+    competence_score: float
+    real_threat_detection_score: float
+
+
+class HoxhuntDashboardSummary(BaseModel):
+    """
+    Dashboard summary for Hoxhunt scores across all domains.
+    Used for the main dashboard overview widget.
+    """
+    domain: str
+    assessment_date: datetime
+    overall_score: float
+    culture_engagement_score: float
+    competence_score: float
+    real_threat_detection_score: float
+    awareness_level: str  # 'critical', 'high', 'medium', 'low'
+    previous_score: Optional[float] = None
+    score_change: Optional[float] = None
+    entered_by: Optional[str] = None

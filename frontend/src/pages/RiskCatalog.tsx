@@ -24,7 +24,8 @@ import {
   Activity,
   History,
   Eye,
-  EyeOff
+  EyeOff,
+  GraduationCap
 } from 'lucide-react'
 import { 
   useGroupedFindingsFast, 
@@ -37,7 +38,7 @@ import {
   useAcceptMember,
   useDenyMember
 } from '../hooks/useApi'
-import { FindingsListSkeleton, DomainGroupsSkeleton, SummaryCardsSkeleton } from '../components'
+import { FindingsListSkeleton, DomainGroupsSkeleton, SummaryCardsSkeleton, HoxhuntSection } from '../components'
 import { clsx } from 'clsx'
 import type { GroupedFinding } from '../types'
 
@@ -598,8 +599,10 @@ function PingCastleSection({ domain }: { domain: string }) {
   const pageSize = 50
   
   // Use fast endpoint with pagination for 10-15x faster loading
+  // IMPORTANT: tool_type: 'pingcastle' ensures only PingCastle findings are shown
   const { data: findingsResponse, isLoading, isFetching } = useGroupedFindingsFast({
     domain: domain || undefined,
+    tool_type: 'pingcastle',
     category: selectedCategory !== 'all' ? selectedCategory : undefined,
     in_latest_only: latestFilter === 'in_latest',
     include_accepted: showAccepted,
@@ -860,7 +863,8 @@ function PingCastleSection({ domain }: { domain: string }) {
 // Tab configuration
 const TABS = [
   { id: 'pingcastle', label: 'PingCastle Findings', icon: Castle },
-  { id: 'domaingroups', label: 'Domain Group Analysis', icon: Users }
+  { id: 'domaingroups', label: 'Domain Group Analysis', icon: Users },
+  { id: 'hoxhunt', label: 'Security Awareness', icon: GraduationCap }
 ] as const
 
 type TabId = typeof TABS[number]['id']
@@ -935,6 +939,7 @@ export function RiskCatalog() {
         >
           {activeTab === 'pingcastle' && <PingCastleSection domain={domain} />}
           {activeTab === 'domaingroups' && <DomainGroupsSection domain={domain} />}
+          {activeTab === 'hoxhunt' && <HoxhuntSection domain={domain} />}
         </motion.div>
       </AnimatePresence>
     </div>
