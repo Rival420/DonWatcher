@@ -443,3 +443,90 @@ export function useDeleteHoxhuntScore() {
   })
 }
 
+// =============================================================================
+// Vulnerability Analysis Hooks (Outpost24)
+// =============================================================================
+
+/**
+ * Get all vulnerability scores for a domain
+ */
+export function useVulnerabilityScores(domain: string, limit: number = 30) {
+  return useQuery({
+    queryKey: ['vulnerabilityScores', domain, limit],
+    queryFn: () => api.getVulnerabilityScores(domain, limit),
+    enabled: !!domain,
+    staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+/**
+ * Get the latest vulnerability score for a domain
+ */
+export function useLatestVulnerabilityScore(domain: string) {
+  return useQuery({
+    queryKey: ['vulnerabilityLatest', domain],
+    queryFn: () => api.getLatestVulnerabilityScore(domain),
+    enabled: !!domain,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Get historical vulnerability scores for trend charts
+ */
+export function useVulnerabilityHistory(domain: string, limit: number = 30) {
+  return useQuery({
+    queryKey: ['vulnerabilityHistory', domain, limit],
+    queryFn: () => api.getVulnerabilityHistory(domain, limit),
+    enabled: !!domain,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Get vulnerability dashboard summary across all domains
+ */
+export function useVulnerabilityDashboard() {
+  return useQuery({
+    queryKey: ['vulnerabilityDashboard'],
+    queryFn: api.getVulnerabilityDashboard,
+    staleTime: 60000,
+  })
+}
+
+/**
+ * Save a vulnerability score (mutation) - typically used by scanner
+ */
+export function useSaveVulnerabilityScore() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.saveVulnerabilityScore,
+    onSuccess: (_, variables) => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityScores', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityLatest', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityHistory', variables.domain] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityDashboard'] })
+    },
+  })
+}
+
+/**
+ * Delete a vulnerability score (mutation)
+ */
+export function useDeleteVulnerabilityScore() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.deleteVulnerabilityScore,
+    onSuccess: () => {
+      // Invalidate all vulnerability queries since we don't know which domain
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityScores'] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityLatest'] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityHistory'] })
+      queryClient.invalidateQueries({ queryKey: ['vulnerabilityDashboard'] })
+    },
+  })
+}
+

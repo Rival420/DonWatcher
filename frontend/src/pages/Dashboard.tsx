@@ -14,7 +14,9 @@ import {
   Minus,
   Shield,
   ChevronDown,
-  Calendar
+  Calendar,
+  Bug,
+  AlertCircle
 } from 'lucide-react'
 import { 
   LineChart, 
@@ -36,6 +38,7 @@ import {
   useDomains, 
   useDomainGroupsFast,
   useLatestHoxhuntScore,
+  useLatestVulnerabilityScore,
   useGlobalRisk
 } from '../hooks/useApi'
 import { RiskGauge, StatsCard, DashboardSkeleton } from '../components'
@@ -79,6 +82,10 @@ export function Dashboard() {
   // Hoxhunt security awareness data
   const { data: hoxhuntResponse } = useLatestHoxhuntScore(latestDomain || '')
   const hoxhuntScore = hoxhuntResponse?.score
+  
+  // Vulnerability analysis data (Outpost24)
+  const { data: vulnerabilityResponse } = useLatestVulnerabilityScore(latestDomain || '')
+  const vulnerabilityScore = vulnerabilityResponse?.score
   
   // Extract KPIs from response
   const kpis = kpiResponse?.status === 'ok' ? kpiResponse.kpis : null
@@ -642,6 +649,132 @@ export function Dashboard() {
           </div>
         </motion.section>
       )}
+      
+      {/* Vulnerability Analysis (Outpost24) */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.43 }}
+        className="cyber-card"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Bug className="w-5 h-5 text-orange-400" />
+            <h3 className="text-sm font-medium text-cyber-text-secondary">Vulnerability Analysis (Outpost24)</h3>
+          </div>
+          <a href="/risk-catalog" className="text-sm text-cyber-accent-cyan hover:underline">
+            View Details →
+          </a>
+        </div>
+        
+        {vulnerabilityScore ? (
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Risk Score */}
+            <div className={clsx(
+              'p-4 rounded-lg border flex flex-col items-center justify-center',
+              'bg-cyber-bg-secondary',
+              vulnerabilityScore.risk_score >= 75 ? 'border-red-500/50' :
+              vulnerabilityScore.risk_score >= 50 ? 'border-orange-500/50' :
+              vulnerabilityScore.risk_score >= 25 ? 'border-yellow-500/50' :
+              'border-green-500/50'
+            )}>
+              <div className="text-xs text-cyber-text-muted mb-1">Risk Score</div>
+              <div className={clsx(
+                'text-3xl font-bold font-mono',
+                vulnerabilityScore.risk_score >= 75 ? 'text-red-400' :
+                vulnerabilityScore.risk_score >= 50 ? 'text-orange-400' :
+                vulnerabilityScore.risk_score >= 25 ? 'text-yellow-400' :
+                'text-green-400'
+              )}>
+                {Math.round(vulnerabilityScore.risk_score)}
+              </div>
+              <div className="text-xs text-cyber-text-muted mt-1">
+                {new Date(vulnerabilityScore.scan_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </div>
+            </div>
+            
+            {/* High Vulnerabilities */}
+            <div className="p-4 rounded-lg border border-red-500/30 bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-xs text-cyber-text-muted">High</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-red-400">
+                {vulnerabilityScore.high_vulnerabilities}
+              </div>
+              {vulnerabilityScore.high_trend !== 0 && (
+                <div className={clsx(
+                  'text-xs mt-1 flex items-center gap-1',
+                  vulnerabilityScore.high_trend > 0 ? 'text-red-400' : 'text-green-400'
+                )}>
+                  {vulnerabilityScore.high_trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {vulnerabilityScore.high_trend > 0 ? '+' : ''}{vulnerabilityScore.high_trend}
+                </div>
+              )}
+            </div>
+            
+            {/* Medium Vulnerabilities */}
+            <div className="p-4 rounded-lg border border-orange-500/30 bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="w-4 h-4 text-orange-400" />
+                <span className="text-xs text-cyber-text-muted">Medium</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-orange-400">
+                {vulnerabilityScore.medium_vulnerabilities}
+              </div>
+              {vulnerabilityScore.medium_trend !== 0 && (
+                <div className={clsx(
+                  'text-xs mt-1 flex items-center gap-1',
+                  vulnerabilityScore.medium_trend > 0 ? 'text-red-400' : 'text-green-400'
+                )}>
+                  {vulnerabilityScore.medium_trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {vulnerabilityScore.medium_trend > 0 ? '+' : ''}{vulnerabilityScore.medium_trend}
+                </div>
+              )}
+            </div>
+            
+            {/* Low Vulnerabilities */}
+            <div className="p-4 rounded-lg border border-yellow-500/30 bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="w-4 h-4 text-yellow-400" />
+                <span className="text-xs text-cyber-text-muted">Low</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-yellow-400">
+                {vulnerabilityScore.low_vulnerabilities}
+              </div>
+              {vulnerabilityScore.low_trend !== 0 && (
+                <div className={clsx(
+                  'text-xs mt-1 flex items-center gap-1',
+                  vulnerabilityScore.low_trend > 0 ? 'text-red-400' : 'text-green-400'
+                )}>
+                  {vulnerabilityScore.low_trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {vulnerabilityScore.low_trend > 0 ? '+' : ''}{vulnerabilityScore.low_trend}
+                </div>
+              )}
+            </div>
+            
+            {/* Total & Agents */}
+            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <Server className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-cyber-text-muted">Total / Agents</span>
+              </div>
+              <div className="text-2xl font-bold font-mono text-white">
+                {vulnerabilityScore.total_vulnerabilities}
+              </div>
+              <div className="text-xs text-cyan-400 mt-1">
+                {vulnerabilityScore.agents_in_sync} agents synced
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-cyber-text-muted">
+            <Bug className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No vulnerability data available</p>
+            <p className="text-xs mt-2">Run the DonWatcher-VulnerabilityScanner.ps1 script to collect data</p>
+          </div>
+        )}
+      </motion.section>
       
       {/* Hoxhunt Security Awareness */}
       <motion.section

@@ -630,3 +630,63 @@ export async function getHoxhuntDashboard(): Promise<HoxhuntDashboardResponse> {
   return fetchJSON(`${API_BASE}/hoxhunt/dashboard`)
 }
 
+// =============================================================================
+// Vulnerability Analysis API (Outpost24)
+// =============================================================================
+
+import type {
+  VulnerabilityScoreInput,
+  VulnerabilityScoresResponse,
+  VulnerabilityLatestResponse,
+  VulnerabilityHistoryResponse,
+  VulnerabilityDashboardResponse,
+  VulnerabilitySaveResponse
+} from '../types'
+
+/**
+ * Get all vulnerability scores for a domain
+ */
+export async function getVulnerabilityScores(domain: string, limit: number = 30): Promise<VulnerabilityScoresResponse> {
+  return fetchJSON(`${API_BASE}/vulnerability/scores/${encodeURIComponent(domain)}?limit=${limit}`)
+}
+
+/**
+ * Get the latest vulnerability score for a domain
+ */
+export async function getLatestVulnerabilityScore(domain: string): Promise<VulnerabilityLatestResponse> {
+  return fetchJSON(`${API_BASE}/vulnerability/scores/${encodeURIComponent(domain)}/latest`)
+}
+
+/**
+ * Get historical vulnerability scores for trend charts
+ */
+export async function getVulnerabilityHistory(domain: string, limit: number = 30): Promise<VulnerabilityHistoryResponse> {
+  return fetchJSON(`${API_BASE}/vulnerability/scores/${encodeURIComponent(domain)}/history?limit=${limit}`)
+}
+
+/**
+ * Save a new vulnerability score entry (from scanner)
+ */
+export async function saveVulnerabilityScore(score: VulnerabilityScoreInput): Promise<VulnerabilitySaveResponse> {
+  return fetchJSON(`${API_BASE}/vulnerability/scores`, {
+    method: 'POST',
+    body: JSON.stringify(score),
+  })
+}
+
+/**
+ * Delete a vulnerability score entry
+ */
+export async function deleteVulnerabilityScore(scoreId: string): Promise<{ status: string; message: string }> {
+  return fetchJSON(`${API_BASE}/vulnerability/scores/${encodeURIComponent(scoreId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * Get vulnerability dashboard summary across all domains
+ */
+export async function getVulnerabilityDashboard(): Promise<VulnerabilityDashboardResponse> {
+  return fetchJSON(`${API_BASE}/vulnerability/dashboard`)
+}
+

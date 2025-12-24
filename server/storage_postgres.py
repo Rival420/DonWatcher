@@ -3090,3 +3090,406 @@ class PostgresReportStorage:
             except Exception as e:
                 logging.exception(f"Failed to get Hoxhunt score {score_id}: {e}")
                 return None
+
+    # =============================================================================
+    # Vulnerability Analysis (Outpost24) Storage Methods
+    # =============================================================================
+
+    def _calculate_vulnerability_risk_score(self, high: int, medium: int, low: int, total: int) -> float:
+        """
+        Calculate a risk score (0-100) based on vulnerability counts.
+        
+        Formula:
+        - High vulnerabilities: weighted at 3x
+        - Medium vulnerabilities: weighted at 2x
+        - Low vulnerabilities: weighted at 1x
+        - Normalized to 0-100 scale using logarithmic scaling
+        
+        Higher score = higher risk (more vulnerabilities)
+        """
+        if total == 0:
+            return 0.0
+        
+        # Weighted sum
+        weighted_sum = (high * 3) + (medium * 2) + (low * 1)
+        
+        # Logarithmic scaling to normalize to 0-100
+        # Using log scale so the score doesn't quickly saturate at 100
+        import math
+        
+        # Scale factor - at ~1000 weighted points, score approaches 100
+        scale_factor = 1000
+        
+        # Log-based score calculation
+        if weighted_sum <= 0:
+            return 0.0
+        
+        raw_score = (math.log10(weighted_sum + 1) / math.log10(scale_factor + 1)) * 100
+        
+        # Cap at 100
+        return min(100.0, round(raw_score, 2))
+
+    def save_vulnerability_score(self, score_input) -> str:
+        """
+        Save a vulnerability scan score entry.
+        
+        Data comes from Outpost24 Outscan PowerShell scanner.
+        Uses UPSERT to allow updating existing entries for the same domain/date.
+        
+        Args:
+            score_input: VulnerabilityScoreInput model with all metrics
+            
+        Returns:
+            UUID of the created/updated score record
+        """
+        from datetime import datetime
+        
+        # Calculate risk score
+        risk_score = self._calculate_vulnerability_risk_score(
+            score_input.high_vulnerabilities,
+            score_input.medium_vulnerabilities,
+            score_input.low_vulnerabilities,
+            score_input.total_vulnerabilities
+        )
+        
+        # Use provided scan_date or current time
+        scan_date = score_input.scan_date if hasattr(score_input, 'scan_date') and score_input.scan_date else datetime.utcnow()
+        
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    INSERT INTO vulnerability_scores (
+                        domain, scan_date,
+                        agents_in_sync,
+                        total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
+                        high_trend, medium_trend, low_trend,
+                        risk_score,
+                        source_timestamp, scanner_name
+                    ) VALUES (
+                        :domain, :scan_date,
+                        :agents_in_sync,
+                        :total_vulnerabilities, :high_vulnerabilities, :medium_vulnerabilities, :low_vulnerabilities,
+                        :high_trend, :medium_trend, :low_trend,
+                        :risk_score,
+                        :source_timestamp, :scanner_name
+                    )
+                    ON CONFLICT (domain, scan_date) DO UPDATE SET
+                        agents_in_sync = EXCLUDED.agents_in_sync,
+                        total_vulnerabilities = EXCLUDED.total_vulnerabilities,
+                        high_vulnerabilities = EXCLUDED.high_vulnerabilities,
+                        medium_vulnerabilities = EXCLUDED.medium_vulnerabilities,
+                        low_vulnerabilities = EXCLUDED.low_vulnerabilities,
+                        high_trend = EXCLUDED.high_trend,
+                        medium_trend = EXCLUDED.medium_trend,
+                        low_trend = EXCLUDED.low_trend,
+                        risk_score = EXCLUDED.risk_score,
+                        source_timestamp = EXCLUDED.source_timestamp,
+                        scanner_name = EXCLUDED.scanner_name,
+                        updated_at = NOW()
+                    RETURNING id
+                """), {
+                    'domain': score_input.domain,
+                    'scan_date': scan_date,
+                    'agents_in_sync': score_input.agents_in_sync,
+                    'total_vulnerabilities': score_input.total_vulnerabilities,
+                    'high_vulnerabilities': score_input.high_vulnerabilities,
+                    'medium_vulnerabilities': score_input.medium_vulnerabilities,
+                    'low_vulnerabilities': score_input.low_vulnerabilities,
+                    'high_trend': score_input.high_trend,
+                    'medium_trend': score_input.medium_trend,
+                    'low_trend': score_input.low_trend,
+                    'risk_score': risk_score,
+                    'source_timestamp': score_input.source_timestamp,
+                    'scanner_name': score_input.scanner_name if hasattr(score_input, 'scanner_name') else 'outpost24'
+                })
+                
+                score_id = str(result.fetchone()[0])
+                session.commit()
+                
+                logging.info(f"Saved vulnerability score for {score_input.domain}: {score_id}")
+                return score_id
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to save vulnerability score for {score_input.domain}: {e}")
+                raise
+
+    def get_vulnerability_scores(self, domain: str, limit: int = 30) -> List[Dict]:
+        """
+        Get vulnerability scores for a domain.
+        
+        Args:
+            domain: Domain to get scores for
+            limit: Maximum number of records to return (default: 30)
+            
+        Returns:
+            List of scores ordered by scan_date descending (newest first)
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        id, domain, scan_date,
+                        agents_in_sync,
+                        total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
+                        high_trend, medium_trend, low_trend,
+                        risk_score,
+                        source_timestamp, scanner_name,
+                        created_at, updated_at
+                    FROM vulnerability_scores
+                    WHERE domain = :domain
+                    ORDER BY scan_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                return [
+                    {
+                        'id': str(r.id),
+                        'domain': r.domain,
+                        'scan_date': r.scan_date.isoformat() if r.scan_date else None,
+                        'agents_in_sync': r.agents_in_sync,
+                        'total_vulnerabilities': r.total_vulnerabilities,
+                        'high_vulnerabilities': r.high_vulnerabilities,
+                        'medium_vulnerabilities': r.medium_vulnerabilities,
+                        'low_vulnerabilities': r.low_vulnerabilities,
+                        'high_trend': r.high_trend,
+                        'medium_trend': r.medium_trend,
+                        'low_trend': r.low_trend,
+                        'risk_score': float(r.risk_score),
+                        'source_timestamp': r.source_timestamp,
+                        'scanner_name': r.scanner_name,
+                        'created_at': r.created_at.isoformat() if r.created_at else None,
+                        'updated_at': r.updated_at.isoformat() if r.updated_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get vulnerability scores for {domain}: {e}")
+                return []
+
+    def get_latest_vulnerability_score(self, domain: str) -> Optional[Dict]:
+        """
+        Get the most recent vulnerability score for a domain.
+        
+        Args:
+            domain: Domain to get latest score for
+            
+        Returns:
+            Latest score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, scan_date,
+                        agents_in_sync,
+                        total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
+                        high_trend, medium_trend, low_trend,
+                        risk_score,
+                        source_timestamp, scanner_name,
+                        created_at, updated_at
+                    FROM v_latest_vulnerability_scores
+                    WHERE domain = :domain
+                """), {'domain': domain}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'scan_date': result.scan_date.isoformat() if result.scan_date else None,
+                    'agents_in_sync': result.agents_in_sync,
+                    'total_vulnerabilities': result.total_vulnerabilities,
+                    'high_vulnerabilities': result.high_vulnerabilities,
+                    'medium_vulnerabilities': result.medium_vulnerabilities,
+                    'low_vulnerabilities': result.low_vulnerabilities,
+                    'high_trend': result.high_trend,
+                    'medium_trend': result.medium_trend,
+                    'low_trend': result.low_trend,
+                    'risk_score': float(result.risk_score),
+                    'source_timestamp': result.source_timestamp,
+                    'scanner_name': result.scanner_name,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get latest vulnerability score for {domain}: {e}")
+                return None
+
+    def get_vulnerability_history(self, domain: str, limit: int = 30) -> List[Dict]:
+        """
+        Get historical vulnerability scores for trend charts.
+        
+        Args:
+            domain: Domain to get history for
+            limit: Maximum number of records (default 30)
+            
+        Returns:
+            List of historical score data points, ordered oldest to newest for charts
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        scan_date,
+                        total_vulnerabilities,
+                        high_vulnerabilities,
+                        medium_vulnerabilities,
+                        low_vulnerabilities,
+                        risk_score,
+                        agents_in_sync
+                    FROM vulnerability_scores
+                    WHERE domain = :domain
+                    ORDER BY scan_date DESC
+                    LIMIT :limit
+                """), {'domain': domain, 'limit': limit}).fetchall()
+                
+                # Reverse to get oldest first for chart display
+                return [
+                    {
+                        'scan_date': r.scan_date.isoformat() if r.scan_date else None,
+                        'total_vulnerabilities': r.total_vulnerabilities,
+                        'high_vulnerabilities': r.high_vulnerabilities,
+                        'medium_vulnerabilities': r.medium_vulnerabilities,
+                        'low_vulnerabilities': r.low_vulnerabilities,
+                        'risk_score': float(r.risk_score),
+                        'agents_in_sync': r.agents_in_sync
+                    }
+                    for r in reversed(results)
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get vulnerability history for {domain}: {e}")
+                return []
+
+    def delete_vulnerability_score(self, score_id: str) -> bool:
+        """
+        Delete a vulnerability score entry.
+        
+        Args:
+            score_id: UUID of the score record to delete
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    DELETE FROM vulnerability_scores
+                    WHERE id = :id
+                    RETURNING id
+                """), {'id': score_id})
+                
+                deleted = result.fetchone() is not None
+                session.commit()
+                
+                if deleted:
+                    logging.info(f"Deleted vulnerability score: {score_id}")
+                return deleted
+                
+            except Exception as e:
+                session.rollback()
+                logging.exception(f"Failed to delete vulnerability score {score_id}: {e}")
+                return False
+
+    def get_vulnerability_dashboard(self) -> List[Dict]:
+        """
+        Get vulnerability dashboard summary for all domains.
+        
+        Returns:
+            List of latest scores per domain with trend information
+        """
+        with self._get_session() as session:
+            try:
+                results = session.execute(text("""
+                    SELECT 
+                        domain,
+                        scan_date,
+                        agents_in_sync,
+                        total_vulnerabilities,
+                        high_vulnerabilities,
+                        medium_vulnerabilities,
+                        low_vulnerabilities,
+                        high_trend,
+                        medium_trend,
+                        low_trend,
+                        risk_score,
+                        risk_level,
+                        trend_direction,
+                        created_at
+                    FROM v_vulnerability_dashboard
+                    ORDER BY domain
+                """)).fetchall()
+                
+                return [
+                    {
+                        'domain': r.domain,
+                        'scan_date': r.scan_date.isoformat() if r.scan_date else None,
+                        'agents_in_sync': r.agents_in_sync,
+                        'total_vulnerabilities': r.total_vulnerabilities,
+                        'high_vulnerabilities': r.high_vulnerabilities,
+                        'medium_vulnerabilities': r.medium_vulnerabilities,
+                        'low_vulnerabilities': r.low_vulnerabilities,
+                        'high_trend': r.high_trend,
+                        'medium_trend': r.medium_trend,
+                        'low_trend': r.low_trend,
+                        'risk_score': float(r.risk_score),
+                        'risk_level': r.risk_level,
+                        'trend_direction': r.trend_direction,
+                        'created_at': r.created_at.isoformat() if r.created_at else None
+                    }
+                    for r in results
+                ]
+            except Exception as e:
+                logging.exception(f"Failed to get vulnerability dashboard: {e}")
+                return []
+
+    def get_vulnerability_score_by_id(self, score_id: str) -> Optional[Dict]:
+        """
+        Get a specific vulnerability score by ID.
+        
+        Args:
+            score_id: UUID of the score record
+            
+        Returns:
+            Score record or None if not found
+        """
+        with self._get_session() as session:
+            try:
+                result = session.execute(text("""
+                    SELECT 
+                        id, domain, scan_date,
+                        agents_in_sync,
+                        total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
+                        high_trend, medium_trend, low_trend,
+                        risk_score,
+                        source_timestamp, scanner_name,
+                        created_at, updated_at
+                    FROM vulnerability_scores
+                    WHERE id = :id
+                """), {'id': score_id}).fetchone()
+                
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result.id),
+                    'domain': result.domain,
+                    'scan_date': result.scan_date.isoformat() if result.scan_date else None,
+                    'agents_in_sync': result.agents_in_sync,
+                    'total_vulnerabilities': result.total_vulnerabilities,
+                    'high_vulnerabilities': result.high_vulnerabilities,
+                    'medium_vulnerabilities': result.medium_vulnerabilities,
+                    'low_vulnerabilities': result.low_vulnerabilities,
+                    'high_trend': result.high_trend,
+                    'medium_trend': result.medium_trend,
+                    'low_trend': result.low_trend,
+                    'risk_score': float(result.risk_score),
+                    'source_timestamp': result.source_timestamp,
+                    'scanner_name': result.scanner_name,
+                    'created_at': result.created_at.isoformat() if result.created_at else None,
+                    'updated_at': result.updated_at.isoformat() if result.updated_at else None
+                }
+            except Exception as e:
+                logging.exception(f"Failed to get vulnerability score {score_id}: {e}")
+                return None
