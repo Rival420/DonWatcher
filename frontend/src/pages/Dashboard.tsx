@@ -753,17 +753,14 @@ export function Dashboard() {
               )}
             </div>
             
-            {/* Total & Agents */}
-            <div className="p-4 rounded-lg border border-cyber-border bg-cyber-bg-secondary">
+            {/* Total Vulnerabilities */}
+            <div className="p-4 rounded-lg border border-cyan-500/30 bg-cyber-bg-secondary">
               <div className="flex items-center gap-2 mb-2">
-                <Server className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs text-cyber-text-muted">Total / Agents</span>
+                <Bug className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-cyber-text-muted">Total</span>
               </div>
-              <div className="text-2xl font-bold font-mono text-white">
-                {vulnerabilityScore.total_vulnerabilities}
-              </div>
-              <div className="text-xs text-cyan-400 mt-1">
-                {vulnerabilityScore.agents_in_sync} agents synced
+              <div className="text-2xl font-bold font-mono text-cyan-400">
+                {vulnerabilityScore.total_vulnerabilities.toLocaleString()}
               </div>
             </div>
           </div>

@@ -527,10 +527,9 @@ export interface VulnerabilityScore {
   domain: string
   scan_date: string
   
-  // Agent info
-  agents_in_sync: number
-  
   // Vulnerability counts
+  // total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+  // high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
   total_vulnerabilities: number
   high_vulnerabilities: number
   medium_vulnerabilities: number
@@ -555,10 +554,9 @@ export interface VulnerabilityScoreInput {
   domain: string
   scan_date?: string
   
-  // Agent info
-  agents_in_sync: number
-  
   // Vulnerability counts
+  // total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+  // high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
   total_vulnerabilities: number
   high_vulnerabilities: number
   medium_vulnerabilities: number
@@ -581,13 +579,11 @@ export interface VulnerabilityHistoryPoint {
   medium_vulnerabilities: number
   low_vulnerabilities: number
   risk_score: number
-  agents_in_sync: number
 }
 
 export interface VulnerabilityDashboardSummary {
   domain: string
   scan_date: string
-  agents_in_sync: number
   total_vulnerabilities: number
   high_vulnerabilities: number
   medium_vulnerabilities: number

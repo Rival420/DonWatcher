@@ -568,21 +568,18 @@ class VulnerabilityScoreInput(BaseModel):
     Input model for vulnerability scan data from Outpost24 Outscan.
     
     Data is collected via PowerShell script calling the Outpost24 XML API:
-    - DASHBOARD_TOPGROUPS: Agent sync counts
-    - DASHBOARD_RISKSUMMARY: Vulnerability counts by severity with trends
+    - DASHBOARD_TOPGROUPS: Total vulnerability count (via "Agents in sync" metric)
+    - DASHBOARD_RISKSUMMARY: Vulnerability breakdown by severity with trends
     """
     domain: str = Field(..., description="Domain name (e.g., CORP.LOCAL)")
     scan_date: Optional[datetime] = Field(None, description="Scan date (defaults to now)")
     
     # ==========================================================================
-    # Agent/Asset Information (from DASHBOARD_TOPGROUPS)
+    # Vulnerability Counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
     # ==========================================================================
-    agents_in_sync: int = Field(0, ge=0, description="Number of Outpost24 agents in sync")
-    
-    # ==========================================================================
-    # Vulnerability Counts (from DASHBOARD_RISKSUMMARY)
-    # ==========================================================================
-    total_vulnerabilities: int = Field(0, ge=0, description="Total vulnerability count")
+    total_vulnerabilities: int = Field(0, ge=0, description="Total vulnerability count (from DASHBOARD_TOPGROUPS)")
     high_vulnerabilities: int = Field(0, ge=0, description="High severity vulnerabilities")
     medium_vulnerabilities: int = Field(0, ge=0, description="Medium severity vulnerabilities")
     low_vulnerabilities: int = Field(0, ge=0, description="Low severity vulnerabilities")
@@ -610,16 +607,15 @@ class VulnerabilityScore(BaseModel):
     domain: str
     scan_date: datetime
     
-    # Agent info
-    agents_in_sync: int = 0
-    
     # Vulnerability counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
     total_vulnerabilities: int = 0
     high_vulnerabilities: int = 0
     medium_vulnerabilities: int = 0
     low_vulnerabilities: int = 0
     
-    # Trends
+    # Trends (change since last scan)
     high_trend: int = 0
     medium_trend: int = 0
     low_trend: int = 0
@@ -642,7 +638,6 @@ class VulnerabilityScoreHistory(BaseModel):
     medium_vulnerabilities: int
     low_vulnerabilities: int
     risk_score: float
-    agents_in_sync: int
 
 
 class VulnerabilityDashboardSummary(BaseModel):
@@ -652,7 +647,6 @@ class VulnerabilityDashboardSummary(BaseModel):
     """
     domain: str
     scan_date: datetime
-    agents_in_sync: int
     total_vulnerabilities: int
     high_vulnerabilities: int
     medium_vulnerabilities: int
@@ -672,10 +666,9 @@ class APIVulnerabilityUpload(BaseModel):
     """
     domain: str = Field(..., description="Domain name")
     
-    # Agent data
-    agents_in_sync: int = Field(0, ge=0)
-    
     # Vulnerability counts
+    # total_vulnerabilities: Grand total from DASHBOARD_TOPGROUPS
+    # high/medium/low: Breakdown from DASHBOARD_RISKSUMMARY
     total_vulnerabilities: int = Field(0, ge=0)
     high_vulnerabilities: int = Field(0, ge=0)
     medium_vulnerabilities: int = Field(0, ge=0)

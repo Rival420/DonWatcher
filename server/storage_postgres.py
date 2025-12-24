@@ -3167,14 +3167,13 @@ class PostgresReportStorage:
                         source_timestamp, scanner_name
                     ) VALUES (
                         :domain, :scan_date,
-                        :agents_in_sync,
+                        0,
                         :total_vulnerabilities, :high_vulnerabilities, :medium_vulnerabilities, :low_vulnerabilities,
                         :high_trend, :medium_trend, :low_trend,
                         :risk_score,
                         :source_timestamp, :scanner_name
                     )
                     ON CONFLICT (domain, scan_date) DO UPDATE SET
-                        agents_in_sync = EXCLUDED.agents_in_sync,
                         total_vulnerabilities = EXCLUDED.total_vulnerabilities,
                         high_vulnerabilities = EXCLUDED.high_vulnerabilities,
                         medium_vulnerabilities = EXCLUDED.medium_vulnerabilities,
@@ -3190,7 +3189,6 @@ class PostgresReportStorage:
                 """), {
                     'domain': score_input.domain,
                     'scan_date': scan_date,
-                    'agents_in_sync': score_input.agents_in_sync,
                     'total_vulnerabilities': score_input.total_vulnerabilities,
                     'high_vulnerabilities': score_input.high_vulnerabilities,
                     'medium_vulnerabilities': score_input.medium_vulnerabilities,
@@ -3230,7 +3228,6 @@ class PostgresReportStorage:
                 results = session.execute(text("""
                     SELECT 
                         id, domain, scan_date,
-                        agents_in_sync,
                         total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
                         high_trend, medium_trend, low_trend,
                         risk_score,
@@ -3247,7 +3244,6 @@ class PostgresReportStorage:
                         'id': str(r.id),
                         'domain': r.domain,
                         'scan_date': r.scan_date.isoformat() if r.scan_date else None,
-                        'agents_in_sync': r.agents_in_sync,
                         'total_vulnerabilities': r.total_vulnerabilities,
                         'high_vulnerabilities': r.high_vulnerabilities,
                         'medium_vulnerabilities': r.medium_vulnerabilities,
@@ -3282,7 +3278,6 @@ class PostgresReportStorage:
                 result = session.execute(text("""
                     SELECT 
                         id, domain, scan_date,
-                        agents_in_sync,
                         total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
                         high_trend, medium_trend, low_trend,
                         risk_score,
@@ -3299,7 +3294,6 @@ class PostgresReportStorage:
                     'id': str(result.id),
                     'domain': result.domain,
                     'scan_date': result.scan_date.isoformat() if result.scan_date else None,
-                    'agents_in_sync': result.agents_in_sync,
                     'total_vulnerabilities': result.total_vulnerabilities,
                     'high_vulnerabilities': result.high_vulnerabilities,
                     'medium_vulnerabilities': result.medium_vulnerabilities,
@@ -3337,8 +3331,7 @@ class PostgresReportStorage:
                         high_vulnerabilities,
                         medium_vulnerabilities,
                         low_vulnerabilities,
-                        risk_score,
-                        agents_in_sync
+                        risk_score
                     FROM vulnerability_scores
                     WHERE domain = :domain
                     ORDER BY scan_date DESC
@@ -3353,8 +3346,7 @@ class PostgresReportStorage:
                         'high_vulnerabilities': r.high_vulnerabilities,
                         'medium_vulnerabilities': r.medium_vulnerabilities,
                         'low_vulnerabilities': r.low_vulnerabilities,
-                        'risk_score': float(r.risk_score),
-                        'agents_in_sync': r.agents_in_sync
+                        'risk_score': float(r.risk_score)
                     }
                     for r in reversed(results)
                 ]
@@ -3405,7 +3397,6 @@ class PostgresReportStorage:
                     SELECT 
                         domain,
                         scan_date,
-                        agents_in_sync,
                         total_vulnerabilities,
                         high_vulnerabilities,
                         medium_vulnerabilities,
@@ -3425,7 +3416,6 @@ class PostgresReportStorage:
                     {
                         'domain': r.domain,
                         'scan_date': r.scan_date.isoformat() if r.scan_date else None,
-                        'agents_in_sync': r.agents_in_sync,
                         'total_vulnerabilities': r.total_vulnerabilities,
                         'high_vulnerabilities': r.high_vulnerabilities,
                         'medium_vulnerabilities': r.medium_vulnerabilities,
@@ -3459,7 +3449,6 @@ class PostgresReportStorage:
                 result = session.execute(text("""
                     SELECT 
                         id, domain, scan_date,
-                        agents_in_sync,
                         total_vulnerabilities, high_vulnerabilities, medium_vulnerabilities, low_vulnerabilities,
                         high_trend, medium_trend, low_trend,
                         risk_score,
@@ -3476,7 +3465,6 @@ class PostgresReportStorage:
                     'id': str(result.id),
                     'domain': result.domain,
                     'scan_date': result.scan_date.isoformat() if result.scan_date else None,
-                    'agents_in_sync': result.agents_in_sync,
                     'total_vulnerabilities': result.total_vulnerabilities,
                     'high_vulnerabilities': result.high_vulnerabilities,
                     'medium_vulnerabilities': result.medium_vulnerabilities,
