@@ -530,3 +530,180 @@ export function useDeleteVulnerabilityScore() {
   })
 }
 
+// =============================================================================
+// Beacon System Hooks (C2-like Agent Management)
+// =============================================================================
+
+import type { BeaconJobCreate, BulkJobCreate, TaskTemplate } from '../types'
+
+/**
+ * Get all beacons with optional filtering
+ */
+export function useBeacons(params?: { status?: string; domain?: string }) {
+  return useQuery({
+    queryKey: ['beacons', params],
+    queryFn: () => api.getBeacons(params),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+  })
+}
+
+/**
+ * Get beacon dashboard statistics
+ */
+export function useBeaconStats() {
+  return useQuery({
+    queryKey: ['beaconStats'],
+    queryFn: api.getBeaconStats,
+    refetchInterval: 30000,
+  })
+}
+
+/**
+ * Get a specific beacon
+ */
+export function useBeacon(beaconId: string) {
+  return useQuery({
+    queryKey: ['beacon', beaconId],
+    queryFn: () => api.getBeacon(beaconId),
+    enabled: !!beaconId,
+  })
+}
+
+/**
+ * Get all jobs across all beacons
+ */
+export function useAllBeaconJobs(params?: { status?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ['beaconJobs', params],
+    queryFn: () => api.getAllBeaconJobs(params),
+    refetchInterval: 15000, // More frequent updates for jobs
+  })
+}
+
+/**
+ * Get jobs for a specific beacon
+ */
+export function useBeaconJobs(beaconId: string, params?: { status?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ['beaconJobs', beaconId, params],
+    queryFn: () => api.getBeaconJobs(beaconId, params),
+    enabled: !!beaconId,
+    refetchInterval: 15000,
+  })
+}
+
+/**
+ * Get task templates
+ */
+export function useTaskTemplates() {
+  return useQuery({
+    queryKey: ['taskTemplates'],
+    queryFn: api.getTaskTemplates,
+    staleTime: 300000, // Cache for 5 minutes (templates don't change often)
+  })
+}
+
+/**
+ * Get beacon activity log
+ */
+export function useBeaconActivity(beaconId: string, limit: number = 100) {
+  return useQuery({
+    queryKey: ['beaconActivity', beaconId, limit],
+    queryFn: () => api.getBeaconActivity(beaconId, limit),
+    enabled: !!beaconId,
+    refetchInterval: 30000,
+  })
+}
+
+/**
+ * Create a beacon job (mutation)
+ */
+export function useCreateBeaconJob() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: (job: BeaconJobCreate) => api.createBeaconJob(job),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['beacons'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconStats'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconJobs'] })
+      queryClient.invalidateQueries({ queryKey: ['beacon', variables.beacon_id] })
+    },
+  })
+}
+
+/**
+ * Create bulk jobs for multiple beacons (mutation)
+ */
+export function useCreateBulkJobs() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: (job: BulkJobCreate) => api.createBulkJobs(job),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beacons'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconStats'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconJobs'] })
+    },
+  })
+}
+
+/**
+ * Cancel a pending job (mutation)
+ */
+export function useCancelBeaconJob() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.cancelBeaconJob,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beaconJobs'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconStats'] })
+    },
+  })
+}
+
+/**
+ * Update beacon configuration (mutation)
+ */
+export function useUpdateBeacon() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ beaconId, updates }: { beaconId: string; updates: Parameters<typeof api.updateBeacon>[1] }) => 
+      api.updateBeacon(beaconId, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beacons'] })
+    },
+  })
+}
+
+/**
+ * Kill a beacon (mutation)
+ */
+export function useKillBeacon() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: api.killBeacon,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beacons'] })
+      queryClient.invalidateQueries({ queryKey: ['beaconStats'] })
+    },
+  })
+}
+
+/**
+ * Create a task template (mutation)
+ */
+export function useCreateTaskTemplate() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: (template: Omit<TaskTemplate, 'id'>) => api.createTaskTemplate(template),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taskTemplates'] })
+    },
+  })
+}
+

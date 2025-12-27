@@ -690,3 +690,186 @@ export async function getVulnerabilityDashboard(): Promise<VulnerabilityDashboar
   return fetchJSON(`${API_BASE}/vulnerability/dashboard`)
 }
 
+// =============================================================================
+// Beacon System API (C2-like Agent Management)
+// =============================================================================
+
+import type {
+  Beacon,
+  BeaconJob,
+  BeaconJobCreate,
+  TaskTemplate,
+  BeaconDashboardStats,
+  BeaconActivityLog,
+  BulkJobCreate
+} from '../types'
+
+/**
+ * Get all beacons
+ */
+export async function getBeacons(params?: {
+  status?: string
+  domain?: string
+}): Promise<Beacon[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.status) searchParams.append('status', params.status)
+  if (params?.domain) searchParams.append('domain', params.domain)
+  
+  const query = searchParams.toString()
+  return fetchJSON(`${API_BASE}/beacons/${query ? `?${query}` : ''}`)
+}
+
+/**
+ * Get beacon dashboard statistics
+ */
+export async function getBeaconStats(): Promise<BeaconDashboardStats> {
+  return fetchJSON(`${API_BASE}/beacons/stats`)
+}
+
+/**
+ * Get a specific beacon
+ */
+export async function getBeacon(beaconId: string): Promise<Beacon> {
+  return fetchJSON(`${API_BASE}/beacons/${encodeURIComponent(beaconId)}`)
+}
+
+/**
+ * Update beacon configuration
+ */
+export async function updateBeacon(
+  beaconId: string, 
+  updates: Partial<{
+    sleep_interval: number
+    jitter_percent: number
+    tags: string[]
+    notes: string
+    status: string
+  }>
+): Promise<{ status: string; beacon_id: string; updates: Record<string, unknown> }> {
+  return fetchJSON(`${API_BASE}/beacons/${encodeURIComponent(beaconId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates)
+  })
+}
+
+/**
+ * Kill a beacon (mark as terminated)
+ */
+export async function killBeacon(beaconId: string): Promise<{ status: string; beacon_id: string; action: string }> {
+  return fetchJSON(`${API_BASE}/beacons/${encodeURIComponent(beaconId)}`, {
+    method: 'DELETE'
+  })
+}
+
+/**
+ * Create a new job for a beacon
+ */
+export async function createBeaconJob(job: BeaconJobCreate): Promise<BeaconJob> {
+  return fetchJSON(`${API_BASE}/beacons/jobs`, {
+    method: 'POST',
+    body: JSON.stringify(job)
+  })
+}
+
+/**
+ * Create jobs for multiple beacons
+ */
+export async function createBulkJobs(job: BulkJobCreate): Promise<{
+  status: string
+  total: number
+  success: number
+  failed: number
+  results: Array<{ beacon_id: string; status: string; job_id?: string; error?: string }>
+}> {
+  return fetchJSON(`${API_BASE}/beacons/jobs/bulk`, {
+    method: 'POST',
+    body: JSON.stringify(job)
+  })
+}
+
+/**
+ * Get all jobs across all beacons
+ */
+export async function getAllBeaconJobs(params?: {
+  status?: string
+  limit?: number
+}): Promise<BeaconJob[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.status) searchParams.append('status', params.status)
+  if (params?.limit) searchParams.append('limit', String(params.limit))
+  
+  const query = searchParams.toString()
+  return fetchJSON(`${API_BASE}/beacons/jobs/all${query ? `?${query}` : ''}`)
+}
+
+/**
+ * Get jobs for a specific beacon
+ */
+export async function getBeaconJobs(beaconId: string, params?: {
+  status?: string
+  limit?: number
+}): Promise<BeaconJob[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.status) searchParams.append('status', params.status)
+  if (params?.limit) searchParams.append('limit', String(params.limit))
+  
+  const query = searchParams.toString()
+  return fetchJSON(`${API_BASE}/beacons/${encodeURIComponent(beaconId)}/jobs${query ? `?${query}` : ''}`)
+}
+
+/**
+ * Get a specific job with full details
+ */
+export async function getBeaconJob(jobId: string): Promise<{
+  job: BeaconJob
+  results: Array<{
+    id: string
+    output_type: string
+    output_data: string
+    output_size: number
+    received_at: string
+  }>
+}> {
+  return fetchJSON(`${API_BASE}/beacons/jobs/${encodeURIComponent(jobId)}`)
+}
+
+/**
+ * Cancel a pending job
+ */
+export async function cancelBeaconJob(jobId: string): Promise<{ status: string; job_id: string; action: string }> {
+  return fetchJSON(`${API_BASE}/beacons/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE'
+  })
+}
+
+/**
+ * Get all task templates
+ */
+export async function getTaskTemplates(): Promise<TaskTemplate[]> {
+  return fetchJSON(`${API_BASE}/beacons/templates/all`)
+}
+
+/**
+ * Create a new task template
+ */
+export async function createTaskTemplate(template: Omit<TaskTemplate, 'id'>): Promise<{ status: string; template_id: string }> {
+  return fetchJSON(`${API_BASE}/beacons/templates`, {
+    method: 'POST',
+    body: JSON.stringify(template)
+  })
+}
+
+/**
+ * Get activity log for a beacon
+ */
+export async function getBeaconActivity(beaconId: string, limit: number = 100): Promise<BeaconActivityLog[]> {
+  return fetchJSON(`${API_BASE}/beacons/${encodeURIComponent(beaconId)}/activity?limit=${limit}`)
+}
+
+/**
+ * Get global activity log
+ */
+export async function getAllBeaconActivity(limit: number = 100): Promise<{ activities: BeaconActivityLog[] }> {
+  return fetchJSON(`${API_BASE}/beacons/activity/all?limit=${limit}`)
+}
+

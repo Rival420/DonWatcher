@@ -637,3 +637,120 @@ export interface VulnerabilitySaveResponse {
   message: string
 }
 
+// =============================================================================
+// Beacon System Types (C2-like Agent Management)
+// =============================================================================
+
+export type BeaconStatus = 'active' | 'dormant' | 'dead' | 'killed'
+export type JobStatus = 'pending' | 'sent' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type JobType = 'domain_scan' | 'vulnerability_scan' | 'powershell' | 'shell'
+
+export interface Beacon {
+  id: string
+  beacon_id: string
+  hostname: string
+  internal_ip: string | null
+  external_ip: string | null
+  os_info: string | null
+  os_version: string | null
+  username: string | null
+  domain: string | null
+  process_name: string | null
+  process_id: number | null
+  architecture: string | null
+  beacon_version: string | null
+  
+  status: BeaconStatus
+  computed_status: string | null
+  last_seen: string | null
+  first_seen: string | null
+  check_in_count: number
+  
+  sleep_interval: number
+  jitter_percent: number
+  
+  tags: string[]
+  notes: string | null
+  
+  // Job statistics
+  pending_jobs: number
+  completed_jobs: number
+  failed_jobs: number
+  last_job_time: string | null
+}
+
+export interface BeaconJob {
+  id: string
+  beacon_id: string
+  hostname?: string
+  
+  job_type: JobType
+  command: string | null
+  parameters: Record<string, unknown>
+  
+  status: JobStatus
+  priority: number
+  
+  created_at: string | null
+  sent_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  
+  result_output: string | null
+  result_error: string | null
+  exit_code: number | null
+  
+  created_by: string
+  notes: string | null
+}
+
+export interface BeaconJobCreate {
+  beacon_id: string
+  job_type: JobType
+  command?: string
+  parameters?: Record<string, unknown>
+  priority?: number
+  notes?: string
+}
+
+export interface TaskTemplate {
+  id: string
+  name: string
+  description: string | null
+  job_type: JobType
+  command: string | null
+  parameters: Record<string, unknown>
+  icon: string | null
+  is_dangerous: boolean
+}
+
+export interface BeaconDashboardStats {
+  total_beacons: number
+  active_beacons: number
+  dormant_beacons: number
+  dead_beacons: number
+  pending_jobs: number
+  running_jobs: number
+  completed_jobs_24h: number
+  failed_jobs_24h: number
+}
+
+export interface BeaconActivityLog {
+  id: string
+  beacon_id: string | null
+  hostname?: string
+  activity_type: string
+  details: Record<string, unknown>
+  ip_address: string | null
+  created_at: string | null
+}
+
+export interface BulkJobCreate {
+  beacon_ids: string[]
+  job_type: JobType
+  command?: string
+  parameters?: Record<string, unknown>
+  priority?: number
+  notes?: string
+}
+

@@ -5,7 +5,8 @@ import {
   Upload, 
   Settings,
   Shield,
-  Activity
+  Activity,
+  Radio
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useHealth } from '../hooks/useApi'
@@ -14,6 +15,7 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/reports', label: 'Reports', icon: FileText },
   { path: '/risk-catalog', label: 'Risk Catalog', icon: Shield },
+  { path: '/beacons', label: 'Beacons', icon: Radio },
   { path: '/upload', label: 'Upload', icon: Upload },
   { path: '/settings', label: 'Settings', icon: Settings },
 ]

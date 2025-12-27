@@ -682,3 +682,190 @@ class APIVulnerabilityUpload(BaseModel):
     # Optional metadata
     source_timestamp: Optional[str] = None
     scan_date: Optional[datetime] = None
+
+
+# =============================================================================
+# Beacon System Models - C2-like Agent Management
+# =============================================================================
+
+class BeaconStatus(str, Enum):
+    """Beacon status states."""
+    ACTIVE = "active"       # Recently checked in
+    DORMANT = "dormant"     # Not seen for a while but expected
+    DEAD = "dead"           # Not seen for too long
+    KILLED = "killed"       # Manually terminated
+
+class JobStatus(str, Enum):
+    """Beacon job status states."""
+    PENDING = "pending"     # Waiting to be picked up
+    SENT = "sent"           # Sent to beacon
+    RUNNING = "running"     # Currently executing
+    COMPLETED = "completed" # Finished successfully
+    FAILED = "failed"       # Execution failed
+    CANCELLED = "cancelled" # Cancelled by operator
+
+class JobType(str, Enum):
+    """Available job types for beacons."""
+    DOMAIN_SCAN = "domain_scan"
+    VULNERABILITY_SCAN = "vulnerability_scan"
+    POWERSHELL = "powershell"
+    SHELL = "shell"
+
+
+class BeaconCheckinRequest(BaseModel):
+    """
+    Request model for beacon check-in.
+    Sent by beacons when they phone home.
+    """
+    beacon_id: str = Field(..., description="Unique beacon identifier")
+    hostname: str = Field(..., description="Target hostname")
+    internal_ip: Optional[str] = Field(None, description="Internal IP address")
+    os_info: Optional[str] = Field(None, description="Operating system information")
+    os_version: Optional[str] = Field(None, description="OS version")
+    username: Optional[str] = Field(None, description="Current user context")
+    domain: Optional[str] = Field(None, description="Domain membership")
+    process_name: Optional[str] = Field(None, description="Beacon process name")
+    process_id: Optional[int] = Field(None, description="Beacon process ID")
+    architecture: Optional[str] = Field(None, description="System architecture (x64/x86/arm64)")
+    beacon_version: Optional[str] = Field(None, description="Beacon agent version")
+
+
+class BeaconCheckinResponse(BaseModel):
+    """
+    Response to beacon check-in.
+    Contains pending jobs for the beacon to execute.
+    """
+    status: str = "ok"
+    beacon_uuid: Optional[str] = None
+    sleep_interval: int = 60
+    jitter_percent: int = 10
+    jobs: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class Beacon(BaseModel):
+    """Full beacon record."""
+    id: Optional[str] = None
+    beacon_id: str
+    hostname: str
+    internal_ip: Optional[str] = None
+    external_ip: Optional[str] = None
+    os_info: Optional[str] = None
+    os_version: Optional[str] = None
+    username: Optional[str] = None
+    domain: Optional[str] = None
+    process_name: Optional[str] = None
+    process_id: Optional[int] = None
+    architecture: Optional[str] = None
+    beacon_version: Optional[str] = None
+    
+    status: BeaconStatus = BeaconStatus.ACTIVE
+    computed_status: Optional[str] = None  # Calculated based on last_seen
+    last_seen: Optional[datetime] = None
+    first_seen: Optional[datetime] = None
+    check_in_count: int = 0
+    
+    sleep_interval: int = 60
+    jitter_percent: int = 10
+    
+    tags: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+    
+    # Job statistics (from view)
+    pending_jobs: int = 0
+    completed_jobs: int = 0
+    failed_jobs: int = 0
+    last_job_time: Optional[datetime] = None
+
+
+class BeaconJob(BaseModel):
+    """Beacon job record."""
+    id: Optional[str] = None
+    beacon_id: str
+    
+    job_type: JobType
+    command: Optional[str] = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    
+    status: JobStatus = JobStatus.PENDING
+    priority: int = 5
+    
+    created_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    result_output: Optional[str] = None
+    result_error: Optional[str] = None
+    exit_code: Optional[int] = None
+    
+    created_by: str = "operator"
+    notes: Optional[str] = None
+
+
+class BeaconJobCreate(BaseModel):
+    """Request model for creating a new beacon job."""
+    beacon_id: str = Field(..., description="Target beacon ID")
+    job_type: JobType = Field(..., description="Type of job to execute")
+    command: Optional[str] = Field(None, description="Command/script to execute")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Job parameters")
+    priority: int = Field(5, ge=1, le=10, description="Job priority (1-10, higher = more urgent)")
+    notes: Optional[str] = Field(None, description="Operator notes")
+
+
+class BeaconJobResult(BaseModel):
+    """
+    Request model for submitting job results.
+    Sent by beacons after job execution.
+    """
+    job_id: str = Field(..., description="Job ID")
+    beacon_id: str = Field(..., description="Beacon ID")
+    status: JobStatus = Field(..., description="Final job status")
+    output: Optional[str] = Field(None, description="Command output (stdout)")
+    error: Optional[str] = Field(None, description="Error output (stderr)")
+    exit_code: Optional[int] = Field(None, description="Exit code")
+    started_at: Optional[datetime] = Field(None, description="Execution start time")
+    completed_at: Optional[datetime] = Field(None, description="Execution end time")
+
+
+class TaskTemplate(BaseModel):
+    """Pre-built task template for quick job creation."""
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    job_type: JobType
+    command: Optional[str] = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    icon: Optional[str] = None
+    is_dangerous: bool = False
+
+
+class BeaconActivityLog(BaseModel):
+    """Beacon activity log entry."""
+    id: Optional[str] = None
+    beacon_id: Optional[str] = None
+    activity_type: str
+    details: Dict[str, Any] = Field(default_factory=dict)
+    ip_address: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class BeaconDashboardStats(BaseModel):
+    """Dashboard statistics for beacon system."""
+    total_beacons: int = 0
+    active_beacons: int = 0
+    dormant_beacons: int = 0
+    dead_beacons: int = 0
+    pending_jobs: int = 0
+    running_jobs: int = 0
+    completed_jobs_24h: int = 0
+    failed_jobs_24h: int = 0
+
+
+class BulkJobCreate(BaseModel):
+    """Request model for creating jobs on multiple beacons."""
+    beacon_ids: List[str] = Field(..., description="List of target beacon IDs")
+    job_type: JobType = Field(..., description="Type of job to execute")
+    command: Optional[str] = Field(None, description="Command/script to execute")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Job parameters")
+    priority: int = Field(5, ge=1, le=10, description="Job priority")
+    notes: Optional[str] = Field(None, description="Operator notes")
