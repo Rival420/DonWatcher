@@ -754,3 +754,42 @@ export interface BulkJobCreate {
   notes?: string
 }
 
+// Scheduled Jobs
+export type ScheduleType = 'once' | 'hourly' | 'daily' | 'weekly' | 'cron'
+
+export interface ScheduledJob {
+  id: string
+  name: string
+  description: string | null
+  beacon_id: string | null  // null = all beacons
+  target_filter: Record<string, unknown>
+  job_type: JobType
+  command: string | null
+  parameters: Record<string, unknown>
+  schedule_type: ScheduleType
+  schedule_value: string | null
+  next_run_at: string | null
+  last_run_at: string | null
+  is_enabled: boolean
+  run_count: number
+  last_run_status: string | null
+  created_by: string
+  created_at: string | null
+  // From view
+  target_hostname?: string
+  total_jobs_created?: number
+  successful_runs?: number
+}
+
+export interface ScheduledJobCreate {
+  name: string
+  description?: string
+  beacon_id?: string  // null = all beacons
+  target_filter?: Record<string, unknown>
+  job_type: JobType
+  command?: string
+  parameters?: Record<string, unknown>
+  schedule_type: ScheduleType
+  schedule_value?: string
+}
+

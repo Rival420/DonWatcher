@@ -15,3 +15,6 @@ export {
 export { HoxhuntEntryModal } from './HoxhuntEntryModal'
 export { HoxhuntSection } from './HoxhuntSection'
 export { VulnerabilitySection } from './VulnerabilitySection'
+
+// Beacon system components
+export * from './beacon'

@@ -36,23 +36,26 @@ logger = logging.getLogger("beacons")
 
 @router.get("/download")
 async def download_beacon(
-    server_url: Optional[str] = Query(None, description="Pre-configure server URL"),
+    request: Request,
+    server_url: Optional[str] = Query(None, description="Pre-configure server URL (auto-detected if not provided)"),
     sleep: int = Query(60, description="Sleep interval in seconds"),
-    jitter: int = Query(10, description="Jitter percentage")
+    jitter: int = Query(10, description="Jitter percentage"),
+    format: str = Query("zip", description="Download format: 'zip' for source, 'exe' for compiled (if available)")
 ):
     """
-    Download the beacon agent package as a ZIP file.
+    Download the beacon agent package.
+    
+    The package is pre-configured with this server's URL automatically.
+    
+    For Windows systems without Python, you can:
+    1. Download the source and build locally using build.py
+    2. Request format=exe if pre-compiled binaries are available
     
     The package includes:
     - beacon.py - The main beacon agent
-    - requirements.txt - Python dependencies
-    - README.md - Documentation
-    - beacon.json - Pre-configured config file (if server_url provided)
-    
-    Query parameters:
-    - server_url: Pre-configure the server URL in the config
-    - sleep: Pre-configure the sleep interval (default: 60)
-    - jitter: Pre-configure the jitter percentage (default: 10)
+    - build.py - Script to compile to .exe
+    - beacon.json - Pre-configured with this server's URL
+    - PowerShell scripts for DonWatcher scans
     """
     try:
         # Find beacon files
@@ -62,6 +65,34 @@ async def download_beacon(
         if not beacon_dir.exists():
             raise HTTPException(status_code=500, detail="Beacon files not found on server")
         
+        # Auto-detect server URL from request if not provided
+        if not server_url:
+            # Get the server URL from the request
+            scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+            host = request.headers.get("X-Forwarded-Host", request.headers.get("Host", request.url.netloc))
+            # Use port 8080 for backend API
+            if ":" not in host:
+                host = f"{host}:8080"
+            server_url = f"{scheme}://{host}"
+            logger.info(f"Auto-detected server URL: {server_url}")
+        
+        # Check for pre-compiled binary
+        if format == "exe":
+            exe_path = beacon_dir / "dist" / "beacon.exe"
+            if exe_path.exists():
+                return StreamingResponse(
+                    open(exe_path, "rb"),
+                    media_type="application/octet-stream",
+                    headers={
+                        "Content-Disposition": "attachment; filename=DonWatcher-Beacon.exe"
+                    }
+                )
+            else:
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Pre-compiled binary not available. Download source and run: python build.py --server YOUR_SERVER"
+                )
+        
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         
@@ -70,6 +101,11 @@ async def download_beacon(
             beacon_py = beacon_dir / "beacon.py"
             if beacon_py.exists():
                 zip_file.write(beacon_py, "DonWatcher-Beacon/beacon.py")
+            
+            # Add build.py for compiling to exe
+            build_py = beacon_dir / "build.py"
+            if build_py.exists():
+                zip_file.write(build_py, "DonWatcher-Beacon/build.py")
             
             # Add requirements.txt
             requirements = beacon_dir / "requirements.txt"
@@ -93,46 +129,91 @@ async def download_beacon(
                 if script_path.exists():
                     zip_file.write(script_path, f"DonWatcher-Beacon/{script}")
             
-            # Create config file if server_url provided
-            if server_url:
-                config = {
-                    "server_url": server_url,
-                    "sleep_interval": sleep,
-                    "jitter_percent": jitter,
-                    "debug": False,
-                    "auto_upload": True
-                }
-                config_json = json.dumps(config, indent=2)
-                zip_file.writestr("DonWatcher-Beacon/beacon.json", config_json)
+            # Always create pre-configured beacon.json with auto-detected URL
+            config = {
+                "server_url": server_url,
+                "sleep_interval": sleep,
+                "jitter_percent": jitter,
+                "verify_ssl": True,
+                "debug": False,
+                "auto_upload": True
+            }
+            config_json = json.dumps(config, indent=2)
+            zip_file.writestr("DonWatcher-Beacon/beacon.json", config_json)
             
-            # Add a quick start script for Windows
-            start_bat = """@echo off
+            # Add a quick start script for Windows (with Python)
+            start_bat = f"""@echo off
 echo ==========================================
 echo  DonWatcher Beacon Agent
 echo ==========================================
+echo.
+echo Configuration:
+echo   Server: {server_url}
+echo   Sleep: {sleep}s, Jitter: {jitter}%
 echo.
 echo Installing dependencies...
 pip install -r requirements.txt
 echo.
 echo Starting beacon...
-python beacon.py --config beacon.json
+python beacon.py
 pause
 """
             zip_file.writestr("DonWatcher-Beacon/start-beacon.bat", start_bat)
             
+            # Add a compile script for Windows (to create standalone exe)
+            compile_bat = f"""@echo off
+echo ==========================================
+echo  DonWatcher Beacon - Build Executable
+echo ==========================================
+echo.
+echo This will create a standalone .exe that works without Python.
+echo.
+echo Installing build requirements...
+pip install pyinstaller requests
+echo.
+echo Building executable...
+python build.py --server {server_url} --sleep {sleep} --jitter {jitter} --output DonWatcher-Beacon.exe
+echo.
+echo Done! You can now copy DonWatcher-Beacon.exe to any Windows system.
+pause
+"""
+            zip_file.writestr("DonWatcher-Beacon/compile-to-exe.bat", compile_bat)
+            
             # Add a quick start script for Linux/macOS
-            start_sh = """#!/bin/bash
+            start_sh = f"""#!/bin/bash
 echo "=========================================="
 echo " DonWatcher Beacon Agent"
 echo "=========================================="
+echo
+echo "Configuration:"
+echo "  Server: {server_url}"
+echo "  Sleep: {sleep}s, Jitter: {jitter}%"
 echo
 echo "Installing dependencies..."
 pip3 install -r requirements.txt
 echo
 echo "Starting beacon..."
-python3 beacon.py --config beacon.json
+python3 beacon.py
 """
             zip_file.writestr("DonWatcher-Beacon/start-beacon.sh", start_sh)
+            
+            # Add a compile script for Linux (to create standalone binary)
+            compile_sh = f"""#!/bin/bash
+echo "=========================================="
+echo " DonWatcher Beacon - Build Executable"
+echo "=========================================="
+echo
+echo "This will create a standalone binary that works without Python."
+echo
+echo "Installing build requirements..."
+pip3 install pyinstaller requests
+echo
+echo "Building executable..."
+python3 build.py --server {server_url} --sleep {sleep} --jitter {jitter} --output donwatcher-beacon
+echo
+echo "Done! You can now copy donwatcher-beacon to any Linux system."
+"""
+            zip_file.writestr("DonWatcher-Beacon/compile-to-binary.sh", compile_sh)
         
         # Prepare response
         zip_buffer.seek(0)
@@ -1008,3 +1089,248 @@ async def get_all_activity(
         logger.exception(f"Failed to get activity: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get activity: {e}")
 
+
+# =============================================================================
+# Scheduled Jobs Endpoints
+# =============================================================================
+
+@router.get("/schedules/all")
+async def list_scheduled_jobs(
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Get all scheduled jobs."""
+    try:
+        with storage.get_connection() as conn:
+            result = conn.execute(text("""
+                SELECT * FROM v_scheduled_jobs_dashboard
+                ORDER BY next_run_at ASC NULLS LAST
+            """))
+            
+            schedules = []
+            for row in result:
+                schedules.append({
+                    "id": str(row.id),
+                    "name": row.name,
+                    "description": row.description,
+                    "beacon_id": row.beacon_id,
+                    "target_filter": row.target_filter or {},
+                    "job_type": row.job_type,
+                    "schedule_type": row.schedule_type,
+                    "schedule_value": row.schedule_value,
+                    "next_run_at": row.next_run_at.isoformat() if row.next_run_at else None,
+                    "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
+                    "is_enabled": row.is_enabled,
+                    "run_count": row.run_count,
+                    "last_run_status": row.last_run_status,
+                    "created_by": row.created_by,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "target_hostname": row.target_hostname,
+                    "total_jobs_created": row.total_jobs_created,
+                    "successful_runs": row.successful_runs
+                })
+            
+            return {"schedules": schedules}
+            
+    except Exception as e:
+        logger.exception(f"Failed to list schedules: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list schedules: {e}")
+
+
+@router.post("/schedules")
+async def create_scheduled_job(
+    request: Request,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Create a new scheduled job."""
+    try:
+        data = await request.json()
+        
+        # Calculate initial next_run_at based on schedule_type
+        schedule_type = data.get("schedule_type", "once")
+        next_run = None
+        
+        if schedule_type == "once":
+            # Run in 1 minute for one-time jobs
+            next_run = datetime.now() + timedelta(minutes=1)
+        elif schedule_type == "hourly":
+            next_run = datetime.now() + timedelta(hours=1)
+        elif schedule_type == "daily":
+            next_run = datetime.now() + timedelta(days=1)
+        elif schedule_type == "weekly":
+            next_run = datetime.now() + timedelta(weeks=1)
+        
+        with storage.get_connection() as conn:
+            result = conn.execute(
+                text("""
+                    INSERT INTO beacon_scheduled_jobs 
+                    (name, description, beacon_id, target_filter, job_type, command, parameters, 
+                     schedule_type, schedule_value, next_run_at, created_by)
+                    VALUES (:name, :description, :beacon_id, :target_filter, :job_type, :command, 
+                            :parameters, :schedule_type, :schedule_value, :next_run_at, :created_by)
+                    RETURNING id
+                """),
+                {
+                    "name": data.get("name"),
+                    "description": data.get("description"),
+                    "beacon_id": data.get("beacon_id"),  # None = all beacons
+                    "target_filter": json.dumps(data.get("target_filter", {})),
+                    "job_type": data.get("job_type"),
+                    "command": data.get("command"),
+                    "parameters": json.dumps(data.get("parameters", {})),
+                    "schedule_type": schedule_type,
+                    "schedule_value": data.get("schedule_value"),
+                    "next_run_at": next_run,
+                    "created_by": "api"
+                }
+            )
+            schedule_id = result.scalar()
+            conn.commit()
+            
+            logger.info(f"Created scheduled job: {data.get('name')} ({schedule_id})")
+            
+            return {"status": "ok", "schedule_id": str(schedule_id)}
+            
+    except Exception as e:
+        logger.exception(f"Failed to create schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create schedule: {e}")
+
+
+@router.patch("/schedules/{schedule_id}")
+async def update_scheduled_job(
+    schedule_id: str,
+    request: Request,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Update a scheduled job (enable/disable, update schedule)."""
+    try:
+        data = await request.json()
+        
+        with storage.get_connection() as conn:
+            # Build dynamic update
+            updates = []
+            params = {"schedule_id": schedule_id}
+            
+            if "is_enabled" in data:
+                updates.append("is_enabled = :is_enabled")
+                params["is_enabled"] = data["is_enabled"]
+            
+            if "schedule_type" in data:
+                updates.append("schedule_type = :schedule_type")
+                params["schedule_type"] = data["schedule_type"]
+            
+            if "schedule_value" in data:
+                updates.append("schedule_value = :schedule_value")
+                params["schedule_value"] = data["schedule_value"]
+            
+            if "name" in data:
+                updates.append("name = :name")
+                params["name"] = data["name"]
+            
+            if updates:
+                updates.append("updated_at = NOW()")
+                conn.execute(
+                    text(f"UPDATE beacon_scheduled_jobs SET {', '.join(updates)} WHERE id = :schedule_id"),
+                    params
+                )
+                conn.commit()
+            
+            return {"status": "ok", "schedule_id": schedule_id}
+            
+    except Exception as e:
+        logger.exception(f"Failed to update schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update schedule: {e}")
+
+
+@router.delete("/schedules/{schedule_id}")
+async def delete_scheduled_job(
+    schedule_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Delete a scheduled job."""
+    try:
+        with storage.get_connection() as conn:
+            conn.execute(
+                text("DELETE FROM beacon_scheduled_jobs WHERE id = :schedule_id"),
+                {"schedule_id": schedule_id}
+            )
+            conn.commit()
+            
+            return {"status": "ok", "action": "deleted", "schedule_id": schedule_id}
+            
+    except Exception as e:
+        logger.exception(f"Failed to delete schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete schedule: {e}")
+
+
+@router.post("/schedules/{schedule_id}/run")
+async def run_scheduled_job_now(
+    schedule_id: str,
+    storage: PostgresReportStorage = Depends(get_storage)
+):
+    """Manually trigger a scheduled job to run now."""
+    try:
+        with storage.get_connection() as conn:
+            # Get the schedule
+            schedule = conn.execute(
+                text("SELECT * FROM beacon_scheduled_jobs WHERE id = :schedule_id"),
+                {"schedule_id": schedule_id}
+            ).fetchone()
+            
+            if not schedule:
+                raise HTTPException(status_code=404, detail="Schedule not found")
+            
+            # Get target beacons
+            if schedule.beacon_id:
+                # Specific beacon
+                beacon_ids = [schedule.beacon_id]
+            else:
+                # All active beacons
+                result = conn.execute(
+                    text("SELECT beacon_id FROM v_beacon_dashboard WHERE computed_status = 'active'")
+                )
+                beacon_ids = [row.beacon_id for row in result]
+            
+            # Create jobs for each beacon
+            jobs_created = 0
+            for beacon_id in beacon_ids:
+                conn.execute(
+                    text("""
+                        INSERT INTO beacon_jobs (beacon_id, job_type, command, parameters, schedule_id, created_by)
+                        VALUES (:beacon_id, :job_type, :command, :parameters, :schedule_id, 'scheduler')
+                    """),
+                    {
+                        "beacon_id": beacon_id,
+                        "job_type": schedule.job_type,
+                        "command": schedule.command,
+                        "parameters": json.dumps(schedule.parameters or {}),
+                        "schedule_id": schedule_id
+                    }
+                )
+                jobs_created += 1
+            
+            # Update schedule
+            conn.execute(
+                text("""
+                    UPDATE beacon_scheduled_jobs 
+                    SET last_run_at = NOW(), 
+                        run_count = run_count + 1,
+                        next_run_at = calculate_next_run(schedule_type, schedule_value, NOW())
+                    WHERE id = :schedule_id
+                """),
+                {"schedule_id": schedule_id}
+            )
+            
+            conn.commit()
+            
+            return {
+                "status": "ok",
+                "schedule_id": schedule_id,
+                "jobs_created": jobs_created,
+                "beacon_ids": beacon_ids
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to run schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run schedule: {e}")

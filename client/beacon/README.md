@@ -9,52 +9,117 @@ A lightweight C2-style agent for blue team security operations. Deploy on remote
 - **Built-in Scans**: Domain group scanning, vulnerability scanning
 - **Custom Commands**: Execute PowerShell or shell commands
 - **Auto-Upload**: Automatically uploads scan results to DonWatcher
-- **Cross-Platform**: Works on Windows (primary) and Linux/macOS (limited)
+- **Standalone Executable**: Compile to .exe - no Python required on target
+- **Pre-configured**: Download includes server URL pre-configured
 
 ## Quick Start
 
-### Basic Usage
+### Option 1: Standalone Executable (Recommended for Windows)
+
+**No Python required on target system!**
+
+1. Download the beacon package from DonWatcher
+2. Run `compile-to-exe.bat` to build the executable
+3. Copy `DonWatcher-Beacon.exe` to your target systems
+4. Run `DonWatcher-Beacon.exe` - it will automatically connect to your server
+
+```batch
+# On a Windows machine with Python, build the executable:
+compile-to-exe.bat
+
+# Copy to target system and run:
+DonWatcher-Beacon.exe
+```
+
+### Option 2: Python Script
+
+If you have Python installed:
 
 ```powershell
-# Windows - connect to DonWatcher server
-python beacon.py --server http://donwatcher:8080
+# Windows - just run (config is pre-configured!)
+python beacon.py
 
-# With custom sleep interval and jitter
+# Or with custom options
 python beacon.py --server http://donwatcher:8080 --sleep 30 --jitter 20
 
 # Single check-in (for testing)
-python beacon.py --server http://donwatcher:8080 --once
+python beacon.py --once
 
 # Debug mode
-python beacon.py --server http://donwatcher:8080 --debug
+python beacon.py --debug
 ```
 
-### Using Config File
+## Building Standalone Executable
 
-Create `beacon.json`:
+### Using the Build Script
+
+The build script creates a standalone `.exe` with your server URL embedded:
+
+```powershell
+# Install build requirements
+pip install pyinstaller requests
+
+# Build with your server URL
+python build.py --server https://your-donwatcher-server:8080
+
+# Build with custom settings
+python build.py --server https://your-donwatcher-server:8080 --sleep 300 --jitter 20 --output MyBeacon.exe
+```
+
+### Build Options
+
+| Option | Description |
+|--------|-------------|
+| `--server, -s` | DonWatcher server URL (required) |
+| `--output, -o` | Output executable name (default: beacon.exe) |
+| `--sleep` | Sleep interval in seconds (default: 60) |
+| `--jitter` | Jitter percentage (default: 10) |
+| `--debug` | Enable debug mode in beacon |
+| `--icon` | Custom .ico file for the executable |
+| `--folder` | Create folder instead of single file |
+
+### Using Batch Scripts
+
+The download package includes convenient batch scripts:
+
+- **`compile-to-exe.bat`** - Build Windows executable
+- **`compile-to-binary.sh`** - Build Linux binary
+- **`start-beacon.bat`** - Run with Python (Windows)
+- **`start-beacon.sh`** - Run with Python (Linux/Mac)
+
+## Configuration
+
+### Pre-configured (Recommended)
+
+When you download the beacon from DonWatcher, it's already configured with:
+- Your server URL
+- Default sleep interval (60s)
+- Default jitter (10%)
+
+Just run it - no configuration needed!
+
+### Config File
+
+Create `beacon.json` for custom settings:
 
 ```json
 {
     "server_url": "http://donwatcher:8080",
     "sleep_interval": 60,
     "jitter_percent": 10,
-    "debug": false
+    "verify_ssl": true,
+    "debug": false,
+    "auto_upload": true
 }
 ```
 
-Then run:
-
-```powershell
-python beacon.py --config beacon.json
-```
-
-## Command Line Options
+### Command Line Options
 
 | Option | Description |
 |--------|-------------|
-| `--server, -s` | DonWatcher server URL (required) |
-| `--sleep, -i` | Sleep interval in seconds (default: 60) |
-| `--jitter, -j` | Jitter percentage (default: 10) |
+| `--server, -s` | DonWatcher server URL |
+| `--sleep, -i` | Sleep interval in seconds |
+| `--jitter, -j` | Jitter percentage |
 | `--config, -c` | Path to configuration file |
 | `--debug, -d` | Enable debug logging |
 | `--no-ssl-verify` | Disable SSL certificate verification |
@@ -62,7 +127,7 @@ python beacon.py --config beacon.json
 
 ## Available Job Types
 
-### 🔍 Domain Scan (`domain_scan`)
+### 👥 Domain Scan (`domain_scan`)
 Scans Active Directory privileged group memberships:
 - Domain Admins, Enterprise Admins, Schema Admins
 - Administrators, Account Operators, Backup Operators
@@ -79,9 +144,6 @@ Requires API token:
 
 ### ⚡ PowerShell (`powershell`)
 Execute custom PowerShell commands.
-
-### 🖥️ Shell (`shell`)
-Execute shell commands (cmd.exe on Windows, /bin/sh on Linux/macOS).
 
 ## Beacon ID
 
@@ -103,31 +165,15 @@ Format: `BEACON-XXXXXXXXXXXXXXXX`
 
 ## Requirements
 
+### For Running as Python Script
 - Python 3.8+
 - `requests` library (optional, falls back to urllib)
 - Windows with Active Directory module (for domain scans)
 
-## Installation
-
-```powershell
-# Clone or download beacon files
-# Install dependencies (optional but recommended)
-pip install requests
-
-# Run
-python beacon.py --server http://your-donwatcher-server:8080
-```
-
-## Building Standalone Executable
-
-Using PyInstaller:
-
-```powershell
-pip install pyinstaller
-pyinstaller --onefile --name DonWatcher-Beacon beacon.py
-```
-
-The executable will be in `dist/DonWatcher-Beacon.exe`.
+### For Building Executable
+- Python 3.8+
+- `pyinstaller` package
+- `requests` library
 
 ## Troubleshooting
 
@@ -145,7 +191,11 @@ The executable will be in `dist/DonWatcher-Beacon.exe`.
 - Check firewall rules
 - Ensure DonWatcher backend is running
 
+### Executable Won't Run
+- Windows may block downloaded executables
+- Right-click → Properties → Unblock
+- Or run from command prompt to see errors
+
 ## License
 
 Part of the DonWatcher Security Dashboard project.
-

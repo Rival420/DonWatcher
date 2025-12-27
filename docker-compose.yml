@@ -36,6 +36,7 @@ services:
       - ./migrations:/app/migrations:delegated
       - ./uploaded_reports:/app/uploaded_reports
       - ./logs:/app/logs
+      - ./client:/app/client:delegated
     environment:
       - DATABASE_URL=postgresql://donwatcher:donwatcher_pass@postgres:5432/donwatcher
       - MAX_UPLOAD_SIZE=10485760

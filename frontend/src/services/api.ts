@@ -873,3 +873,61 @@ export async function getAllBeaconActivity(limit: number = 100): Promise<{ activ
   return fetchJSON(`${API_BASE}/beacons/activity/all?limit=${limit}`)
 }
 
+// =============================================================================
+// Scheduled Jobs API
+// =============================================================================
+
+import type { ScheduledJob, ScheduledJobCreate } from '../types'
+
+/**
+ * Get all scheduled jobs
+ */
+export async function getScheduledJobs(): Promise<{ schedules: ScheduledJob[] }> {
+  return fetchJSON(`${API_BASE}/beacons/schedules/all`)
+}
+
+/**
+ * Create a new scheduled job
+ */
+export async function createScheduledJob(schedule: ScheduledJobCreate): Promise<{ status: string; schedule_id: string }> {
+  return fetchJSON(`${API_BASE}/beacons/schedules`, {
+    method: 'POST',
+    body: JSON.stringify(schedule)
+  })
+}
+
+/**
+ * Update a scheduled job
+ */
+export async function updateScheduledJob(
+  scheduleId: string, 
+  updates: Partial<{ is_enabled: boolean; schedule_type: string; schedule_value: string; name: string }>
+): Promise<{ status: string; schedule_id: string }> {
+  return fetchJSON(`${API_BASE}/beacons/schedules/${encodeURIComponent(scheduleId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates)
+  })
+}
+
+/**
+ * Delete a scheduled job
+ */
+export async function deleteScheduledJob(scheduleId: string): Promise<{ status: string; action: string }> {
+  return fetchJSON(`${API_BASE}/beacons/schedules/${encodeURIComponent(scheduleId)}`, {
+    method: 'DELETE'
+  })
+}
+
+/**
+ * Manually run a scheduled job now
+ */
+export async function runScheduledJobNow(scheduleId: string): Promise<{ 
+  status: string
+  schedule_id: string
+  jobs_created: number
+  beacon_ids: string[] 
+}> {
+  return fetchJSON(`${API_BASE}/beacons/schedules/${encodeURIComponent(scheduleId)}/run`, {
+    method: 'POST'
+  })
+}

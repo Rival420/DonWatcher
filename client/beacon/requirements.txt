@@ -4,3 +4,8 @@
 
 requests>=2.28.0
 
+# For building standalone executable (optional)
+# Run: pip install pyinstaller
+# Then: python build.py --server YOUR_SERVER_URL --output beacon.exe
+# pyinstaller>=5.0
+

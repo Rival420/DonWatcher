@@ -47,6 +47,11 @@ except ImportError:
 # Configuration
 # =============================================================================
 
+# EMBEDDED_CONFIG is replaced at build time with actual values
+# This allows the compiled executable to work without any config files
+# Format: JSON string or None for default
+EMBEDDED_CONFIG = None  # <<<EMBED_CONFIG_HERE>>>
+
 DEFAULT_CONFIG = {
     "server_url": "http://localhost:8080",
     "sleep_interval": 60,
@@ -55,6 +60,18 @@ DEFAULT_CONFIG = {
     "debug": False,
     "auto_upload": True  # Auto-upload scan results to DonWatcher
 }
+
+def get_embedded_config() -> Optional[Dict[str, Any]]:
+    """Get embedded configuration if available."""
+    global EMBEDDED_CONFIG
+    if EMBEDDED_CONFIG is not None:
+        try:
+            if isinstance(EMBEDDED_CONFIG, str):
+                return json.loads(EMBEDDED_CONFIG)
+            return EMBEDDED_CONFIG
+        except:
+            pass
+    return None
 
 # Built-in PowerShell scripts (embedded for portability)
 BUILTIN_SCRIPTS = {
@@ -637,12 +654,30 @@ def load_config(config_path: str) -> Dict[str, Any]:
 def main():
     args = parse_arguments()
     
-    # Build configuration
+    # Build configuration - priority order:
+    # 1. Embedded config (baked into compiled binary)
+    # 2. Config file (beacon.json)
+    # 3. Command line arguments
+    # 4. Default config
+    
     config = {}
     
-    # Load from config file if specified
+    # First try embedded config (for compiled binaries)
+    embedded = get_embedded_config()
+    if embedded:
+        config.update(embedded)
+        print("[*] Using embedded configuration")
+    
+    # Then load from config file if specified
     if args.config:
-        config = load_config(args.config)
+        file_config = load_config(args.config)
+        config.update(file_config)
+    elif not embedded:
+        # Try to auto-load beacon.json from same directory as executable
+        auto_config = Path(sys.executable).parent / "beacon.json"
+        if auto_config.exists():
+            config.update(load_config(str(auto_config)))
+            print(f"[*] Loaded config from {auto_config}")
     
     # Override with command line arguments
     if args.server:
