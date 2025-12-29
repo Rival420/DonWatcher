@@ -4,16 +4,17 @@ import {
   X, 
   Download, 
   Terminal, 
-  FileCode, 
   Server, 
   Clock,
   Shuffle,
   Shield,
+  ShieldOff,
   Loader2,
   CheckCircle2,
   AlertCircle,
   Cpu,
-  Package
+  Package,
+  Edit3
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -35,11 +36,20 @@ interface BeaconDownloadModalProps {
 
 type DownloadFormat = 'exe' | 'zip'
 
+// Get default backend URL - frontend is typically on 3000, backend on 8080
+function getDefaultBackendUrl(): string {
+  const currentHost = window.location.hostname
+  // Default backend port is 8080
+  return `${window.location.protocol}//${currentHost}:8080`
+}
+
 export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProps) {
   // Configuration state
   const [format, setFormat] = useState<DownloadFormat>('exe')
+  const [serverUrl, setServerUrl] = useState(getDefaultBackendUrl())
   const [sleepInterval, setSleepInterval] = useState(60)
   const [jitterPercent, setJitterPercent] = useState(10)
+  const [verifySsl, setVerifySsl] = useState(true)
   
   // UI state
   const [compilerStatus, setCompilerStatus] = useState<CompilerStatus | null>(null)
@@ -47,6 +57,7 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSuccess, setDownloadSuccess] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   // Fetch compiler status when modal opens
   useEffect(() => {
@@ -82,7 +93,9 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
       const params = new URLSearchParams({
         format,
         sleep: sleepInterval.toString(),
-        jitter: jitterPercent.toString()
+        jitter: jitterPercent.toString(),
+        server_url: serverUrl,
+        verify_ssl: verifySsl.toString()
       })
       
       const response = await fetch(`/api/beacons/download?${params}`)
@@ -292,6 +305,33 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                         Beacon Configuration
                       </label>
                       
+                      {/* Server URL - Editable */}
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-sm text-gray-400">
+                          <Server className="w-4 h-4" />
+                          Server URL (Backend API)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={serverUrl}
+                            onChange={(e) => setServerUrl(e.target.value)}
+                            placeholder="http://donwatcher:8080"
+                            className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-green-400 font-mono text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/50"
+                          />
+                          <button
+                            onClick={() => setServerUrl(getDefaultBackendUrl())}
+                            className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition-colors"
+                            title="Reset to default"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          Backend API endpoint (usually port 8080, not frontend port 3000)
+                        </p>
+                      </div>
+                      
                       <div className="grid grid-cols-2 gap-4">
                         {/* Sleep Interval */}
                         <div className="space-y-2">
@@ -344,17 +384,69 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                         </div>
                       </div>
 
-                      {/* Server Info (auto-detected) */}
-                      <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Server className="w-4 h-4 text-green-400" />
-                          <span className="text-gray-400">Server URL:</span>
-                          <code className="text-green-400 font-mono">
-                            {window.location.protocol}//{window.location.host}
-                          </code>
-                          <span className="text-xs text-gray-600">(auto-detected)</span>
-                        </div>
-                      </div>
+                      {/* Advanced Options Toggle */}
+                      <button
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        <span className={clsx(
+                          'transition-transform',
+                          showAdvanced && 'rotate-90'
+                        )}>▶</span>
+                        Advanced Options
+                      </button>
+
+                      {/* Advanced Options Panel */}
+                      <AnimatePresence>
+                        {showAdvanced && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700 space-y-4">
+                              {/* SSL Verification Toggle */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {verifySsl ? (
+                                    <Shield className="w-5 h-5 text-green-400" />
+                                  ) : (
+                                    <ShieldOff className="w-5 h-5 text-yellow-400" />
+                                  )}
+                                  <div>
+                                    <span className="text-sm text-gray-300">Verify SSL Certificate</span>
+                                    <p className="text-xs text-gray-600">
+                                      Disable for self-signed certificates (not recommended for production)
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => setVerifySsl(!verifySsl)}
+                                  className={clsx(
+                                    'relative w-12 h-6 rounded-full transition-colors',
+                                    verifySsl ? 'bg-green-500' : 'bg-gray-600'
+                                  )}
+                                >
+                                  <span
+                                    className={clsx(
+                                      'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                                      verifySsl ? 'left-7' : 'left-1'
+                                    )}
+                                  />
+                                </button>
+                              </div>
+                              
+                              {!verifySsl && (
+                                <div className="flex items-center gap-2 p-2 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-mono">
+                                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                  SSL verification disabled - use only in test environments
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Configuration Summary */}
@@ -367,10 +459,10 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                       </div>
                       <pre className="text-xs font-mono text-gray-400 overflow-x-auto">
 {`{
-  "server_url": "${window.location.protocol}//${window.location.host}",
+  "server_url": "${serverUrl}",
   "sleep_interval": ${sleepInterval},
   "jitter_percent": ${jitterPercent},
-  "verify_ssl": true,
+  "verify_ssl": ${verifySsl},
   "auto_upload": true
 }`}
                       </pre>

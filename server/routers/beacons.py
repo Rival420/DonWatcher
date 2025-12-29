@@ -82,9 +82,10 @@ async def get_beacon_compiler_status():
 @router.get("/download")
 async def download_beacon(
     request: Request,
-    server_url: Optional[str] = Query(None, description="Pre-configure server URL (auto-detected if not provided)"),
+    server_url: Optional[str] = Query(None, description="Backend API URL (auto-detected if not provided)"),
     sleep: int = Query(60, description="Sleep interval in seconds"),
     jitter: int = Query(10, description="Jitter percentage"),
+    verify_ssl: bool = Query(True, description="Verify SSL certificates (disable for self-signed certs)"),
     format: str = Query("zip", description="Download format: 'zip' for source, 'exe' for compiled executable")
 ):
     """
@@ -97,10 +98,11 @@ async def download_beacon(
     The executable format uses server-side PyInstaller compilation with
     all configuration embedded. Just download and run!
     
-    **Auto-configured values:**
-    - Server URL (auto-detected from your connection)
+    **Configurable values:**
+    - Server URL (backend API, usually port 8080)
     - Sleep interval (default: 60 seconds)  
     - Jitter percentage (default: 10%)
+    - SSL verification (default: enabled)
     
     The ZIP package includes:
     - beacon.py - The main beacon agent
@@ -139,14 +141,14 @@ async def download_beacon(
                 )
             
             try:
-                logger.info(f"Compiling beacon executable for {server_url}")
+                logger.info(f"Compiling beacon executable for {server_url} (verify_ssl={verify_ssl})")
                 
                 # Compile the beacon with embedded configuration
                 binary_data, filename = await compile_beacon(
                     server_url=server_url,
                     sleep_interval=sleep,
                     jitter_percent=jitter,
-                    verify_ssl=True,
+                    verify_ssl=verify_ssl,
                     debug=False,
                     output_name="DonWatcher-Beacon",
                     target_os="windows"
@@ -163,7 +165,8 @@ async def download_beacon(
                         "X-Beacon-Config": json.dumps({
                             "server_url": server_url,
                             "sleep_interval": sleep,
-                            "jitter_percent": jitter
+                            "jitter_percent": jitter,
+                            "verify_ssl": verify_ssl
                         })
                     }
                 )
@@ -214,18 +217,19 @@ async def download_beacon(
                 if script_path.exists():
                     zip_file.write(script_path, f"DonWatcher-Beacon/{script}")
             
-            # Always create pre-configured beacon.json with auto-detected URL
+            # Always create pre-configured beacon.json with user settings
             config = {
                 "server_url": server_url,
                 "sleep_interval": sleep,
                 "jitter_percent": jitter,
-                "verify_ssl": True,
+                "verify_ssl": verify_ssl,
                 "debug": False,
                 "auto_upload": True
             }
             config_json = json.dumps(config, indent=2)
             zip_file.writestr("DonWatcher-Beacon/beacon.json", config_json)
             
+            ssl_note = "" if verify_ssl else " (SSL verify: OFF)"
             # Add a quick start script for Windows (with Python)
             start_bat = f"""@echo off
 echo ==========================================
@@ -234,7 +238,7 @@ echo ==========================================
 echo.
 echo Configuration:
 echo   Server: {server_url}
-echo   Sleep: {sleep}s, Jitter: {jitter}%
+echo   Sleep: {sleep}s, Jitter: {jitter}%{ssl_note}
 echo.
 echo Installing dependencies...
 pip install -r requirements.txt
