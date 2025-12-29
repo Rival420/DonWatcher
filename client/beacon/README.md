@@ -9,22 +9,40 @@ A lightweight C2-style agent for blue team security operations. Deploy on remote
 - **Built-in Scans**: Domain group scanning, vulnerability scanning
 - **Custom Commands**: Execute PowerShell or shell commands
 - **Auto-Upload**: Automatically uploads scan results to DonWatcher
-- **Standalone Executable**: Compile to .exe - no Python required on target
-- **Pre-configured**: Download includes server URL pre-configured
+- **🆕 Server-Side Compilation**: Download ready-to-run .exe directly from DonWatcher!
+- **Pre-configured**: All settings embedded - just download and run
 
 ## Quick Start
 
-### Option 1: Standalone Executable (Recommended for Windows)
+### Option 1: Download Compiled Executable (Recommended) ⭐
 
-**No Python required on target system!**
+**Zero configuration required!**
 
-1. Download the beacon package from DonWatcher
-2. Run `compile-to-exe.bat` to build the executable
-3. Copy `DonWatcher-Beacon.exe` to your target systems
-4. Run `DonWatcher-Beacon.exe` - it will automatically connect to your server
+1. Open DonWatcher → Beacons page
+2. Click **DOWNLOAD BEACON**
+3. Select **.EXE format** (compiled executable)
+4. Configure sleep interval and jitter if desired
+5. Click **DOWNLOAD EXE**
+6. Copy `DonWatcher-Beacon.exe` to your target systems
+7. Run it - it connects automatically with all settings embedded!
+
+The server compiles the beacon on-the-fly with PyInstaller, embedding your server URL and configuration directly into the executable.
+
+```powershell
+# Just run - no configuration needed!
+.\DonWatcher-Beacon.exe
+```
+
+### Option 2: Build Locally (If Server Compilation Unavailable)
+
+If the server doesn't have PyInstaller installed:
+
+1. Download the **ZIP** format from DonWatcher
+2. Run `compile-to-exe.bat` to build locally
+3. Copy the resulting `.exe` to target systems
 
 ```batch
-# On a Windows machine with Python, build the executable:
+# On a Windows machine with Python:
 compile-to-exe.bat
 
 # Copy to target system and run:

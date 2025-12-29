@@ -59,7 +59,8 @@ The DonWatcher Beacon System is a C2-like (Command & Control) agent management i
 **Templates & Download:**
 - `GET /api/beacons/templates/all` - List task templates
 - `POST /api/beacons/templates` - Create template
-- `GET /api/beacons/download` - Download beacon package
+- `GET /api/beacons/download` - Download beacon package (ZIP or compiled EXE)
+- `GET /api/beacons/compiler/status` - Check if server-side compilation is available
 
 ### 2. Beacon Agent (`client/beacon/beacon.py`)
 
@@ -148,9 +149,39 @@ psql $DATABASE_URL < migrations/migration_013_add_beacon_system.sql
 
 ### Beacon Deployment
 
+#### Option 1: Server-Side Compiled Executable (Recommended) ⭐
+
+The DonWatcher server can compile beacons on-the-fly using PyInstaller. This creates a standalone `.exe` with all configuration embedded - **no Python required on target systems!**
+
+**From UI:**
+1. Navigate to Beacons page
+2. Click **DOWNLOAD BEACON**
+3. Select **.EXE format**
+4. Configure sleep interval and jitter
+5. Click **DOWNLOAD EXE**
+6. Copy the executable to target systems and run!
+
+**From API:**
+```bash
+# Download compiled executable with embedded config
+curl -o DonWatcher-Beacon.exe \
+  "http://donwatcher:8080/api/beacons/download?format=exe&sleep=60&jitter=10"
+
+# Check if compilation is available
+curl "http://donwatcher:8080/api/beacons/compiler/status"
+```
+
+**Server Requirements:**
+- PyInstaller must be installed: `pip install pyinstaller`
+- First compilation may take 30-60 seconds (cached afterward)
+
+#### Option 2: Source Package (ZIP)
+
+If server-side compilation is unavailable:
+
 1. Download beacon package from DonWatcher UI or API:
 ```bash
-curl -o beacon.zip "http://donwatcher:8080/api/beacons/download?server_url=http://donwatcher:8080"
+curl -o beacon.zip "http://donwatcher:8080/api/beacons/download?format=zip"
 ```
 
 2. Extract and run on target system:
@@ -159,6 +190,12 @@ unzip beacon.zip
 cd DonWatcher-Beacon
 pip install -r requirements.txt
 python beacon.py --config beacon.json
+```
+
+3. Or compile locally:
+```bash
+./compile-to-exe.bat  # Windows
+./compile-to-binary.sh  # Linux/Mac
 ```
 
 ### Tasking Beacons
@@ -209,11 +246,13 @@ POST /api/beacons/result
 
 ## Future Enhancements
 
+- [x] **Server-side beacon compilation** - Download ready-to-run .exe files
 - [ ] Encrypted beacon communication
 - [ ] Beacon groups and targeting
-- [ ] Scheduled/recurring jobs
+- [x] Scheduled/recurring jobs (implemented in migration_014)
 - [ ] File upload/download capabilities
 - [ ] Interactive shell mode
 - [ ] Multi-stage job workflows
 - [ ] Beacon self-update mechanism
+- [ ] Cross-platform compilation (Linux binaries from Windows server)
 

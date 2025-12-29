@@ -3,6 +3,12 @@ Beacon Management Router - C2-like agent management API endpoints.
 
 This module provides the command and control infrastructure for managing
 remote beacon agents that execute security scanning jobs.
+
+Features:
+- Beacon registration and check-in
+- Job creation and result collection
+- **Server-side beacon compilation** - Downloads ready-to-run .exe files
+- Scheduled jobs and templates
 """
 
 import logging
@@ -14,9 +20,10 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, BackgroundTasks
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import text
+from pydantic import BaseModel
 
 from server.models import (
     Beacon, BeaconJob, BeaconJobCreate, BeaconJobResult,
@@ -25,14 +32,52 @@ from server.models import (
     JobStatus, JobType, BeaconStatus, BulkJobCreate
 )
 from server.storage_postgres import PostgresReportStorage, get_storage
+from server.beacon_compiler import (
+    compile_beacon, 
+    check_pyinstaller_available, 
+    get_compiler_status,
+    BeaconCompilerError
+)
 
 router = APIRouter(prefix="/api/beacons", tags=["beacons"])
 logger = logging.getLogger("beacons")
 
 
 # =============================================================================
-# Beacon Download Endpoint - Get the beacon agent package
+# Request/Response Models for Beacon Download
 # =============================================================================
+
+class BeaconDownloadConfig(BaseModel):
+    """Configuration for beacon download/compilation."""
+    server_url: Optional[str] = None  # Auto-detected if not provided
+    sleep_interval: int = 60
+    jitter_percent: int = 10
+    verify_ssl: bool = True
+    debug: bool = False
+    output_name: str = "DonWatcher-Beacon"
+
+
+class CompilerStatusResponse(BaseModel):
+    """Status of the beacon compiler service."""
+    status: str
+    pyinstaller_installed: bool
+    cache: Dict[str, Any]
+    supported_targets: List[str]
+
+
+# =============================================================================
+# Beacon Download Endpoints - Get beacon agent as source or compiled executable
+# =============================================================================
+
+@router.get("/compiler/status", response_model=CompilerStatusResponse)
+async def get_beacon_compiler_status():
+    """
+    Get the status of the server-side beacon compiler.
+    
+    Returns whether PyInstaller is available for on-the-fly compilation.
+    """
+    return get_compiler_status()
+
 
 @router.get("/download")
 async def download_beacon(
@@ -40,20 +85,26 @@ async def download_beacon(
     server_url: Optional[str] = Query(None, description="Pre-configure server URL (auto-detected if not provided)"),
     sleep: int = Query(60, description="Sleep interval in seconds"),
     jitter: int = Query(10, description="Jitter percentage"),
-    format: str = Query("zip", description="Download format: 'zip' for source, 'exe' for compiled (if available)")
+    format: str = Query("zip", description="Download format: 'zip' for source, 'exe' for compiled executable")
 ):
     """
     Download the beacon agent package.
     
-    The package is pre-configured with this server's URL automatically.
+    **Formats:**
+    - `zip` - Source code package with scripts (requires Python on target)
+    - `exe` - **Compiled executable** - Ready to run, no Python needed!
     
-    For Windows systems without Python, you can:
-    1. Download the source and build locally using build.py
-    2. Request format=exe if pre-compiled binaries are available
+    The executable format uses server-side PyInstaller compilation with
+    all configuration embedded. Just download and run!
     
-    The package includes:
+    **Auto-configured values:**
+    - Server URL (auto-detected from your connection)
+    - Sleep interval (default: 60 seconds)  
+    - Jitter percentage (default: 10%)
+    
+    The ZIP package includes:
     - beacon.py - The main beacon agent
-    - build.py - Script to compile to .exe
+    - build.py - Script to compile to .exe locally
     - beacon.json - Pre-configured with this server's URL
     - PowerShell scripts for DonWatcher scans
     """
@@ -67,7 +118,6 @@ async def download_beacon(
         
         # Auto-detect server URL from request if not provided
         if not server_url:
-            # Get the server URL from the request
             scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
             host = request.headers.get("X-Forwarded-Host", request.headers.get("Host", request.url.netloc))
             # Use port 8080 for backend API
@@ -76,23 +126,58 @@ async def download_beacon(
             server_url = f"{scheme}://{host}"
             logger.info(f"Auto-detected server URL: {server_url}")
         
-        # Check for pre-compiled binary
+        # =========================================================================
+        # COMPILED EXECUTABLE - Server-side PyInstaller build
+        # =========================================================================
         if format == "exe":
-            exe_path = beacon_dir / "dist" / "beacon.exe"
-            if exe_path.exists():
-                return StreamingResponse(
-                    open(exe_path, "rb"),
+            # Check if compiler is available
+            if not check_pyinstaller_available():
+                raise HTTPException(
+                    status_code=503, 
+                    detail="Server-side compilation not available. PyInstaller not installed on server. "
+                           "Download the 'zip' format and compile locally, or ask your admin to install PyInstaller."
+                )
+            
+            try:
+                logger.info(f"Compiling beacon executable for {server_url}")
+                
+                # Compile the beacon with embedded configuration
+                binary_data, filename = await compile_beacon(
+                    server_url=server_url,
+                    sleep_interval=sleep,
+                    jitter_percent=jitter,
+                    verify_ssl=True,
+                    debug=False,
+                    output_name="DonWatcher-Beacon",
+                    target_os="windows"
+                )
+                
+                logger.info(f"Beacon compiled successfully: {filename} ({len(binary_data)} bytes)")
+                
+                return Response(
+                    content=binary_data,
                     media_type="application/octet-stream",
                     headers={
-                        "Content-Disposition": "attachment; filename=DonWatcher-Beacon.exe"
+                        "Content-Disposition": f"attachment; filename={filename}",
+                        "Content-Length": str(len(binary_data)),
+                        "X-Beacon-Config": json.dumps({
+                            "server_url": server_url,
+                            "sleep_interval": sleep,
+                            "jitter_percent": jitter
+                        })
                     }
                 )
-            else:
+                
+            except BeaconCompilerError as e:
+                logger.error(f"Beacon compilation failed: {e}")
                 raise HTTPException(
-                    status_code=404, 
-                    detail="Pre-compiled binary not available. Download source and run: python build.py --server YOUR_SERVER"
+                    status_code=500, 
+                    detail=f"Compilation failed: {str(e)}"
                 )
         
+        # =========================================================================
+        # SOURCE PACKAGE - ZIP with scripts
+        # =========================================================================
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         

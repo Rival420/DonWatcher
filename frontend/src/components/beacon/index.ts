@@ -11,6 +11,7 @@ export { ActivityFeed } from './ActivityFeed'
 export { BeaconEmptyState } from './BeaconEmptyState'
 export { BeaconFilters } from './BeaconFilters'
 export { SchedulesPanel } from './SchedulesPanel'
+export { BeaconDownloadModal } from './BeaconDownloadModal'
 
 // Utility components
 export { BlinkingCursor, StatusBadge, StatusIcon } from './BeaconUtils'

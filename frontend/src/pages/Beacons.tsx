@@ -14,7 +14,8 @@ import {
   BeaconEmptyState,
   BeaconFilters,
   BlinkingCursor,
-  SchedulesPanel
+  SchedulesPanel,
+  BeaconDownloadModal
 } from '../components/beacon'
 import type { 
   Beacon, 
@@ -50,6 +51,9 @@ export function Beacons() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  
+  // Download modal state
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
 
   // Fetch all data
   const fetchData = useCallback(async () => {
@@ -185,13 +189,13 @@ export function Beacons() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href="/api/beacons/download"
+          <button
+            onClick={() => setShowDownloadModal(true)}
             className="flex items-center gap-2 px-4 py-2 rounded bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-colors font-mono text-sm"
           >
             <Download className="w-4 h-4" />
             DOWNLOAD BEACON
-          </a>
+          </button>
           <button
             onClick={fetchData}
             className="p-2 rounded bg-gray-800 text-gray-400 hover:text-white transition-colors"
@@ -383,6 +387,12 @@ export function Beacons() {
         job={viewingJob}
         isOpen={!!viewingJob}
         onClose={() => setViewingJob(null)}
+      />
+
+      {/* Beacon download modal */}
+      <BeaconDownloadModal
+        isOpen={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
       />
     </div>
   )
