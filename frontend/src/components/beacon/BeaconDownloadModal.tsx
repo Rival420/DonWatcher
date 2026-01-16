@@ -182,14 +182,14 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
           >
             <div 
-              className="w-full max-w-2xl bg-gray-900 border border-green-500/30 rounded-xl shadow-2xl shadow-green-500/10 overflow-hidden"
+              className="w-full max-w-2xl max-h-[90vh] bg-gray-900 border border-green-500/30 rounded-xl shadow-2xl shadow-green-500/10 flex flex-col my-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
-              <div className="relative px-6 py-4 border-b border-green-500/20 bg-gradient-to-r from-green-500/10 to-transparent">
+              {/* Header - Fixed at top */}
+              <div className="relative px-6 py-4 border-b border-green-500/20 bg-gradient-to-r from-green-500/10 to-transparent flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-green-500/20">
                     <Download className="w-5 h-5 text-green-400" />
@@ -211,8 +211,8 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                 </button>
               </div>
 
-              {/* Content */}
-              <div className="p-6 space-y-6">
+              {/* Content - Scrollable */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
@@ -605,8 +605,8 @@ go build -ldflags "-X main.ServerURL=${serverUrl}" -o beacon.exe`}
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/50 flex items-center justify-between">
+              {/* Footer - Always visible */}
+              <div className="px-6 py-4 border-t border-gray-800 bg-gray-900 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Shield className="w-4 h-4" />
                   <span>Configuration is embedded in the binary</span>
