@@ -304,6 +304,125 @@ echo
 echo "Done! You can now copy donwatcher-beacon to any Linux system."
 """
             zip_file.writestr("DonWatcher-Beacon/compile-to-binary.sh", compile_sh)
+            
+            # Add ONE-CLICK PowerShell build script (recommended for Windows users)
+            ssl_verify_flag = "" if verify_ssl else " --no-ssl-verify"
+            build_ps1 = f'''#Requires -Version 5.1
+<#
+.SYNOPSIS
+    One-click build script for DonWatcher Beacon
+    
+.DESCRIPTION
+    Automatically installs dependencies and builds a Windows executable
+    with your configuration embedded. No manual steps required!
+    
+.NOTES
+    Configuration is pre-embedded:
+    - Server: {server_url}
+    - Sleep: {sleep}s, Jitter: {jitter}%
+    - SSL Verify: {str(verify_ssl).lower()}
+#>
+
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+Write-Host ""
+Write-Host "============================================" -ForegroundColor Green
+Write-Host "  DonWatcher Beacon - One-Click Builder" -ForegroundColor Green  
+Write-Host "============================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Configuration:" -ForegroundColor Cyan
+Write-Host "  Server URL: {server_url}"
+Write-Host "  Sleep: {sleep}s, Jitter: {jitter}%"
+Write-Host "  SSL Verify: {str(verify_ssl).lower()}"
+Write-Host ""
+
+# Check for Python
+Write-Host "[*] Checking for Python..." -ForegroundColor Yellow
+$pythonCmd = $null
+
+# Try python first, then python3, then py
+foreach ($cmd in @("python", "python3", "py")) {{
+    try {{
+        $version = & $cmd --version 2>&1
+        if ($LASTEXITCODE -eq 0) {{
+            $pythonCmd = $cmd
+            Write-Host "[+] Found: $version" -ForegroundColor Green
+            break
+        }}
+    }} catch {{
+        # Continue to next
+    }}
+}}
+
+if (-not $pythonCmd) {{
+    Write-Host "[!] Python not found!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please install Python 3.8+ from https://python.org" -ForegroundColor Yellow
+    Write-Host "Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter to exit"
+    exit 1
+}}
+
+# Install dependencies
+Write-Host ""
+Write-Host "[*] Installing build dependencies..." -ForegroundColor Yellow
+& $pythonCmd -m pip install --quiet --upgrade pip 2>&1 | Out-Null
+& $pythonCmd -m pip install --quiet pyinstaller requests 2>&1
+
+if ($LASTEXITCODE -ne 0) {{
+    Write-Host "[!] Failed to install dependencies" -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+    exit 1
+}}
+Write-Host "[+] Dependencies installed" -ForegroundColor Green
+
+# Build the executable
+Write-Host ""
+Write-Host "[*] Building DonWatcher-Beacon.exe..." -ForegroundColor Yellow
+Write-Host "    This may take 1-2 minutes..." -ForegroundColor Gray
+
+$buildArgs = @(
+    "build.py",
+    "--server", "{server_url}",
+    "--sleep", "{sleep}",
+    "--jitter", "{jitter}",
+    "--output", "DonWatcher-Beacon.exe"
+)
+
+& $pythonCmd $buildArgs
+
+if ($LASTEXITCODE -ne 0) {{
+    Write-Host ""
+    Write-Host "[!] Build failed!" -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+    exit 1
+}}
+
+# Verify output
+$exePath = Join-Path $PSScriptRoot "DonWatcher-Beacon.exe"
+if (Test-Path $exePath) {{
+    $size = (Get-Item $exePath).Length / 1MB
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Green
+    Write-Host "  BUILD SUCCESSFUL!" -ForegroundColor Green
+    Write-Host "============================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Output: DonWatcher-Beacon.exe ($([math]::Round($size, 1)) MB)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Next steps:" -ForegroundColor Yellow
+    Write-Host "  1. Copy DonWatcher-Beacon.exe to your target systems"
+    Write-Host "  2. Run it - it will automatically connect to:"
+    Write-Host "     {server_url}" -ForegroundColor Green
+    Write-Host ""
+}} else {{
+    Write-Host "[!] Build completed but executable not found" -ForegroundColor Red
+}}
+
+Read-Host "Press Enter to exit"
+'''
+            zip_file.writestr("DonWatcher-Beacon/build-beacon.ps1", build_ps1)
         
         # Prepare response
         zip_buffer.seek(0)

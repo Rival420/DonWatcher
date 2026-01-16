@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -293,9 +294,18 @@ def check_pyinstaller_available() -> bool:
         return False
 
 
+def get_server_platform() -> str:
+    """Get the platform the server is running on."""
+    system = platform.system().lower()
+    if system == "darwin":
+        return "macos"
+    return system  # "windows" or "linux"
+
+
 def get_compiler_status() -> Dict[str, Any]:
     """Get the status of the beacon compiler service."""
     pyinstaller_available = check_pyinstaller_available()
+    server_platform = get_server_platform()
     
     with _cache_lock:
         cache_info = {
@@ -304,11 +314,20 @@ def get_compiler_status() -> Dict[str, Any]:
             "cache_ttl_hours": CACHE_TTL.total_seconds() / 3600
         }
     
+    # PyInstaller can only compile for the current platform
+    # Cross-compilation is NOT supported
+    if pyinstaller_available:
+        supported_targets = [server_platform]
+    else:
+        supported_targets = []
+    
     return {
         "status": "ready" if pyinstaller_available else "unavailable",
         "pyinstaller_installed": pyinstaller_available,
+        "server_platform": server_platform,
+        "can_compile_windows": server_platform == "windows",
         "cache": cache_info,
-        "supported_targets": ["windows", "linux", "macos"] if pyinstaller_available else []
+        "supported_targets": supported_targets
     }
 
 
