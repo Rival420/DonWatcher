@@ -210,6 +210,11 @@ async def download_beacon(
                 if go_mod.exists():
                     zip_file.write(go_mod, "DonWatcher-Beacon/go.mod")
                 
+                # go.sum - Go module checksums (required for builds!)
+                go_sum = beacon_go_dir / "go.sum"
+                if go_sum.exists():
+                    zip_file.write(go_sum, "DonWatcher-Beacon/go.sum")
+                
                 # README.md
                 readme = beacon_go_dir / "README.md"
                 if readme.exists():
@@ -260,6 +265,9 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+echo [*] Resolving dependencies...
+go mod tidy
+
 echo [*] Downloading dependencies...
 go mod download
 
@@ -298,6 +306,9 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
+echo "[*] Resolving dependencies..."
+go mod tidy
+
 echo "[*] Downloading dependencies..."
 go mod download
 
@@ -333,6 +344,9 @@ if ! command -v go &> /dev/null; then
     echo "[!] Go not found. Please install Go from https://go.dev/dl/"
     exit 1
 fi
+
+echo "[*] Resolving dependencies..."
+go mod tidy
 
 echo "[*] Downloading dependencies..."
 go mod download
@@ -406,8 +420,14 @@ try {{
     exit 1
 }}
 
-# Download dependencies
+# Resolve and download dependencies
 Write-Host ""
+Write-Host "[*] Resolving dependencies..." -ForegroundColor Yellow
+& go mod tidy
+if ($LASTEXITCODE -ne 0) {{
+    Write-Host "[!] Warning: go mod tidy failed, trying download anyway..." -ForegroundColor Yellow
+}}
+
 Write-Host "[*] Downloading dependencies..." -ForegroundColor Yellow
 & go mod download
 if ($LASTEXITCODE -ne 0) {{
