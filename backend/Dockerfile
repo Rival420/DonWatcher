@@ -37,8 +37,9 @@ COPY migrations/ ./migrations/
 COPY client/beacon-go/ ./client/beacon-go/
 
 # Pre-download Go dependencies for faster compilation
+# Run go mod tidy to generate go.sum, then download dependencies
 WORKDIR /app/client/beacon-go
-RUN go mod download
+RUN go mod tidy && go mod download
 
 WORKDIR /app
 
