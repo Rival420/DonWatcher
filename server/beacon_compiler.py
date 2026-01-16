@@ -224,7 +224,20 @@ def _compile_beacon_go(
         logger.info(f"Running: GOOS={target_os} GOARCH={target_arch} go build ...")
         
         try:
-            # First, download dependencies
+            # First, run go mod tidy to generate/update go.sum
+            tidy_result = subprocess.run(
+                ["go", "mod", "tidy"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(beacon_go_dir),
+                env=env
+            )
+            
+            if tidy_result.returncode != 0:
+                logger.warning(f"go mod tidy warning: {tidy_result.stderr}")
+            
+            # Download dependencies
             dep_result = subprocess.run(
                 ["go", "mod", "download"],
                 capture_output=True,
