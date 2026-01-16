@@ -261,7 +261,7 @@ export function Beacons() {
         )}>
           <AnimatePresence mode="wait">
             {filteredBeacons.length === 0 ? (
-              <BeaconEmptyState />
+              <BeaconEmptyState onDownloadClick={() => setShowDownloadModal(true)} />
             ) : viewMode === 'grid' ? (
               <motion.div 
                 key="grid"

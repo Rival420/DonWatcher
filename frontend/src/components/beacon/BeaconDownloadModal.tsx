@@ -112,14 +112,25 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
 
       // Download the file
       const blob = await response.blob()
+      
+      // Verify blob has content
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty')
+      }
+      
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = filename
+      a.style.display = 'none'
       document.body.appendChild(a)
       a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      
+      // Delay cleanup to ensure download starts
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }, 100)
 
       setDownloadSuccess(true)
       

@@ -11,6 +11,7 @@ Features:
 - Scheduled jobs and templates
 """
 
+import json
 import logging
 import os
 import zipfile
@@ -322,8 +323,6 @@ echo "Done! You can now copy donwatcher-beacon to any Linux system."
         raise HTTPException(status_code=500, detail=f"Failed to create package: {e}")
 
 
-# Need json for config file
-import json
 
 
 # =============================================================================

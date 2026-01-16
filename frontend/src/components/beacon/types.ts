@@ -74,5 +74,6 @@ export interface BeaconEmptyStateProps {
   message?: string
   description?: string
   showDownloadButton?: boolean
+  onDownloadClick?: () => void
 }
 

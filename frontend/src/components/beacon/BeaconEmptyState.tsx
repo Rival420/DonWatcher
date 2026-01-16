@@ -6,7 +6,8 @@ import type { BeaconEmptyStateProps } from './types'
 export function BeaconEmptyState({ 
   message = 'NO BEACONS DETECTED',
   description = 'Deploy the beacon agent on target systems to get started',
-  showDownloadButton = true
+  showDownloadButton = true,
+  onDownloadClick
 }: BeaconEmptyStateProps) {
   return (
     <motion.div
@@ -31,8 +32,8 @@ export function BeaconEmptyState({
       </p>
       
       {showDownloadButton && (
-        <a
-          href="/api/beacons/download"
+        <button
+          onClick={onDownloadClick}
           className={clsx(
             'inline-flex items-center gap-2 px-6 py-3 rounded-lg',
             'bg-green-500/20 text-green-400 border border-green-500/30',
@@ -41,7 +42,7 @@ export function BeaconEmptyState({
         >
           <Download className="w-4 h-4" />
           DOWNLOAD BEACON AGENT
-        </a>
+        </button>
       )}
       
       <div className="mt-8 pt-8 border-t border-gray-800 max-w-2xl mx-auto">
