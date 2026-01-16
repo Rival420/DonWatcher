@@ -3,10 +3,10 @@ import { Radio, Moon, Skull, X, Clock, CheckCircle, XCircle, AlertTriangle } fro
 import { clsx } from 'clsx'
 import type { BeaconStatus, JobStatus } from '../../types'
 
-// Status color mapping
+// Status color mapping - using emerald/amber palette
 export const STATUS_COLORS = {
-  active: 'text-green-400 bg-green-400/10 border-green-400/30',
-  dormant: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
+  active: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30',
+  dormant: 'text-amber-400 bg-amber-400/10 border-amber-400/30',
   dead: 'text-red-400 bg-red-400/10 border-red-400/30',
   killed: 'text-gray-500 bg-gray-500/10 border-gray-500/30'
 } as const
@@ -14,8 +14,8 @@ export const STATUS_COLORS = {
 export const JOB_STATUS_COLORS = {
   pending: 'text-blue-400 bg-blue-400/10',
   sent: 'text-cyan-400 bg-cyan-400/10',
-  running: 'text-yellow-400 bg-yellow-400/10 animate-pulse',
-  completed: 'text-green-400 bg-green-400/10',
+  running: 'text-amber-400 bg-amber-400/10 animate-pulse',
+  completed: 'text-emerald-400 bg-emerald-400/10',
   failed: 'text-red-400 bg-red-400/10',
   cancelled: 'text-gray-400 bg-gray-400/10'
 } as const
@@ -42,7 +42,7 @@ export function BlinkingCursor({ className }: { className?: string }) {
     <motion.span
       animate={{ opacity: [1, 0] }}
       transition={{ duration: 0.8, repeat: Infinity }}
-      className={clsx("inline-block w-2 h-4 bg-green-400 ml-1", className)}
+      className={clsx("inline-block w-2 h-5 bg-emerald-400 ml-1 rounded-sm", className)}
     />
   )
 }
@@ -61,14 +61,14 @@ export function StatusBadge({
     : JOB_STATUS_COLORS[status as JobStatus]
   
   const sizeClasses = {
-    xs: 'px-1.5 py-0.5 text-[10px]',
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-3 py-1 text-sm'
+    xs: 'px-2 py-0.5 text-[10px]',
+    sm: 'px-2.5 py-1 text-xs',
+    md: 'px-3 py-1.5 text-sm'
   }
   
   return (
     <span className={clsx(
-      'rounded font-mono uppercase border',
+      'rounded-lg font-mono uppercase border font-medium tracking-wide',
       colors,
       sizeClasses[size]
     )}>
@@ -90,8 +90,8 @@ export function StatusIcon({
   const Icon = STATUS_ICONS[status] || Radio
   
   const colorClass = {
-    active: 'text-green-400',
-    dormant: 'text-yellow-400',
+    active: 'text-emerald-400',
+    dormant: 'text-amber-400',
     dead: 'text-red-400',
     killed: 'text-gray-500'
   }[status]

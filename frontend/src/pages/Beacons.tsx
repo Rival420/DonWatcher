@@ -161,14 +161,24 @@ export function Beacons() {
   // Loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full min-h-[60vh]">
         <div className="text-center">
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-            className="w-12 h-12 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-4"
-          />
-          <p className="text-green-400 font-mono">INITIALIZING C2...</p>
+            className="relative w-16 h-16 mx-auto mb-6"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              className="absolute inset-0 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full"
+            />
+            <motion.div
+              animate={{ rotate: -360 }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+              className="absolute inset-2 border-2 border-cyan-500/20 border-b-cyan-500 rounded-full"
+            />
+            <Radio className="absolute inset-0 m-auto w-6 h-6 text-emerald-400" />
+          </motion.div>
+          <p className="text-emerald-400 font-mono text-sm tracking-widest">INITIALIZING C2...</p>
         </div>
       </div>
     )
@@ -179,30 +189,39 @@ export function Beacons() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold font-mono text-green-400 flex items-center gap-3">
-            <Radio className="w-8 h-8" />
-            BEACONS
+          <h1 className="text-3xl font-bold font-mono text-white flex items-center gap-4">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/10 border border-emerald-500/30">
+              <Radio className="w-7 h-7 text-emerald-400" />
+            </div>
+            <span className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              BEACONS
+            </span>
             <BlinkingCursor />
           </h1>
-          <p className="text-gray-500 mt-1 font-mono text-sm">
-            Command & Control Interface // {beacons.length} registered agents
+          <p className="text-gray-500 mt-2 font-mono text-sm ml-16">
+            Command & Control Interface — {beacons.length} registered agent{beacons.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setShowDownloadModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-colors font-mono text-sm"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-green-500/20 text-emerald-400 border border-emerald-500/30 hover:from-emerald-500/30 hover:to-green-500/30 transition-all duration-200 font-mono text-sm shadow-lg shadow-emerald-500/10"
           >
             <Download className="w-4 h-4" />
             DOWNLOAD BEACON
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05, rotate: 180 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.3 }}
             onClick={fetchData}
-            className="p-2 rounded bg-gray-800 text-gray-400 hover:text-white transition-colors"
+            className="p-2.5 rounded-xl bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors border border-gray-700/50"
             title="Refresh"
           >
             <RefreshCw className="w-5 h-5" />
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -211,9 +230,12 @@ export function Beacons() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm font-mono"
+          className="bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-4 text-red-400 text-sm font-mono flex items-center gap-3"
         >
-          ⚠️ {error}
+          <div className="p-1.5 rounded-lg bg-red-500/20">
+            <Radio className="w-4 h-4" />
+          </div>
+          {error}
         </motion.div>
       )}
 
@@ -229,12 +251,14 @@ export function Beacons() {
           onSearchChange={setSearchQuery}
         />
         
-        <div className="flex items-center gap-1 bg-gray-900/30 p-1 rounded">
+        <div className="flex items-center gap-1 p-1.5 rounded-xl bg-gray-900/40 backdrop-blur-sm border border-gray-800/50">
           <button
             onClick={() => setViewMode('grid')}
             className={clsx(
-              'p-2 rounded transition-colors',
-              viewMode === 'grid' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-white'
+              'p-2 rounded-lg transition-all duration-200',
+              viewMode === 'grid' 
+                ? 'bg-gray-700/80 text-white shadow-md' 
+                : 'text-gray-500 hover:text-white hover:bg-gray-800/50'
             )}
             title="Grid view"
           >
@@ -243,8 +267,10 @@ export function Beacons() {
           <button
             onClick={() => setViewMode('list')}
             className={clsx(
-              'p-2 rounded transition-colors',
-              viewMode === 'list' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-white'
+              'p-2 rounded-lg transition-all duration-200',
+              viewMode === 'list' 
+                ? 'bg-gray-700/80 text-white shadow-md' 
+                : 'text-gray-500 hover:text-white hover:bg-gray-800/50'
             )}
             title="List view"
           >
@@ -257,6 +283,7 @@ export function Beacons() {
       <div className="grid grid-cols-12 gap-6">
         {/* Beacons list */}
         <div className={clsx(
+          'transition-all duration-300',
           selectedBeacon ? 'col-span-5' : 'col-span-8'
         )}>
           <AnimatePresence mode="wait">
@@ -268,17 +295,26 @@ export function Beacons() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="grid grid-cols-2 gap-4"
+                className={clsx(
+                  'grid gap-4',
+                  selectedBeacon ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-2 xl:grid-cols-3'
+                )}
               >
-                {filteredBeacons.map(beacon => (
-                  <BeaconCard
+                {filteredBeacons.map((beacon, index) => (
+                  <motion.div
                     key={beacon.id}
-                    beacon={beacon}
-                    isSelected={selectedBeacon?.id === beacon.id}
-                    onSelect={() => setSelectedBeacon(beacon)}
-                    onTask={() => setTaskingBeacon(beacon)}
-                    onKill={() => handleKillBeacon(beacon)}
-                  />
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <BeaconCard
+                      beacon={beacon}
+                      isSelected={selectedBeacon?.id === beacon.id}
+                      onSelect={() => setSelectedBeacon(beacon)}
+                      onTask={() => setTaskingBeacon(beacon)}
+                      onKill={() => handleKillBeacon(beacon)}
+                    />
+                  </motion.div>
                 ))}
               </motion.div>
             ) : (
@@ -287,17 +323,23 @@ export function Beacons() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden"
+                className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 backdrop-blur-sm border border-gray-800/50 rounded-xl overflow-hidden"
               >
-                {filteredBeacons.map(beacon => (
-                  <BeaconCard
+                {filteredBeacons.map((beacon, index) => (
+                  <motion.div
                     key={beacon.id}
-                    beacon={beacon}
-                    isSelected={selectedBeacon?.id === beacon.id}
-                    onSelect={() => setSelectedBeacon(beacon)}
-                    onTask={() => setTaskingBeacon(beacon)}
-                    compact
-                  />
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: index * 0.03 }}
+                  >
+                    <BeaconCard
+                      beacon={beacon}
+                      isSelected={selectedBeacon?.id === beacon.id}
+                      onSelect={() => setSelectedBeacon(beacon)}
+                      onTask={() => setTaskingBeacon(beacon)}
+                      compact
+                    />
+                  </motion.div>
                 ))}
               </motion.div>
             )}

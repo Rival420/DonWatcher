@@ -1,14 +1,17 @@
 """
-Beacon Compiler Service
+Beacon Compiler Service v2.0 (Go Edition)
 
-Server-side compilation of beacon agents into standalone executables
-with embedded configuration. No Python installation required on target.
+Server-side cross-compilation of beacon agents into standalone executables
+with embedded configuration. Uses Go for true cross-compilation!
 
-This service uses PyInstaller to create Windows .exe files (or Linux/Mac binaries)
-that can be downloaded ready-to-run with all configuration baked in.
+Key Features:
+- Cross-compile Windows EXE from Linux server ✓
+- No PyInstaller needed - uses Go's native cross-compilation
+- Configuration embedded via -ldflags at build time
+- kardianos/service support for Windows service installation
 
 Requirements:
-    pip install pyinstaller requests
+    Go 1.21+ installed on server
 
 Author: DonWatcher Security Team
 """
@@ -17,10 +20,7 @@ import hashlib
 import json
 import logging
 import os
-import platform
-import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 from datetime import datetime, timedelta
@@ -37,8 +37,8 @@ _compile_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="beacon
 # Simple in-memory cache for compiled beacons
 _beacon_cache: Dict[str, Dict[str, Any]] = {}
 _cache_lock = threading.Lock()
-CACHE_TTL = timedelta(hours=1)
-MAX_CACHE_SIZE = 10
+CACHE_TTL = timedelta(hours=2)
+MAX_CACHE_SIZE = 20
 
 
 class BeaconCompilerError(Exception):
@@ -46,15 +46,15 @@ class BeaconCompilerError(Exception):
     pass
 
 
-def _get_cache_key(config: Dict[str, Any]) -> str:
-    """Generate a cache key from configuration."""
-    # Include all config values that affect the binary
+def _get_cache_key(config: Dict[str, Any], target_os: str) -> str:
+    """Generate a cache key from configuration and target OS."""
     key_data = json.dumps({
         "server_url": config.get("server_url", ""),
         "sleep_interval": config.get("sleep_interval", 60),
         "jitter_percent": config.get("jitter_percent", 10),
         "verify_ssl": config.get("verify_ssl", True),
         "debug": config.get("debug", False),
+        "target_os": target_os,
     }, sort_keys=True)
     return hashlib.sha256(key_data.encode()).hexdigest()[:16]
 
@@ -68,7 +68,6 @@ def _check_cache(cache_key: str) -> Optional[bytes]:
                 logger.info(f"Cache hit for beacon {cache_key}")
                 return entry["binary"]
             else:
-                # Expired, remove from cache
                 del _beacon_cache[cache_key]
     return None
 
@@ -76,7 +75,6 @@ def _check_cache(cache_key: str) -> Optional[bytes]:
 def _add_to_cache(cache_key: str, binary: bytes):
     """Add a compiled beacon to cache."""
     with _cache_lock:
-        # Clean up old entries if cache is full
         if len(_beacon_cache) >= MAX_CACHE_SIZE:
             oldest_key = min(_beacon_cache.keys(), 
                            key=lambda k: _beacon_cache[k]["created_at"])
@@ -87,21 +85,193 @@ def _add_to_cache(cache_key: str, binary: bytes):
             "created_at": datetime.now(),
             "expires_at": datetime.now() + CACHE_TTL
         }
-        logger.info(f"Added beacon {cache_key} to cache")
+        logger.info(f"Added beacon {cache_key} to cache ({len(binary)} bytes)")
 
 
-def _embed_config_in_source(source_code: str, config: Dict[str, Any]) -> str:
-    """Embed configuration into the beacon source code."""
-    config_json = json.dumps(config)
-    # Replace the EMBEDDED_CONFIG placeholder
-    pattern = 'EMBEDDED_CONFIG = None  # <<<EMBED_CONFIG_HERE>>>'
-    replacement = f'EMBEDDED_CONFIG = {repr(config_json)}  # Embedded at build time'
+def check_go_available() -> bool:
+    """Check if Go compiler is installed and available."""
+    try:
+        result = subprocess.run(
+            ["go", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            logger.debug(f"Go available: {result.stdout.strip()}")
+            return True
+        return False
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
+def get_go_version() -> Optional[str]:
+    """Get the installed Go version."""
+    try:
+        result = subprocess.run(
+            ["go", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # Parse "go version go1.21.0 linux/amd64"
+            parts = result.stdout.strip().split()
+            if len(parts) >= 3:
+                return parts[2]  # "go1.21.0"
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def _compile_beacon_go(
+    server_url: str,
+    sleep_interval: int = 60,
+    jitter_percent: int = 10,
+    verify_ssl: bool = True,
+    debug: bool = False,
+    output_name: str = "DonWatcher-Beacon",
+    target_os: str = "windows",
+    target_arch: str = "amd64"
+) -> Tuple[bytes, str]:
+    """
+    Compile the Go beacon with embedded configuration using cross-compilation.
     
-    if pattern not in source_code:
-        logger.warning("Config placeholder not found in beacon source")
-        return source_code
+    This is the magic of Go - we can compile Windows executables from Linux!
     
-    return source_code.replace(pattern, replacement)
+    Args:
+        server_url: The DonWatcher server URL to embed
+        sleep_interval: Beacon sleep interval in seconds  
+        jitter_percent: Jitter percentage
+        verify_ssl: Whether to verify SSL certificates
+        debug: Enable debug mode
+        output_name: Name for the output executable
+        target_os: Target OS (windows, linux, darwin)
+        target_arch: Target architecture (amd64, arm64)
+    
+    Returns:
+        Tuple of (binary_data, filename)
+    """
+    config = {
+        "server_url": server_url,
+        "sleep_interval": sleep_interval,
+        "jitter_percent": jitter_percent,
+        "verify_ssl": verify_ssl,
+        "debug": debug,
+    }
+    
+    # Check cache
+    cache_key = _get_cache_key(config, f"{target_os}_{target_arch}")
+    cached = _check_cache(cache_key)
+    if cached:
+        extension = ".exe" if target_os == "windows" else ""
+        return cached, f"{output_name}{extension}"
+    
+    # Find Go beacon source
+    project_root = Path(__file__).parent.parent
+    beacon_go_dir = project_root / "client" / "beacon-go"
+    
+    if not beacon_go_dir.exists():
+        raise BeaconCompilerError(f"Go beacon source not found at {beacon_go_dir}")
+    
+    main_go = beacon_go_dir / "main.go"
+    if not main_go.exists():
+        raise BeaconCompilerError(f"main.go not found at {main_go}")
+    
+    logger.info(f"Cross-compiling Go beacon for {target_os}/{target_arch}")
+    logger.info(f"Config: server={server_url}, sleep={sleep_interval}s, jitter={jitter_percent}%")
+    
+    # Create temp directory for build output
+    with tempfile.TemporaryDirectory(prefix="beacon_go_build_") as temp_dir:
+        # Determine output filename
+        extension = ".exe" if target_os == "windows" else ""
+        output_filename = f"{output_name}{extension}"
+        output_path = Path(temp_dir) / output_filename
+        
+        # Build ldflags for embedding configuration
+        ldflags = [
+            f"-X main.ServerURL={server_url}",
+            f"-X main.SleepInterval={sleep_interval}",
+            f"-X main.JitterPercent={jitter_percent}",
+            f"-X main.VerifySSL={'true' if verify_ssl else 'false'}",
+            f"-X main.DebugMode={'true' if debug else 'false'}",
+            f"-X main.Version=2.0.0",
+        ]
+        
+        # Add Windows-specific flags to hide console and strip symbols
+        if target_os == "windows":
+            ldflags.append("-H=windowsgui")  # Hide console window
+        
+        # Strip debug symbols for smaller binary
+        ldflags.extend(["-s", "-w"])
+        
+        ldflags_str = " ".join(ldflags)
+        
+        # Build environment for cross-compilation
+        env = os.environ.copy()
+        env["GOOS"] = target_os
+        env["GOARCH"] = target_arch
+        env["CGO_ENABLED"] = "0"  # Disable CGO for static binary
+        
+        # Go build command
+        cmd = [
+            "go", "build",
+            "-ldflags", ldflags_str,
+            "-o", str(output_path),
+            "."
+        ]
+        
+        logger.info(f"Running: GOOS={target_os} GOARCH={target_arch} go build ...")
+        
+        try:
+            # First, download dependencies
+            dep_result = subprocess.run(
+                ["go", "mod", "download"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(beacon_go_dir),
+                env=env
+            )
+            
+            if dep_result.returncode != 0:
+                logger.warning(f"go mod download warning: {dep_result.stderr}")
+            
+            # Build the binary
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,  # 3 minute timeout
+                cwd=str(beacon_go_dir),
+                env=env
+            )
+            
+            if result.returncode != 0:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                logger.error(f"Go build failed: {error_msg}")
+                raise BeaconCompilerError(f"Compilation failed: {error_msg[:500]}")
+            
+            # Check output exists
+            if not output_path.exists():
+                raise BeaconCompilerError("Compiled binary not found after build")
+            
+            # Read the binary
+            with open(output_path, "rb") as f:
+                binary_data = f.read()
+            
+            size_mb = len(binary_data) / (1024 * 1024)
+            logger.info(f"Successfully compiled Go beacon: {output_filename} ({size_mb:.1f} MB)")
+            
+            # Cache it
+            _add_to_cache(cache_key, binary_data)
+            
+            return binary_data, output_filename
+            
+        except subprocess.TimeoutExpired:
+            raise BeaconCompilerError("Compilation timed out after 3 minutes")
+        except FileNotFoundError:
+            raise BeaconCompilerError("Go compiler not found. Please install Go 1.21+")
 
 
 def _compile_beacon_sync(
@@ -115,128 +285,21 @@ def _compile_beacon_sync(
 ) -> Tuple[bytes, str]:
     """
     Synchronously compile the beacon into an executable.
+    Uses Go cross-compilation for proper Windows EXE from Linux!
     
     Returns:
         Tuple of (binary_data, filename)
     """
-    # Build config
-    config = {
-        "server_url": server_url,
-        "sleep_interval": sleep_interval,
-        "jitter_percent": jitter_percent,
-        "verify_ssl": verify_ssl,
-        "debug": debug,
-        "auto_upload": True
-    }
-    
-    # Check cache first
-    cache_key = _get_cache_key(config)
-    cached = _check_cache(cache_key)
-    if cached:
-        extension = ".exe" if target_os == "windows" else ""
-        return cached, f"{output_name}{extension}"
-    
-    # Find beacon source
-    project_root = Path(__file__).parent.parent
-    beacon_source_path = project_root / "client" / "beacon" / "beacon.py"
-    
-    if not beacon_source_path.exists():
-        raise BeaconCompilerError(f"Beacon source not found at {beacon_source_path}")
-    
-    logger.info(f"Compiling beacon for {server_url} (sleep={sleep_interval}s, jitter={jitter_percent}%)")
-    
-    # Read and modify source
-    with open(beacon_source_path, "r", encoding="utf-8") as f:
-        source_code = f.read()
-    
-    modified_source = _embed_config_in_source(source_code, config)
-    
-    # Create temp directory for build
-    with tempfile.TemporaryDirectory(prefix="beacon_build_") as temp_dir:
-        temp_beacon = Path(temp_dir) / "beacon.py"
-        dist_dir = Path(temp_dir) / "dist"
-        build_dir = Path(temp_dir) / "build"
-        
-        # Write modified source
-        with open(temp_beacon, "w", encoding="utf-8") as f:
-            f.write(modified_source)
-        
-        # Determine output extension
-        if target_os == "windows":
-            extension = ".exe"
-        else:
-            extension = ""
-        
-        output_filename = f"{output_name}{extension}"
-        
-        # Build PyInstaller command
-        cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--clean",
-            "--noconfirm",
-            "--onefile",
-            "--name", output_name,
-            "--distpath", str(dist_dir),
-            "--workpath", str(build_dir),
-            "--specpath", temp_dir,
-        ]
-        
-        # Hide console window on Windows
-        if target_os == "windows":
-            cmd.append("--noconsole")
-        
-        # Add hidden imports
-        cmd.extend([
-            "--hidden-import", "requests",
-            "--hidden-import", "urllib.request",
-            "--hidden-import", "json",
-            "--hidden-import", "socket",
-            "--hidden-import", "platform",
-            "--hidden-import", "subprocess",
-        ])
-        
-        # Add source file
-        cmd.append(str(temp_beacon))
-        
-        logger.info(f"Running PyInstaller: {' '.join(cmd[:5])}...")
-        
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout
-                cwd=temp_dir
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"PyInstaller failed: {result.stderr}")
-                raise BeaconCompilerError(f"Compilation failed: {result.stderr[:500]}")
-            
-            # Find the output binary
-            output_path = dist_dir / output_filename
-            
-            if not output_path.exists():
-                # Try without extension
-                output_path = dist_dir / output_name
-                if not output_path.exists():
-                    raise BeaconCompilerError("Compiled binary not found in output directory")
-            
-            # Read the binary
-            with open(output_path, "rb") as f:
-                binary_data = f.read()
-            
-            logger.info(f"Successfully compiled beacon: {len(binary_data)} bytes")
-            
-            # Add to cache
-            _add_to_cache(cache_key, binary_data)
-            
-            return binary_data, output_filename
-            
-        except subprocess.TimeoutExpired:
-            raise BeaconCompilerError("Compilation timed out after 5 minutes")
-        except FileNotFoundError:
-            raise BeaconCompilerError("PyInstaller not installed. Run: pip install pyinstaller")
+    return _compile_beacon_go(
+        server_url=server_url,
+        sleep_interval=sleep_interval,
+        jitter_percent=jitter_percent,
+        verify_ssl=verify_ssl,
+        debug=debug,
+        output_name=output_name,
+        target_os=target_os,
+        target_arch="amd64"  # Default to 64-bit
+    )
 
 
 async def compile_beacon(
@@ -251,6 +314,8 @@ async def compile_beacon(
     """
     Asynchronously compile the beacon into an executable.
     
+    Uses Go cross-compilation - can build Windows EXE from Linux!
+    
     Args:
         server_url: The DonWatcher server URL to embed
         sleep_interval: Beacon sleep interval in seconds
@@ -258,7 +323,7 @@ async def compile_beacon(
         verify_ssl: Whether to verify SSL certificates
         debug: Enable debug mode in beacon
         output_name: Name for the output executable (without extension)
-        target_os: Target OS ("windows", "linux", "macos")
+        target_os: Target OS ("windows", "linux", "darwin")
     
     Returns:
         Tuple of (binary_data, filename)
@@ -280,32 +345,15 @@ async def compile_beacon(
     )
 
 
-def check_pyinstaller_available() -> bool:
-    """Check if PyInstaller is installed and available."""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "PyInstaller", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
-def get_server_platform() -> str:
-    """Get the platform the server is running on."""
-    system = platform.system().lower()
-    if system == "darwin":
-        return "macos"
-    return system  # "windows" or "linux"
+def check_compiler_available() -> bool:
+    """Check if the beacon compiler is available (Go installed)."""
+    return check_go_available()
 
 
 def get_compiler_status() -> Dict[str, Any]:
     """Get the status of the beacon compiler service."""
-    pyinstaller_available = check_pyinstaller_available()
-    server_platform = get_server_platform()
+    go_available = check_go_available()
+    go_version = get_go_version() if go_available else None
     
     with _cache_lock:
         cache_info = {
@@ -314,18 +362,16 @@ def get_compiler_status() -> Dict[str, Any]:
             "cache_ttl_hours": CACHE_TTL.total_seconds() / 3600
         }
     
-    # PyInstaller can only compile for the current platform
-    # Cross-compilation is NOT supported
-    if pyinstaller_available:
-        supported_targets = [server_platform]
-    else:
-        supported_targets = []
+    # Go can cross-compile to ANY platform!
+    supported_targets = ["windows", "linux", "darwin"] if go_available else []
     
     return {
-        "status": "ready" if pyinstaller_available else "unavailable",
-        "pyinstaller_installed": pyinstaller_available,
-        "server_platform": server_platform,
-        "can_compile_windows": server_platform == "windows",
+        "status": "ready" if go_available else "unavailable",
+        "compiler": "go",
+        "compiler_version": go_version,
+        "go_installed": go_available,
+        "can_compile_windows": go_available,
+        "can_cross_compile": go_available,
         "cache": cache_info,
         "supported_targets": supported_targets
     }
@@ -344,19 +390,24 @@ def clear_cache():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
-    print("Beacon Compiler Status:")
+    print("Beacon Compiler Status (Go Edition):")
     status = get_compiler_status()
     print(json.dumps(status, indent=2))
     
-    if status["pyinstaller_installed"]:
-        print("\nTest compilation...")
+    if status["go_installed"]:
+        print("\nTest cross-compilation (Linux -> Windows)...")
         try:
             binary, filename = _compile_beacon_sync(
                 server_url="http://localhost:8080",
                 sleep_interval=60,
-                jitter_percent=10
+                jitter_percent=10,
+                target_os="windows"
             )
-            print(f"Success! Created {filename} ({len(binary)} bytes)")
+            size_mb = len(binary) / (1024 * 1024)
+            print(f"Success! Created {filename} ({size_mb:.1f} MB)")
         except BeaconCompilerError as e:
             print(f"Failed: {e}")
-
+    else:
+        print("\n⚠️  Go not installed. Please install Go 1.21+")
+        print("   Ubuntu/Debian: sudo apt install golang-go")
+        print("   Or download from: https://go.dev/dl/")

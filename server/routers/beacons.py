@@ -35,7 +35,7 @@ from server.models import (
 from server.storage_postgres import PostgresReportStorage, get_storage
 from server.beacon_compiler import (
     compile_beacon, 
-    check_pyinstaller_available, 
+    check_compiler_available, 
     get_compiler_status,
     BeaconCompilerError
 )
@@ -61,7 +61,11 @@ class BeaconDownloadConfig(BaseModel):
 class CompilerStatusResponse(BaseModel):
     """Status of the beacon compiler service."""
     status: str
-    pyinstaller_installed: bool
+    compiler: str
+    compiler_version: Optional[str]
+    go_installed: bool
+    can_compile_windows: bool
+    can_cross_compile: bool
     cache: Dict[str, Any]
     supported_targets: List[str]
 
@@ -75,7 +79,7 @@ async def get_beacon_compiler_status():
     """
     Get the status of the server-side beacon compiler.
     
-    Returns whether PyInstaller is available for on-the-fly compilation.
+    Returns whether Go is available for cross-platform compilation.
     """
     return get_compiler_status()
 
@@ -90,14 +94,19 @@ async def download_beacon(
     format: str = Query("zip", description="Download format: 'zip' for source, 'exe' for compiled executable")
 ):
     """
-    Download the beacon agent package.
+    Download the beacon agent package (Go version v2.0).
     
     **Formats:**
-    - `zip` - Source code package with scripts (requires Python on target)
-    - `exe` - **Compiled executable** - Ready to run, no Python needed!
+    - `exe` - **Compiled executable** - Ready to run Windows EXE with service support!
+    - `zip` - Go source package for local builds or customization
     
-    The executable format uses server-side PyInstaller compilation with
-    all configuration embedded. Just download and run!
+    The executable format uses **Go cross-compilation** - works from any server OS!
+    Configuration is embedded via ldflags. Includes Windows service support.
+    
+    **Features:**
+    - Cross-compile Windows EXE from Linux server ✓
+    - Install as Windows service (kardianos/service)
+    - Single binary - no dependencies needed
     
     **Configurable values:**
     - Server URL (backend API, usually port 8080)
@@ -106,18 +115,18 @@ async def download_beacon(
     - SSL verification (default: enabled)
     
     The ZIP package includes:
-    - beacon.py - The main beacon agent
-    - build.py - Script to compile to .exe locally
-    - beacon.json - Pre-configured with this server's URL
+    - main.go - The Go beacon agent source
+    - go.mod - Go module file
+    - build.bat/build.sh - Build scripts for Windows/Linux
     - PowerShell scripts for DonWatcher scans
     """
     try:
-        # Find beacon files
+        # Find beacon files (Go version)
         project_root = Path(__file__).parent.parent.parent
-        beacon_dir = project_root / "client" / "beacon"
+        beacon_go_dir = project_root / "client" / "beacon-go"
         
-        if not beacon_dir.exists():
-            raise HTTPException(status_code=500, detail="Beacon files not found on server")
+        if not beacon_go_dir.exists():
+            raise HTTPException(status_code=500, detail="Go beacon source not found on server")
         
         # Auto-detect server URL from request if not provided
         if not server_url:
@@ -130,15 +139,15 @@ async def download_beacon(
             logger.info(f"Auto-detected server URL: {server_url}")
         
         # =========================================================================
-        # COMPILED EXECUTABLE - Server-side PyInstaller build
+        # COMPILED EXECUTABLE - Server-side Go cross-compilation
         # =========================================================================
         if format == "exe":
-            # Check if compiler is available
-            if not check_pyinstaller_available():
+            # Check if Go compiler is available
+            if not check_compiler_available():
                 raise HTTPException(
                     status_code=503, 
-                    detail="Server-side compilation not available. PyInstaller not installed on server. "
-                           "Download the 'zip' format and compile locally, or ask your admin to install PyInstaller."
+                    detail="Server-side compilation not available. Go compiler not installed on server. "
+                           "Download the 'zip' format and compile locally, or ask your admin to install Go."
                 )
             
             try:
@@ -180,31 +189,31 @@ async def download_beacon(
                 )
         
         # =========================================================================
-        # SOURCE PACKAGE - ZIP with scripts
+        # SOURCE PACKAGE - ZIP with Go source (v2.0)
         # =========================================================================
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         
+        # Go beacon source directory
+        beacon_go_dir = project_root / "client" / "beacon-go"
+        
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add beacon.py
-            beacon_py = beacon_dir / "beacon.py"
-            if beacon_py.exists():
-                zip_file.write(beacon_py, "DonWatcher-Beacon/beacon.py")
-            
-            # Add build.py for compiling to exe
-            build_py = beacon_dir / "build.py"
-            if build_py.exists():
-                zip_file.write(build_py, "DonWatcher-Beacon/build.py")
-            
-            # Add requirements.txt
-            requirements = beacon_dir / "requirements.txt"
-            if requirements.exists():
-                zip_file.write(requirements, "DonWatcher-Beacon/requirements.txt")
-            
-            # Add README.md
-            readme = beacon_dir / "README.md"
-            if readme.exists():
-                zip_file.write(readme, "DonWatcher-Beacon/README.md")
+            # Add Go source files
+            if beacon_go_dir.exists():
+                # main.go - The beacon agent
+                main_go = beacon_go_dir / "main.go"
+                if main_go.exists():
+                    zip_file.write(main_go, "DonWatcher-Beacon/main.go")
+                
+                # go.mod - Go module file
+                go_mod = beacon_go_dir / "go.mod"
+                if go_mod.exists():
+                    zip_file.write(go_mod, "DonWatcher-Beacon/go.mod")
+                
+                # README.md
+                readme = beacon_go_dir / "README.md"
+                if readme.exists():
+                    zip_file.write(readme, "DonWatcher-Beacon/README.md")
             
             # Add PowerShell scripts from client folder
             ps_scripts = [
@@ -218,103 +227,145 @@ async def download_beacon(
                 if script_path.exists():
                     zip_file.write(script_path, f"DonWatcher-Beacon/{script}")
             
-            # Always create pre-configured beacon.json with user settings
+            # Create config.json with user settings
             config = {
                 "server_url": server_url,
                 "sleep_interval": sleep,
                 "jitter_percent": jitter,
                 "verify_ssl": verify_ssl,
                 "debug": False,
-                "auto_upload": True
             }
             config_json = json.dumps(config, indent=2)
-            zip_file.writestr("DonWatcher-Beacon/beacon.json", config_json)
+            zip_file.writestr("DonWatcher-Beacon/config.json", config_json)
             
             ssl_note = "" if verify_ssl else " (SSL verify: OFF)"
-            # Add a quick start script for Windows (with Python)
-            start_bat = f"""@echo off
+            verify_ssl_str = "true" if verify_ssl else "false"
+            
+            # Build script for Windows using Go
+            build_bat = f"""@echo off
 echo ==========================================
-echo  DonWatcher Beacon Agent
+echo  DonWatcher Beacon - Go Build (Windows)
 echo ==========================================
 echo.
 echo Configuration:
 echo   Server: {server_url}
 echo   Sleep: {sleep}s, Jitter: {jitter}%{ssl_note}
 echo.
-echo Installing dependencies...
-pip install -r requirements.txt
-echo.
-echo Starting beacon...
-python beacon.py
+
+REM Check for Go
+where go >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [!] Go not found. Please install Go from https://go.dev/dl/
+    pause
+    exit /b 1
+)
+
+echo [*] Downloading dependencies...
+go mod download
+
+echo [*] Building DonWatcher-Beacon.exe...
+go build -ldflags "-X main.ServerURL={server_url} -X main.SleepInterval={sleep} -X main.JitterPercent={jitter} -X main.VerifySSL={verify_ssl_str} -s -w -H=windowsgui" -o DonWatcher-Beacon.exe .
+
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo [+] Build successful! Created DonWatcher-Beacon.exe
+    echo.
+    echo Usage:
+    echo   DonWatcher-Beacon.exe run       - Run interactively
+    echo   DonWatcher-Beacon.exe install   - Install as Windows service
+    echo   DonWatcher-Beacon.exe start     - Start the service
+) else (
+    echo [!] Build failed
+)
 pause
 """
-            zip_file.writestr("DonWatcher-Beacon/start-beacon.bat", start_bat)
+            zip_file.writestr("DonWatcher-Beacon/build.bat", build_bat)
             
-            # Add a compile script for Windows (to create standalone exe)
-            compile_bat = f"""@echo off
-echo ==========================================
-echo  DonWatcher Beacon - Build Executable
-echo ==========================================
-echo.
-echo This will create a standalone .exe that works without Python.
-echo.
-echo Installing build requirements...
-pip install pyinstaller requests
-echo.
-echo Building executable...
-python build.py --server {server_url} --sleep {sleep} --jitter {jitter} --output DonWatcher-Beacon.exe
-echo.
-echo Done! You can now copy DonWatcher-Beacon.exe to any Windows system.
-pause
-"""
-            zip_file.writestr("DonWatcher-Beacon/compile-to-exe.bat", compile_bat)
-            
-            # Add a quick start script for Linux/macOS
-            start_sh = f"""#!/bin/bash
+            # Build script for Linux/macOS using Go
+            build_sh = f"""#!/bin/bash
 echo "=========================================="
-echo " DonWatcher Beacon Agent"
+echo " DonWatcher Beacon - Go Build"
 echo "=========================================="
 echo
 echo "Configuration:"
 echo "  Server: {server_url}"
 echo "  Sleep: {sleep}s, Jitter: {jitter}%"
 echo
-echo "Installing dependencies..."
-pip3 install -r requirements.txt
-echo
-echo "Starting beacon..."
-python3 beacon.py
+
+# Check for Go
+if ! command -v go &> /dev/null; then
+    echo "[!] Go not found. Please install Go from https://go.dev/dl/"
+    exit 1
+fi
+
+echo "[*] Downloading dependencies..."
+go mod download
+
+echo "[*] Building for current platform..."
+go build -ldflags "-X main.ServerURL={server_url} -X main.SleepInterval={sleep} -X main.JitterPercent={jitter} -X main.VerifySSL={verify_ssl_str} -s -w" -o donwatcher-beacon .
+
+if [ $? -eq 0 ]; then
+    echo
+    echo "[+] Build successful! Created donwatcher-beacon"
+    chmod +x donwatcher-beacon
+    echo
+    echo "Usage:"
+    echo "  ./donwatcher-beacon run       - Run interactively"
+    echo "  ./donwatcher-beacon install   - Install as service"
+    echo "  ./donwatcher-beacon start     - Start the service"
+else
+    echo "[!] Build failed"
+fi
 """
-            zip_file.writestr("DonWatcher-Beacon/start-beacon.sh", start_sh)
+            zip_file.writestr("DonWatcher-Beacon/build.sh", build_sh)
             
-            # Add a compile script for Linux (to create standalone binary)
-            compile_sh = f"""#!/bin/bash
+            # Cross-compile script for building Windows EXE from Linux/macOS
+            cross_compile_sh = f"""#!/bin/bash
 echo "=========================================="
-echo " DonWatcher Beacon - Build Executable"
+echo " DonWatcher Beacon - Cross-Compile for Windows"
 echo "=========================================="
 echo
-echo "This will create a standalone binary that works without Python."
+echo "Building Windows EXE from $(uname -s)..."
 echo
-echo "Installing build requirements..."
-pip3 install pyinstaller requests
-echo
-echo "Building executable..."
-python3 build.py --server {server_url} --sleep {sleep} --jitter {jitter} --output donwatcher-beacon
-echo
-echo "Done! You can now copy donwatcher-beacon to any Linux system."
+
+# Check for Go
+if ! command -v go &> /dev/null; then
+    echo "[!] Go not found. Please install Go from https://go.dev/dl/"
+    exit 1
+fi
+
+echo "[*] Downloading dependencies..."
+go mod download
+
+echo "[*] Cross-compiling for Windows amd64..."
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \\
+    -ldflags "-X main.ServerURL={server_url} -X main.SleepInterval={sleep} -X main.JitterPercent={jitter} -X main.VerifySSL={verify_ssl_str} -s -w -H=windowsgui" \\
+    -o DonWatcher-Beacon.exe .
+
+if [ $? -eq 0 ]; then
+    echo
+    echo "[+] Cross-compile successful!"
+    echo "[+] Created: DonWatcher-Beacon.exe"
+    ls -lh DonWatcher-Beacon.exe
+    echo
+    echo "Copy this file to your Windows systems and run:"
+    echo "  DonWatcher-Beacon.exe install   - Install as service"
+    echo "  DonWatcher-Beacon.exe start     - Start the service"
+else
+    echo "[!] Build failed"
+fi
 """
-            zip_file.writestr("DonWatcher-Beacon/compile-to-binary.sh", compile_sh)
+            zip_file.writestr("DonWatcher-Beacon/cross-compile-windows.sh", cross_compile_sh)
             
-            # Add ONE-CLICK PowerShell build script (recommended for Windows users)
-            ssl_verify_flag = "" if verify_ssl else " --no-ssl-verify"
+            # PowerShell build script for Windows (one-click)
             build_ps1 = f'''#Requires -Version 5.1
 <#
 .SYNOPSIS
-    One-click build script for DonWatcher Beacon
+    One-click Go build script for DonWatcher Beacon
     
 .DESCRIPTION
-    Automatically installs dependencies and builds a Windows executable
-    with your configuration embedded. No manual steps required!
+    Builds a Windows executable with embedded configuration using Go.
+    Supports Windows service installation!
     
 .NOTES
     Configuration is pre-embedded:
@@ -328,7 +379,7 @@ $ProgressPreference = "SilentlyContinue"
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green
-Write-Host "  DonWatcher Beacon - One-Click Builder" -ForegroundColor Green  
+Write-Host "  DonWatcher Beacon - Go Builder" -ForegroundColor Green  
 Write-Host "============================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Configuration:" -ForegroundColor Cyan
@@ -337,61 +388,43 @@ Write-Host "  Sleep: {sleep}s, Jitter: {jitter}%"
 Write-Host "  SSL Verify: {str(verify_ssl).lower()}"
 Write-Host ""
 
-# Check for Python
-Write-Host "[*] Checking for Python..." -ForegroundColor Yellow
-$pythonCmd = $null
-
-# Try python first, then python3, then py
-foreach ($cmd in @("python", "python3", "py")) {{
-    try {{
-        $version = & $cmd --version 2>&1
-        if ($LASTEXITCODE -eq 0) {{
-            $pythonCmd = $cmd
-            Write-Host "[+] Found: $version" -ForegroundColor Green
-            break
-        }}
-    }} catch {{
-        # Continue to next
+# Check for Go
+Write-Host "[*] Checking for Go..." -ForegroundColor Yellow
+try {{
+    $goVersion = & go version 2>&1
+    if ($LASTEXITCODE -eq 0) {{
+        Write-Host "[+] Found: $goVersion" -ForegroundColor Green
+    }} else {{
+        throw "Go not found"
     }}
-}}
-
-if (-not $pythonCmd) {{
-    Write-Host "[!] Python not found!" -ForegroundColor Red
+}} catch {{
+    Write-Host "[!] Go not found!" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Please install Python 3.8+ from https://python.org" -ForegroundColor Yellow
-    Write-Host "Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Yellow
+    Write-Host "Please install Go from https://go.dev/dl/" -ForegroundColor Yellow
     Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
 }}
 
-# Install dependencies
+# Download dependencies
 Write-Host ""
-Write-Host "[*] Installing build dependencies..." -ForegroundColor Yellow
-& $pythonCmd -m pip install --quiet --upgrade pip 2>&1 | Out-Null
-& $pythonCmd -m pip install --quiet pyinstaller requests 2>&1
-
+Write-Host "[*] Downloading dependencies..." -ForegroundColor Yellow
+& go mod download
 if ($LASTEXITCODE -ne 0) {{
-    Write-Host "[!] Failed to install dependencies" -ForegroundColor Red
+    Write-Host "[!] Failed to download dependencies" -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
 }}
-Write-Host "[+] Dependencies installed" -ForegroundColor Green
+Write-Host "[+] Dependencies downloaded" -ForegroundColor Green
 
 # Build the executable
 Write-Host ""
 Write-Host "[*] Building DonWatcher-Beacon.exe..." -ForegroundColor Yellow
-Write-Host "    This may take 1-2 minutes..." -ForegroundColor Gray
+Write-Host "    This may take a minute..." -ForegroundColor Gray
 
-$buildArgs = @(
-    "build.py",
-    "--server", "{server_url}",
-    "--sleep", "{sleep}",
-    "--jitter", "{jitter}",
-    "--output", "DonWatcher-Beacon.exe"
-)
+$ldflags = "-X main.ServerURL={server_url} -X main.SleepInterval={sleep} -X main.JitterPercent={jitter} -X main.VerifySSL={verify_ssl_str} -s -w -H=windowsgui"
 
-& $pythonCmd $buildArgs
+& go build -ldflags $ldflags -o DonWatcher-Beacon.exe .
 
 if ($LASTEXITCODE -ne 0) {{
     Write-Host ""
@@ -411,10 +444,11 @@ if (Test-Path $exePath) {{
     Write-Host ""
     Write-Host "Output: DonWatcher-Beacon.exe ($([math]::Round($size, 1)) MB)" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Copy DonWatcher-Beacon.exe to your target systems"
-    Write-Host "  2. Run it - it will automatically connect to:"
-    Write-Host "     {server_url}" -ForegroundColor Green
+    Write-Host "Usage:" -ForegroundColor Yellow
+    Write-Host "  .\\DonWatcher-Beacon.exe run       - Run interactively"
+    Write-Host "  .\\DonWatcher-Beacon.exe install   - Install as Windows service"
+    Write-Host "  .\\DonWatcher-Beacon.exe start     - Start the service"
+    Write-Host "  .\\DonWatcher-Beacon.exe status    - Check service status"
     Write-Host ""
 }} else {{
     Write-Host "[!] Build completed but executable not found" -ForegroundColor Red

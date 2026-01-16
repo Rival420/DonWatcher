@@ -4,7 +4,7 @@ import {
   X, 
   Download, 
   Terminal, 
-  Server, 
+  Server,
   Clock,
   Shuffle,
   Shield,
@@ -20,9 +20,11 @@ import { clsx } from 'clsx'
 
 interface CompilerStatus {
   status: string
-  pyinstaller_installed: boolean
-  server_platform: string
+  compiler: string
+  compiler_version: string | null
+  go_installed: boolean
   can_compile_windows: boolean
+  can_cross_compile: boolean
   cache: {
     cached_beacons: number
     max_cache_size: number
@@ -46,8 +48,8 @@ function getDefaultBackendUrl(): string {
 }
 
 export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProps) {
-  // Configuration state
-  const [format, setFormat] = useState<DownloadFormat>('zip')
+  // Configuration state - Default to EXE since Go can cross-compile!
+  const [format, setFormat] = useState<DownloadFormat>('exe')
   const [serverUrl, setServerUrl] = useState(getDefaultBackendUrl())
   const [sleepInterval, setSleepInterval] = useState(60)
   const [jitterPercent, setJitterPercent] = useState(10)
@@ -72,9 +74,10 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
         .then(res => res.json())
         .then(data => {
           setCompilerStatus(data)
-          // Default to ZIP format - it's the most reliable option
-          // Server-side EXE compilation only works if server runs on Windows
-          if (!data.can_compile_windows) {
+          // Go can cross-compile! Default to EXE if available
+          if (data.can_compile_windows || data.can_cross_compile) {
+            setFormat('exe')
+          } else {
             setFormat('zip')
           }
         })
@@ -152,11 +155,12 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
 
   if (!isOpen) return null
 
-  const compilerAvailable = compilerStatus?.pyinstaller_installed ?? false
+  // Go compiler can cross-compile Windows EXE from Linux!
+  const compilerAvailable = compilerStatus?.go_installed ?? false
   const canCompileWindows = compilerStatus?.can_compile_windows ?? false
-  const serverPlatform = compilerStatus?.server_platform ?? 'unknown'
+  const compilerVersion = compilerStatus?.compiler_version ?? null
   
-  // Server-side EXE only works if server is on Windows
+  // With Go, EXE is available if compiler is installed (cross-compile works!)
   const serverExeAvailable = compilerAvailable && canCompileWindows
 
   return (
@@ -216,18 +220,35 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                   </div>
                 ) : (
                   <>
-                    {/* Platform Info Banner - Show when server is Linux */}
-                    {!canCompileWindows && serverPlatform !== 'unknown' && (
-                      <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                    {/* Go Compiler Info Banner */}
+                    {serverExeAvailable && (
+                      <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
                         <div className="flex items-start gap-3">
-                          <Server className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                          <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
                           <div>
-                            <p className="text-sm text-blue-400 font-mono font-bold">
-                              Server runs on {serverPlatform.toUpperCase()}
+                            <p className="text-sm text-green-400 font-mono font-bold">
+                              Go Cross-Compiler Ready {compilerVersion && `(${compilerVersion})`}
                             </p>
-                            <p className="text-xs text-blue-300/70 mt-1">
-                              Download the ZIP package and run <code className="px-1 py-0.5 bg-blue-500/20 rounded">build-beacon.ps1</code> on 
-                              Windows to create a ready-to-run .exe with your configuration embedded.
+                            <p className="text-xs text-green-300/70 mt-1">
+                              Download a Windows .exe directly - compiled on-the-fly with your configuration embedded.
+                              Includes Windows service installation support!
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Compiler not available warning */}
+                    {!serverExeAvailable && (
+                      <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm text-yellow-400 font-mono font-bold">
+                              Go Compiler Not Available
+                            </p>
+                            <p className="text-xs text-yellow-300/70 mt-1">
+                              Download the ZIP package and build locally with Go, or contact your admin to install Go on the server.
                             </p>
                           </div>
                         </div>
@@ -240,53 +261,7 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                         Download Format
                       </label>
                       <div className="grid grid-cols-2 gap-4">
-                        {/* ZIP Option - Now recommended for cross-platform */}
-                        <button
-                          onClick={() => setFormat('zip')}
-                          className={clsx(
-                            'relative p-4 rounded-lg border-2 text-left transition-all duration-200',
-                            format === 'zip'
-                              ? 'border-green-500 bg-green-500/10'
-                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
-                          )}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={clsx(
-                              'p-2 rounded-lg',
-                              format === 'zip' ? 'bg-green-500/20' : 'bg-gray-700'
-                            )}>
-                              <Package className={clsx(
-                                'w-5 h-5',
-                                format === 'zip' ? 'text-green-400' : 'text-gray-400'
-                              )} />
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className={clsx(
-                                  'font-mono font-bold',
-                                  format === 'zip' ? 'text-green-400' : 'text-gray-300'
-                                )}>
-                                  .ZIP
-                                </span>
-                                {!canCompileWindows && (
-                                  <span className="px-2 py-0.5 rounded text-xs font-mono bg-green-500/20 text-green-400">
-                                    RECOMMENDED
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Pre-configured package with one-click build script for Windows.
-                              </p>
-                            </div>
-                          </div>
-                          {format === 'zip' && (
-                            <div className="absolute top-2 right-2">
-                              <CheckCircle2 className="w-5 h-5 text-green-400" />
-                            </div>
-                          )}
-                        </button>
-
-                        {/* EXE Option - Only when server can compile */}
+                        {/* EXE Option - Recommended when Go is available */}
                         <button
                           onClick={() => serverExeAvailable && setFormat('exe')}
                           disabled={!serverExeAvailable}
@@ -317,14 +292,14 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                                 )}>
                                   .EXE
                                 </span>
-                                {canCompileWindows && (
+                                {serverExeAvailable && (
                                   <span className="px-2 py-0.5 rounded text-xs font-mono bg-green-500/20 text-green-400">
                                     RECOMMENDED
                                   </span>
                                 )}
                               </div>
                               <p className="text-sm text-gray-500 mt-1">
-                                Server-compiled executable (requires Windows server).
+                                Ready-to-run Windows executable with service support.
                               </p>
                             </div>
                           </div>
@@ -332,10 +307,7 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                             <div className="mt-3 p-2 rounded bg-yellow-500/10 border border-yellow-500/20">
                               <p className="text-xs text-yellow-400 font-mono">
                                 <AlertCircle className="w-3 h-3 inline mr-1" />
-                                {!compilerAvailable 
-                                  ? 'PyInstaller not installed on server'
-                                  : `Server is ${serverPlatform} - use ZIP for Windows targets`
-                                }
+                                Go compiler not installed on server
                               </p>
                             </div>
                           )}
@@ -345,8 +317,77 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                             </div>
                           )}
                         </button>
+
+                        {/* ZIP Option - For manual builds */}
+                        <button
+                          onClick={() => setFormat('zip')}
+                          className={clsx(
+                            'relative p-4 rounded-lg border-2 text-left transition-all duration-200',
+                            format === 'zip'
+                              ? 'border-green-500 bg-green-500/10'
+                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={clsx(
+                              'p-2 rounded-lg',
+                              format === 'zip' ? 'bg-green-500/20' : 'bg-gray-700'
+                            )}>
+                              <Package className={clsx(
+                                'w-5 h-5',
+                                format === 'zip' ? 'text-green-400' : 'text-gray-400'
+                              )} />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className={clsx(
+                                  'font-mono font-bold',
+                                  format === 'zip' ? 'text-green-400' : 'text-gray-300'
+                                )}>
+                                  .ZIP
+                                </span>
+                                {!serverExeAvailable && (
+                                  <span className="px-2 py-0.5 rounded text-xs font-mono bg-green-500/20 text-green-400">
+                                    RECOMMENDED
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Go source package for local builds or customization.
+                              </p>
+                            </div>
+                          </div>
+                          {format === 'zip' && (
+                            <div className="absolute top-2 right-2">
+                              <CheckCircle2 className="w-5 h-5 text-green-400" />
+                            </div>
+                          )}
+                        </button>
                       </div>
                     </div>
+
+                    {/* EXE Features Info */}
+                    {format === 'exe' && serverExeAvailable && (
+                      <div className="p-4 rounded-lg bg-black/50 border border-green-500/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Terminal className="w-4 h-4 text-green-400" />
+                          <span className="text-sm font-mono text-green-400 uppercase">
+                            Usage After Download
+                          </span>
+                        </div>
+                        <pre className="text-xs font-mono text-gray-400 overflow-x-auto whitespace-pre-wrap">
+{`# Run interactively:
+.\\DonWatcher-Beacon.exe run
+
+# Install as Windows service (requires Admin):
+.\\DonWatcher-Beacon.exe install
+.\\DonWatcher-Beacon.exe start
+
+# Check status:
+.\\DonWatcher-Beacon.exe status`}
+                        </pre>
+                      </div>
+                    )}
 
                     {/* Quick Build Instructions for ZIP format */}
                     {format === 'zip' && (
@@ -354,17 +395,16 @@ export function BeaconDownloadModal({ isOpen, onClose }: BeaconDownloadModalProp
                         <div className="flex items-center gap-2 mb-3">
                           <Terminal className="w-4 h-4 text-green-400" />
                           <span className="text-sm font-mono text-green-400 uppercase">
-                            Quick Build (After Download)
+                            Build Locally (After Download)
                           </span>
                         </div>
                         <pre className="text-xs font-mono text-gray-400 overflow-x-auto whitespace-pre-wrap">
-{`# Extract ZIP and run one-liner PowerShell build:
+{`# Build Windows EXE from any OS:
 cd DonWatcher-Beacon
-.\\build-beacon.ps1
+GOOS=windows GOARCH=amd64 go build -o beacon.exe .
 
-# Or manually with Python:
-pip install pyinstaller requests
-python build.py --server ${serverUrl}`}
+# Or with embedded config:
+go build -ldflags "-X main.ServerURL=${serverUrl}" -o beacon.exe`}
                         </pre>
                       </div>
                     )}
